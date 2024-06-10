@@ -1,6 +1,4 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
-import {AutoCrud} from "@vaadin/hilla-react-crud";
-import SampleModel from "Frontend/generated/ch/rupfizupfi/deck/data/SampleModel";
 import {ProjectService, SampleService} from "Frontend/generated/endpoints";
 import {useParams} from "react-router-dom";
 import {useEffect, useState} from "react";

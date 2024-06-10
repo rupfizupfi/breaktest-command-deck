@@ -1,7 +1,8 @@
 package ch.rupfizupfi.deck.data;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 import java.util.List;
 
@@ -20,7 +21,8 @@ public class Sample extends AbstractEntity {
 
     public String manufacturer;
 
-    @Pattern(regexp = "^[1-2][0-9]{3}$", message = "Year of manufacture must be a four-digit number between 1000 and 2999")
+    @Min(value = 1900, message = "Year of manufacture must be between 1900 and 2900")
+    @Max(value = 2900, message = "Year of manufacture must be between 1900 and 2900")
     public int yearOfManufacture;
 
     @ManyToMany
