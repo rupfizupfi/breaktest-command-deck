@@ -25,11 +25,13 @@
     "@vaadin/vaadin-material-styles": "24.4.0-rc1",
     "@vaadin/vaadin-themable-mixin": "24.4.0-rc1",
     "@vaadin/vaadin-usage-statistics": "2.1.2",
+    "chartjs-adapter-date-fns": "^3.0.0",
     "construct-style-sheets-polyfill": "3.1.0",
     "date-fns": "2.29.3",
     "lit": "3.1.3",
     "proj4": "2.11.0",
     "react": "18.3.1",
+    "react-chartjs-2": "^5.2.0",
     "react-dom": "18.3.1",
     "react-router-dom": "6.23.1",
     "ws": "^8.17.0"
@@ -105,7 +107,9 @@
     "@vaadin/vaadin-lumo-styles": "$@vaadin/vaadin-lumo-styles",
     "@vaadin/vaadin-material-styles": "$@vaadin/vaadin-material-styles",
     "@stomp/rx-stomp": "$@stomp/rx-stomp",
-    "ws": "$ws"
+    "ws": "$ws",
+    "chartjs-adapter-date-fns": "$chartjs-adapter-date-fns",
+    "react-chartjs-2": "$react-chartjs-2"
   },
   "vaadin": {
     "dependencies": {
@@ -166,6 +170,6 @@
       "workbox-core": "7.1.0",
       "workbox-precaching": "7.1.0"
     },
-    "hash": "4f9ba134120113ec29f97f5ccb2e62fa12c8a32ae352c66d3c38620ba5c122b3"
+    "hash": "40b8b9201b338b896da3b8d685a670166c4bb6dcc8428d254969b84bd5de5f94"
   }
 }
