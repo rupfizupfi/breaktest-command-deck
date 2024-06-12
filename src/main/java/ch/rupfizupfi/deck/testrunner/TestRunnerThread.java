@@ -38,6 +38,8 @@ public class TestRunnerThread implements Runnable {
 
         try {
             while (running) {
+                Thread.sleep(60);
+
                 List<Measurement> measurements = stream.getNextValues();
                 measurements.forEach(measurement -> {
                     try {
@@ -58,6 +60,8 @@ public class TestRunnerThread implements Runnable {
                     throw new RuntimeException("Failed to close file stream", e);
                 }
             }
+        } catch (InterruptedException e){
+
         } finally {
             stream.stopReading();
         }
