@@ -21,6 +21,7 @@ export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, mo
             }
         }}
         formProps={{
+            hiddenFields: ['label'],
             fieldOptions: {
                 type: {
                     readonly: true,
