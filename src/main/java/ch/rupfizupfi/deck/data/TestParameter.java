@@ -12,7 +12,9 @@ public class TestParameter extends AbstractEntity {
 
     public int speed;
 
-    public int endConditionForce;
+    public double upperShutOffThreshold;
+
+    public double lowerShutOffThreshold;
 
     @Transient
     public String getLabel() {
