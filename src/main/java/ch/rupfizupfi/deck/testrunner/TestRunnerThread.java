@@ -1,21 +1,17 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.dscusb.CellValueStream;
-import ch.rupfizupfi.dscusb.Measurement;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-
 import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.nio.file.Paths;
-import java.util.List;
+
 
 public class TestRunnerThread implements Runnable {
     private final SimpMessagingTemplate template;
     private volatile boolean running = false;
     private BufferedWriter writer;
     private CellValueStream stream;
-    private int testId;
+    private TestResult testResult;
 
     public TestRunnerThread(SimpMessagingTemplate template) {
         this.template = template;
@@ -23,53 +19,39 @@ public class TestRunnerThread implements Runnable {
 
     @Override
     public void run() {
-        String userHome = System.getProperty("user.home");
-        String filePath = Paths.get(userHome, "breaktester", Integer.toString(this.testId), System.currentTimeMillis() + "_force.csv").toString();
-        Paths.get(filePath).getParent().toFile().mkdirs();
-
-        try {
-            writer = new BufferedWriter(new FileWriter(filePath));
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create file stream", e);
-        }
-
-        stream = new CellValueStream();
-        stream.startReading();
-
-        try {
-            while (running) {
-                Thread.sleep(60);
-
-                List<Measurement> measurements = stream.getNextValues();
-                measurements.forEach(measurement -> {
-                    try {
-                        writer.write(measurement.toString());
-                        writer.newLine();
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to write to file stream", e);
-                    }
-                });
-
-                template.convertAndSend("/topic/updates", measurements);
-            }
-
-            if (writer != null) {
-                try {
-                    writer.close();
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to close file stream", e);
-                }
-            }
-        } catch (InterruptedException e){
-
-        } finally {
-            stream.stopReading();
+        switch (testResult.testParameter.type)
+        {
+            case "cyclic":
+                this.cyclicTest();
+                break;
+            case "destructive":
+                this.destructiveTest();
+                break;
         }
     }
 
-    public void startThread(int testId) {
+    protected void cyclicTest(){
+
+    }
+
+    protected void destructiveTest(){
+        TestContext testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold, testResult.testParameter.lowerShutOffThreshold);
+        LoadCellThread loadCellThread = new LoadCellThread(template, testContext);
+        new Thread(loadCellThread).start();
+
+        // calculate from mm/min to rpm, 1 rpm = 0.375mm
+//        cfw.setSpeed(testResult.testParameter.speed / 0.375);
+//
+//        testContext.onSignal([1,2], () -> {
+//            cfw.stop();
+//            loadCellThread.stopThread();
+//            testResultRepository.save(test);
+//        });
+    }
+
+    public void startThread(TestResult testResult) {
         if (!running) {
-            this.testId = testId;
+            this.testResult = testResult;
             running = true;
             new Thread(this).start();
         }

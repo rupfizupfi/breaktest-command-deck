@@ -26,6 +26,18 @@ export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, mo
                 type: {
                     readonly: true,
                 },
+                speed: {
+                    helperText: 'Speed in mm/min',
+                },
+
+                upperShutOffThreshold: {
+                    helperText: 'Upper shut-off threshold in kN (when force is reaching this value and more, the test stops automatically)',
+                },
+
+                lowerShutOffThreshold: {
+                    helperText: 'Lower shut-off threshold in kN (stops fu))',
+                },
+
                 sample: {
                     renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="id" itemLabelPath="name" service={localSampleService}/>,
                 },
