@@ -2,6 +2,8 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.dscusb.CellValueStream;
 import ch.rupfizupfi.dscusb.Measurement;
+import com.google.common.collect.EvictingQueue;
+import org.apache.commons.io.input.buffer.CircularByteBuffer;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.io.BufferedWriter;
@@ -9,6 +11,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class LoadCellThread implements Runnable   {
@@ -17,10 +20,34 @@ public class LoadCellThread implements Runnable   {
     private BufferedWriter writer;
     private CellValueStream stream;
     private TestContext testContext;
+    private volatile float minValue;
+    private volatile float maxValue;
 
     LoadCellThread(SimpMessagingTemplate template, TestContext testContext) {
         this.template = template;
         this.testContext = testContext;
+        minValue = (float) testContext.getLowerLimit();
+        maxValue = (float) testContext.getUpperLimit();
+    }
+
+    public void setRunning(boolean running) {
+        this.running = running;
+    }
+
+    public float getMaxValue() {
+        return maxValue;
+    }
+
+    public float getMinValue() {
+        return minValue;
+    }
+
+    public void setMaxValue(float maxValue) {
+        this.maxValue = maxValue;
+    }
+
+    public void setMinValue(float minValue) {
+        this.minValue = minValue;
     }
 
     @Override
@@ -42,16 +69,32 @@ public class LoadCellThread implements Runnable   {
         try {
             while (running) {
                 var measurements = stream.getNextValues();
+
+                if(measurements.isEmpty()){
+                    Thread.sleep(20);
+                    continue;
+                }
+
                 var lastMeasurement = measurements.getLast();
                 if (lastMeasurement.getForce() > testContext.getUpperLimit()) {
                     testContext.sendSignal(1);
+                    minValue = lastMeasurement.getForce();
                 }
-                if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
+                else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
                     testContext.sendSignal(2);
+                    maxValue = lastMeasurement.getForce();
                 }
 
                 measurements.forEach(measurement -> {
                     try {
+                        if(minValue > measurement.getForce()){
+                            minValue = measurement.getForce();
+                        }
+
+                        if(maxValue < measurement.getForce()){
+                            maxValue = measurement.getForce();
+                        }
+
                         writer.write(measurement.toString());
                         writer.newLine();
                     } catch (IOException e) {
@@ -66,6 +109,9 @@ public class LoadCellThread implements Runnable   {
                 }
             }
 
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
             if (writer != null) {
                 try {
                     writer.close();
@@ -73,7 +119,7 @@ public class LoadCellThread implements Runnable   {
                     throw new RuntimeException("Failed to close file stream", e);
                 }
             }
-        } finally {
+
             stream.stopReading();
         }
     }

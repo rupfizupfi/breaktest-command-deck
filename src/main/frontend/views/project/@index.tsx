@@ -8,7 +8,7 @@ import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStr
 import {TextField} from "@vaadin/react-components";
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 
-export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/file.svg'}, title: 'Projects', loginRequired: true};
+export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg'}, title: 'Projects', loginRequired: true};
 
 export default function ProjectView() {
     const service = createAutoComboBoxService(CustomerService, "firstname");

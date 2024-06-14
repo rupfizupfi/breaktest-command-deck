@@ -1,9 +1,9 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
-import {VerticalLayout} from "@vaadin/react-components";
+import {Button, VerticalLayout} from "@vaadin/react-components";
 import {useNavigate} from "react-router-dom";
 
 export const config: ViewConfig = {
-    menu: {order: 0, icon: 'line-awesome/svg/suitcase-rolling-solid.svg'},
+    menu: {order: 4, icon: 'line-awesome/svg/suitcase-rolling-solid.svg'},
     title: 'Test',
     loginRequired: true,
 };
@@ -15,8 +15,8 @@ export default function TestView() {
         <VerticalLayout theme="padding spacing-l stretch evenly">
             <h1>Choose test type</h1>
             <nav>
-                <button onClick={() => navigate('destructive')}>Destructive</button>
-                <button onClick={() => navigate('non-destructive')}>Non Destructive</button>
+                <Button theme="secondary" onClick={() => navigate('destructive')}>Destructive</Button>
+                <Button theme="secondary" onClick={() => navigate('cyclic')}>Cyclic</Button>
             </nav>
         </VerticalLayout>
     )

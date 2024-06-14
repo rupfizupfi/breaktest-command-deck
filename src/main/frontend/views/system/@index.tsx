@@ -7,7 +7,7 @@ import GearTypeModel from "Frontend/generated/ch/rupfizupfi/deck/data/GearTypeMo
 import GearStandardModel from "Frontend/generated/ch/rupfizupfi/deck/data/GearStandardModel";
 
 export const config: ViewConfig = {
-    menu: {order: 0, icon: 'line-awesome/svg/suitcase-rolling-solid.svg'},
+    menu: {order: 1, icon: 'line-awesome/svg/suitcase-rolling-solid.svg'},
     title: 'System',
     loginRequired: true,
 };

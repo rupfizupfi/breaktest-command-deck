@@ -24,15 +24,23 @@ public class TestContext {
         return lowerLimit;
     }
 
+    public void setLowerLimit(double lowerLimit) {
+        this.lowerLimit = lowerLimit;
+    }
+
+    public void setUpperLimit(double upperLimit) {
+        this.upperLimit = upperLimit;
+    }
+
     public long getTestId() {
         return testId;
     }
 
-    void sendSignal(int signal){
+    public void sendSignal(int signal){
         signalListeners.forEach(listener -> listener.handleSignal(signal));
     }
 
-    void addSignalListener(SignalListener listener){
+    public void addSignalListener(SignalListener listener){
         signalListeners.add(listener);
     }
 }

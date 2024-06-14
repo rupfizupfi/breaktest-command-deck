@@ -8,7 +8,7 @@ import { TestRunnerService } from "Frontend/generated/endpoints";
 //import 'chartjs-adapter-date-fns';
 import { CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, TimeScale, TimeSeriesScale, Title, Tooltip } from 'chart.js';
 import { Button } from "@vaadin/react-components/Button.js";
-import { VerticalLayout } from "@vaadin/react-components";
+import { HorizontalLayout, VerticalLayout } from "@vaadin/react-components";
 
 ChartJS.register(
     CategoryScale,
@@ -51,6 +51,9 @@ export default function TestResultBoard({ testResult, reset }: TestResultBoardPr
                 });
             }
         });
+        const logSubscription = service.logObservable.subscribe((value: IMessage) => {
+            console.log(value.body);
+        })
 
         TestRunnerService.start(testResult.id!);
         service.connect();
@@ -58,14 +61,16 @@ export default function TestResultBoard({ testResult, reset }: TestResultBoardPr
         return () => {
             service.disconnect();
             subscription.unsubscribe();
+            logSubscription.unsubscribe();
         };
     }, [testResult.id]);
 
+    const yDataPoints = dataPoints.map((p)=>p.y);
     const data = {
         labels: dataPoints.map((p)=>p.x),
         datasets: [{
             label: 'Test Result',
-            data: dataPoints.map((p)=>p.y),
+            data: yDataPoints,
             fill: false,
             backgroundColor: 'rgb(255, 99, 132)',
             borderColor: 'rgba(255, 99, 132, 0.2)',
@@ -91,13 +96,21 @@ export default function TestResultBoard({ testResult, reset }: TestResultBoardPr
         maintainAspectRatio: false
     };
 
+    const maxForce = yDataPoints.length ? Math.round(Math.max(...yDataPoints)) / 1000 : 0;
+    const currentValue = dataPoints.length ? Math.round(dataPoints[dataPoints.length-1].y) / 1000: 0;
+
     return (
         <VerticalLayout className="w-full" theme="padding spacing-l stretch evenly" style={{ alignItems: 'stretch' }}>
-            <Button theme="primary" onClick={() => {
-                TestRunnerService.stop();
-                Notification.show('stopped');
-                reset();
-            }}>Stop</Button>
+            <HorizontalLayout className="w-full" theme="padding spacing-l stretch evenly">    
+                <Button theme="primary" onClick={() => {
+                    TestRunnerService.stop();
+                    Notification.show('stopped');
+                    reset();
+                }}>Stop</Button>
+                <h3 style={{ width: '8em' }}>Force: {currentValue} kN</h3>
+                <h3 style={{ width: '8em' }}>Max: {maxForce} kN</h3>
+            </HorizontalLayout>
+            
             <div className="w-full">
                 <Line data={data} options={options} />
             </div>
