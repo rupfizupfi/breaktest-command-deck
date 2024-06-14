@@ -2,6 +2,11 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.dscusb.CellValueStream;
+import ch.rupfizupfi.usbmodbus.Cfw11;
+import ch.rupfizupfi.usbmodbus.Cfw11Controller;
+import ch.rupfizupfi.usbmodbus.commandbus.CommandChain;
+import ch.rupfizupfi.usbmodbus.commandbus.CommandChainRunner;
+import javassist.bytecode.ClassFileWriter;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import java.io.BufferedWriter;
 
@@ -38,15 +43,23 @@ public class TestRunnerThread implements Runnable {
         TestContext testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold, testResult.testParameter.lowerShutOffThreshold);
         LoadCellThread loadCellThread = new LoadCellThread(template, testContext);
         new Thread(loadCellThread).start();
+        CommandChain commandChain = new CommandChain(1);
+        Cfw11 cfw11 = new Cfw11();
+        Cfw11Controller controller = new Cfw11Controller(cfw11, commandChain);
+        controller.start();
+
+        controller.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
+        controller.setStart(true);
+
 
         // calculate from mm/min to rpm, 1 rpm = 0.375mm
 //        cfw.setSpeed(testResult.testParameter.speed / 0.375);
 //
-//        testContext.onSignal([1,2], () -> {
-//            cfw.stop();
-//            loadCellThread.stopThread();
-//            testResultRepository.save(test);
-//        });
+        testContext.onSignal([1,2], () -> {
+            cfw.stop();
+            loadCellThread.stopThread();
+            testResultRepository.save(test);
+        });
     }
 
     public void startThread(TestResult testResult) {
