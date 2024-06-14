@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.data;
 
+import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 
 @Entity
@@ -12,9 +13,20 @@ public class TestParameter extends AbstractEntity {
 
     public int speed;
 
+    @Nullable
     public double upperShutOffThreshold;
 
+    @Nullable
     public double lowerShutOffThreshold;
+
+    @Nullable
+    public double upperTurnForce;
+
+    @Nullable
+    public double lowerTurnForce;
+
+    @Nullable
+    public int cycleCount;
 
     @Transient
     public String getLabel() {

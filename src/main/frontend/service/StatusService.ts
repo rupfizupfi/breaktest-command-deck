@@ -4,6 +4,7 @@ import {Observable} from "rxjs/internal/Observable";
 export default class StatusService {
     private rxStomp: RxStomp;
     private updateTopic: Observable<IMessage>;
+    private updateLog: Observable<IMessage>;
 
     constructor() {
         this.rxStomp = new RxStomp();
@@ -13,6 +14,9 @@ export default class StatusService {
 
         this.updateTopic = this.rxStomp
             .watch({destination: "/topic/updates"});
+
+        this.updateLog = this.rxStomp
+            .watch({destination: "/topic/logs"});
 
         // this.updateTopic.subscribe((message: IMessage) => {
         //     console.log("Received message: " + message.body);
@@ -26,6 +30,10 @@ export default class StatusService {
 
     get updateObservable() {
         return this.updateTopic;
+    }
+
+    get logObservable(){
+        return this.updateLog;
     }
 
     connect() {

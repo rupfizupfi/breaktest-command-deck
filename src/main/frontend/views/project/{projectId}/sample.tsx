@@ -9,7 +9,7 @@ import {VerticalLayout} from "@vaadin/react-components";
 import Placeholder from "Frontend/components/placeholder/Placeholder";
 import {buildAutoCrud} from "Frontend/components/autocrud/sample";
 
-export const config: ViewConfig = {menu: {order: 4, icon: 'line-awesome/svg/file.svg', exclude: true}, title: 'Sample', loginRequired: true};
+export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg', exclude: true}, title: 'Sample', loginRequired: true};
 
 export default function SampleView() {
     const {projectId} = useParams();
