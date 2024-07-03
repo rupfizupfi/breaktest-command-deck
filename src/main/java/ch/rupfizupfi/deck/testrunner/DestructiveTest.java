@@ -1,6 +1,7 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class DestructiveTest extends AbstractTest {
@@ -11,8 +12,7 @@ public class DestructiveTest extends AbstractTest {
     void setup() {
         testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold * 1000, testResult.testParameter.lowerShutOffThreshold * 1000);
         initContext();
-        running = true;
-        LoadCellThread loadCellThread = new LoadCellThread(template, testContext);
+        loadCellThread = new LoadCellThread(template, testContext);
         loadCellThread.setRunning(true);
         new Thread(loadCellThread).start();
 
