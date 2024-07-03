@@ -2,6 +2,7 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.testrunner.cyclic.CyclicTestContext;
+import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class CyclicTest extends AbstractTest {
@@ -16,11 +17,10 @@ public class CyclicTest extends AbstractTest {
     void setup() {
         testContext = new CyclicTestContext(testResult.getId(), testResult.testParameter.upperTurnForce * 1000, testResult.testParameter.lowerTurnForce * 1000, testResult.testParameter.cycleCount);
         initContext();
-        running = true;
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
 
-        LoadCellThread loadCellThread = new LoadCellThread(template, testContext);
+        loadCellThread = new LoadCellThread(template, testContext);
         loadCellThread.setRunning(true);
         new Thread(loadCellThread).start();
 

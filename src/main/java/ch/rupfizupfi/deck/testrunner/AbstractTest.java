@@ -1,12 +1,12 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public abstract class AbstractTest implements SignalListener {
-    protected final LoadCellThread loadCellThread;
-    protected final CFW11 cfw11;
-    protected boolean running = false;
+    protected LoadCellThread loadCellThread;
+    protected Cfw11 cfw11;
     protected TestResult testResult;
     protected TestContext testContext;
     protected final SimpMessagingTemplate template;

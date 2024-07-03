@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.sql.init.SqlDataSourceScriptDataba
 import org.springframework.boot.autoconfigure.sql.init.SqlInitializationProperties;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 
 /**
  * The entry point of the Spring Boot application.
@@ -22,6 +23,7 @@ import org.springframework.context.annotation.Bean;
  */
 @SpringBootApplication
 @Theme(value = "breaktest-command-deck", variant = Lumo.DARK)
+
 public class Application implements AppShellConfigurator {
 
     public static void main(String[] args) {
