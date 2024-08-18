@@ -9,12 +9,12 @@ public class TestContext {
     private volatile double upperLimit;
     private volatile double lowerLimit;
     private volatile int lastSendSignal = -1;
-    private long testId;
+    private long testResultId;
     private List<SignalListener> signalListeners;
     private BlockingQueue<Integer> signalQueue = new LinkedBlockingQueue<>();
 
     public TestContext(long testId, double upperLimit, double lowerLimit) {
-        this.testId = testId;
+        this.testResultId = testId;
         this.upperLimit = upperLimit;
         this.lowerLimit = lowerLimit;
         this.signalListeners = new ArrayList<>();
@@ -36,8 +36,8 @@ public class TestContext {
         this.upperLimit = upperLimit;
     }
 
-    public long getTestId() {
-        return testId;
+    public long getTestResultId() {
+        return testResultId;
     }
 
     public void sendSignal(int signal){

@@ -1,18 +1,13 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.filesystem.CSVStoreService;
 import ch.rupfizupfi.dscusb.CellValueStream;
 import ch.rupfizupfi.dscusb.Measurement;
-import com.google.common.collect.EvictingQueue;
-import org.apache.commons.io.input.buffer.CircularByteBuffer;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 public class LoadCellThread implements Runnable   {
     private final SimpMessagingTemplate template;
@@ -22,12 +17,14 @@ public class LoadCellThread implements Runnable   {
     private TestContext testContext;
     private volatile float minValue;
     private volatile float maxValue;
+    private CSVStoreService csvStoreService;
 
     LoadCellThread(SimpMessagingTemplate template, TestContext testContext) {
         this.template = template;
         this.testContext = testContext;
         minValue = (float) testContext.getLowerLimit();
         maxValue = (float) testContext.getUpperLimit();
+        csvStoreService = new CSVStoreService();
     }
 
     public void setRunning(boolean running) {
@@ -52,9 +49,7 @@ public class LoadCellThread implements Runnable   {
 
     @Override
     public void run() {
-        String userHome = System.getProperty("user.home");
-        String filePath = Paths.get(userHome, "breaktester", Long.toString(this.testContext.getTestId()), System.currentTimeMillis() + "_force.csv").toString();
-        Paths.get(filePath).getParent().toFile().mkdirs();
+        String filePath = csvStoreService.generateFilePathForTestResult(testContext.getTestResultId());
 
         try {
             writer = new BufferedWriter(new FileWriter(filePath));
@@ -95,7 +90,7 @@ public class LoadCellThread implements Runnable   {
                             maxValue = measurement.getForce();
                         }
 
-                        writer.write(measurement.toString());
+                        writer.write(measurement.getTimestamp() + "," + measurement.getForce());
                         writer.newLine();
                     } catch (IOException e) {
                         throw new RuntimeException("Failed to write to file stream", e);
