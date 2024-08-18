@@ -9,7 +9,9 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 const defaultTitle = document.title;
 const documentTitleSignal = signal('');
-effect(() => (document.title = documentTitleSignal.value));
+effect(() => {
+    document.title = documentTitleSignal.value;
+});
 
 // Publish for Vaadin to use
 (window as any).Vaadin.documentTitleSignal = documentTitleSignal;
