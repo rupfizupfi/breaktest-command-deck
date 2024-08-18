@@ -29,10 +29,12 @@
     "construct-style-sheets-polyfill": "3.1.0",
     "date-fns": "2.29.3",
     "lit": "3.1.4",
+    "plotly.js": "^2.34.0",
     "proj4": "2.11.0",
     "react": "18.3.1",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "18.3.1",
+    "react-plotly.js": "^2.6.0",
     "react-router-dom": "6.23.1",
     "ws": "^8.17.0"
   },
@@ -43,6 +45,7 @@
     "@rollup/pluginutils": "5.1.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "@types/react-plotly.js": "^2.6.3",
     "@vaadin/hilla-generator-cli": "24.4.3",
     "@vaadin/hilla-generator-core": "24.4.3",
     "@vaadin/hilla-generator-plugin-backbone": "24.4.3",
@@ -109,7 +112,9 @@
     "@stomp/rx-stomp": "$@stomp/rx-stomp",
     "ws": "$ws",
     "chartjs-adapter-date-fns": "$chartjs-adapter-date-fns",
-    "react-chartjs-2": "$react-chartjs-2"
+    "react-chartjs-2": "$react-chartjs-2",
+    "plotly.js": "$plotly.js",
+    "react-plotly.js": "$react-plotly.js"
   },
   "vaadin": {
     "dependencies": {
@@ -170,6 +175,6 @@
       "workbox-core": "7.1.0",
       "workbox-precaching": "7.1.0"
     },
-    "hash": "5ca68e2c9a4e66344020c49c8dc21d1364bc0e1ec9764e88be8ad93e8df09310"
+    "hash": "e6d39302aaf97ffd3d11fd3503a20273ccfc5ea158d961da04cf166498ea529b"
   }
 }

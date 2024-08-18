@@ -5,13 +5,14 @@ import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResu
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
-import { VerticalLayout} from "@vaadin/react-components";
+import {GridColumn, VerticalLayout} from "@vaadin/react-components";
 import React, {useState} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
 import {EndpointRequestInit} from "@vaadin/hilla-frontend/Connect.js";
 import TestResultBoard from "Frontend/components/dashboard/TestResultBoard";
+import {Link} from "react-router-dom";
 
 // Shit design requires sheet solutions
 const LocalTestResultService = {...TestResultService};
@@ -24,8 +25,8 @@ export default function RunView() {
     const [testResultData, setTestResultData] = useState<TestResult>();
     service.updateObservable.subscribe((value: IMessage) => status.value = value.body);
 
-    LocalTestResultService.save = async (entity: TestResult, init:EndpointRequestInit|undefined) => {
-        return TestResultService.save(entity,init).then((value) => {
+    LocalTestResultService.save = async (entity: TestResult, init: EndpointRequestInit | undefined) => {
+        return TestResultService.save(entity, init).then((value) => {
             setTestResultData(value);
             return value;
         });
@@ -40,11 +41,16 @@ export default function RunView() {
                 service={LocalTestResultService}
                 model={TestResultModel}
                 gridProps={{
+
+                    visibleColumns: ['testParameter', 'description', 'results'],
                     columnOptions: {
                         testParameter: {
                             renderer: ({item}: { item: TestResult }) => item.testParameter.label
-                        }
-                    }
+                        },
+                    },
+                    customColumns: [
+                        <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>
+                    ]
                 }}
                 formProps={{
                     visibleFields: ['testParameter', 'description'],
@@ -55,7 +61,7 @@ export default function RunView() {
                     },
                 }}
             />
-            {testResultData && <TestResultBoard testResult={testResultData} reset={()=>setTestResultData(undefined)} />}
+            {testResultData && <TestResultBoard testResult={testResultData} reset={() => setTestResultData(undefined)}/>}
         </VerticalLayout>
     );
 }
