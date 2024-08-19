@@ -16,15 +16,11 @@ public class DestructiveTest extends AbstractTest {
         loadCellThread.setRunning(true);
         new Thread(loadCellThread).start();
 
-        cfw11 = new Cfw11();
-//        CommandChain commandChain = new CommandChain(1);
-//        Cfw11Controller controller = new Cfw11Controller(cfw11, commandChain);
-//        controller.start();
-
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");
         log("lowerShutOffThreshold " + testContext.getLowerLimit() + " Newton");
-        log("controller start");
+        log("Destructive test start");
 
+        cfw11 = new Cfw11();
         cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
         cfw11Pull();
         cfw11.setGeneralEnable(true);
