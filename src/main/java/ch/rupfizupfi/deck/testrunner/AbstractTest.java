@@ -45,4 +45,20 @@ public abstract class AbstractTest implements SignalListener {
     void log(String message) {
         template.convertAndSend("/topic/logs", message);
     }
+
+    protected void cfw11Pull(){
+        cfw11.setDirection(true);
+    }
+
+    protected boolean cfw11IsPull(){
+        return cfw11.getDirection();
+    }
+
+    protected void cfw11Release(){
+        cfw11.setDirection(false);
+    }
+
+    protected boolean cfw11IsRelease() {
+        return !cfw11.getDirection();
+    }
 }
