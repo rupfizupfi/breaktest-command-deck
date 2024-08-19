@@ -16,6 +16,7 @@ public class CyclicTest extends AbstractTest {
 
     void setup() {
         testContext = new CyclicTestContext(testResult.getId(), testResult.testParameter.upperTurnForce * 1000, testResult.testParameter.lowerTurnForce * 1000, testResult.testParameter.cycleCount);
+        super.testContext = testContext;
         initContext();
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
@@ -29,9 +30,9 @@ public class CyclicTest extends AbstractTest {
         log("CycleCount " + testContext.getCycleCount());
         log("cyclic test start");
 
-        Cfw11 cfw11 = new Cfw11();
+        cfw11 = new Cfw11();
         cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
-        cfw11.setDirection(false);
+        cfw11.setDirection(true);
         cfw11.setGeneralEnable(true);
         cfw11.setStart(true);
 
@@ -46,7 +47,7 @@ public class CyclicTest extends AbstractTest {
                 finish();
                 break;
             case 1: //upper limit triggered
-                if (!cfw11.getDirection()) {
+                if (cfw11IsPull()) {
                     double diff = targetLowerLimit - loadCellThread.getMinValue();
                     if (diff != 0.0) {
                         log("Current min value " + loadCellThread.getMinValue());
@@ -57,12 +58,12 @@ public class CyclicTest extends AbstractTest {
                     log("change direction to forward");
                     log("CycleCount " + testContext.getCycleCount());
 
-                    cfw11.setDirection(true);
+                    cfw11Release();
                     loadCellThread.setMinValue((float) targetUpperLimit);
                 }
                 break;
             case 2:
-                if (cfw11.getDirection()) {
+                if (cfw11IsRelease()) {
                     double diff = targetUpperLimit - loadCellThread.getMaxValue();
                     if (diff != 0.0) {
                         log("Current max value " + loadCellThread.getMaxValue());
@@ -73,12 +74,11 @@ public class CyclicTest extends AbstractTest {
                     log("change direction to backword");
                     log("CycleCount " + testContext.getCycleCount());
 
-                    cfw11.setDirection(false);
+                    cfw11Pull();
                     loadCellThread.setMaxValue((float) targetLowerLimit);
                     testContext.decrementCycleCount();
                 }
                 break;
-
         }
     }
 }
