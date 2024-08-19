@@ -14,7 +14,7 @@ interface ResultViewerProps {
  * If a file is selected then draw the graph for the data.
  */
 export default function ResultViewer({testResult}: ResultViewerProps): React.JSX.Element {
-    const [dataFiles, setDataFiles] = useState<string[]>(['wuup']);
+    const [dataFiles, setDataFiles] = useState<string[]>([]);
     const [selectedFile, setSelectedFile] = useState<string | undefined>();
     const [dataPoints, setDataPoints] = useState<[number[], number[]]>([[], []]);
 
@@ -77,12 +77,12 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
     items.unshift({label: 'Select file', value: "", disabled: true});
 
     let testparamInfo = null;
-    if(testResult.testParameter.type === 'cycle') {
+    if(testResult.testParameter.type === 'cyclic') {
         testparamInfo = (
-            <ol>
+            <ul>
                 <li>Upper turn force: {testResult.testParameter.upperTurnForce}</li>
                 <li>Lower turn force: {testResult.testParameter.lowerTurnForce}</li>
-            </ol>
+            </ul>
         );
     }
     else {

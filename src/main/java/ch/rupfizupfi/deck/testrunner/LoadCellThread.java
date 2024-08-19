@@ -70,16 +70,6 @@ public class LoadCellThread implements Runnable   {
                     continue;
                 }
 
-                var lastMeasurement = measurements.getLast();
-                if (lastMeasurement.getForce() > testContext.getUpperLimit()) {
-                    testContext.sendSignal(1);
-                    minValue = lastMeasurement.getForce();
-                }
-                else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
-                    testContext.sendSignal(2);
-                    maxValue = lastMeasurement.getForce();
-                }
-
                 measurements.forEach(measurement -> {
                     try {
                         if(minValue > measurement.getForce()){
@@ -96,6 +86,14 @@ public class LoadCellThread implements Runnable   {
                         throw new RuntimeException("Failed to write to file stream", e);
                     }
                 });
+
+                var lastMeasurement = measurements.getLast();
+                if (lastMeasurement.getForce() > testContext.getUpperLimit()) {
+                    testContext.sendSignal(1);
+                }
+                else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
+                    testContext.sendSignal(2);
+                }
 
                 wsMeasurements.addAll(measurements);
                 if(System.currentTimeMillis() - wsMeasurements.getFirst().getTimestamp() > 60){

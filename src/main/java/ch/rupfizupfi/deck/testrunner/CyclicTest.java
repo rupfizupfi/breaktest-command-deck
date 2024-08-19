@@ -48,9 +48,10 @@ public class CyclicTest extends AbstractTest {
                 break;
             case 1: //upper limit triggered
                 if (cfw11IsPull()) {
+                    log("Current min value " + loadCellThread.getMinValue());
                     double diff = targetLowerLimit - loadCellThread.getMinValue();
+
                     if (diff != 0.0) {
-                        log("Current min value " + loadCellThread.getMinValue());
                         testContext.setLowerLimit(testContext.getLowerLimit() + diff);
                         log("New lower limit " + testContext.getLowerLimit());
                     }
@@ -64,9 +65,10 @@ public class CyclicTest extends AbstractTest {
                 break;
             case 2:
                 if (cfw11IsRelease()) {
+                    log("Current max value " + loadCellThread.getMaxValue());
                     double diff = targetUpperLimit - loadCellThread.getMaxValue();
+
                     if (diff != 0.0) {
-                        log("Current max value " + loadCellThread.getMaxValue());
                         testContext.setUpperLimit(testContext.getUpperLimit() + diff);
                         log("New upper limit " + testContext.getUpperLimit());
                     }
