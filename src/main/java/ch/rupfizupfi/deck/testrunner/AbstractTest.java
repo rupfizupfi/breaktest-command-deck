@@ -37,7 +37,11 @@ public abstract class AbstractTest implements SignalListener {
      * This method can be executed twice!!
      */
     void cleanup() {
-        cfw11.setStart(false);
+        if(cfw11.getStart()){
+            cfw11.setStart(false);
+        }
+
+        cfw11.setGeneralEnable(false);
         cfw11.setSpeedValueAsRpm(0);
         loadCellThread.setRunning(false);
     }

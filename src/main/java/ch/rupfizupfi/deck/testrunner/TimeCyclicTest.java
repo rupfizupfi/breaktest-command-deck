@@ -33,7 +33,7 @@ public class TimeCyclicTest extends CyclicTest {
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");
         log("lowerShutOffThreshold " + testContext.getLowerLimit() + " Newton");
         log("CycleCount " + testContext.getCycleCount());
-        log("cyclic test start");
+        log("time cyclic test start");
 
         cfw11 = new Cfw11();
         cfw11.setSpeedValueAsRpm((int) Math.round(50 / 0.375));
@@ -46,23 +46,23 @@ public class TimeCyclicTest extends CyclicTest {
 
     @Override
     public void handleSignal(int signal) throws FinishTestException {
+        if (this.analyze()) {
+            this.analyseRun = false;
+            double startRampSeconds = testResult.testParameter.startRampSeconds;
+            double stopRampSeconds = testResult.testParameter.stopRampSeconds;
+
+            if (startRampSeconds > 0 && stopRampSeconds > 0) {
+                //cfw11.setSecondSpeedRampTime(startRampSeconds, stopRampSeconds);
+            } else {
+                cfw11.setUseSecondRamp(false);
+            }
+
+            cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
+        }
+
         if (this.analyseRun) {
             int index = signal - 1;
             int alter = index == 0 ? 1 : 0;
-
-            if (this.analyze()) {
-                this.analyseRun = false;
-                double startRampSeconds = testResult.testParameter.startRampSeconds;
-                double stopRampSeconds = testResult.testParameter.stopRampSeconds;
-
-                if (startRampSeconds > 0 && stopRampSeconds > 0) {
-                    //cfw11.setSecondSpeedRampTime(startRampSeconds, stopRampSeconds);
-                } else {
-                    cfw11.setUseSecondRamp(false);
-                }
-
-                cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
-            }
 
             switch (signal) {
                 case TestContext.RELEASE_SIGNAL:
