@@ -17,6 +17,7 @@ export default function TestView() {
             <nav>
                 <Button theme="secondary" onClick={() => navigate('destructive')}>Destructive</Button>
                 <Button theme="secondary" onClick={() => navigate('cyclic')}>Cyclic</Button>
+                <Button theme="secondary" onClick={() => navigate('timeCyclic')}>Time Cyclic</Button>
             </nav>
         </VerticalLayout>
     )
