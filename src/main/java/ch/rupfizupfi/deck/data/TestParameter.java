@@ -28,6 +28,10 @@ public class TestParameter extends AbstractEntity {
     @Nullable
     public int cycleCount;
 
+    public double startRampSeconds;
+
+    public double stopRampSeconds;
+
     @Transient
     public String getLabel() {
         return type + " " + sample.name;
