@@ -33,7 +33,7 @@ public class TestRunnerThread implements Runnable {
         } catch (InterruptedException e) {
             template.convertAndSend("/topic/logs", "interrupt test " + testResult.testParameter.type);
         } catch (Exception e) {
-            template.convertAndSend("/topic/logs", e.getMessage());
+            template.convertAndSend("/topic/logs", "error: " + e.getMessage());
             template.convertAndSend("/topic/logs", "error test " + testResult.testParameter.type);
         } finally {
             if (test != null) {
