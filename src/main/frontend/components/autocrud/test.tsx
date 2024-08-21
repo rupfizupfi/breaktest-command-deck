@@ -14,6 +14,7 @@ export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, mo
         model={model}
         service={service}
         gridProps={{
+            visibleColumns: ['type', 'sample', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
             columnOptions: {
                 sample: {
                     renderer: ({item}: { item: TestParameter }) => item.sample?.name
@@ -22,7 +23,7 @@ export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, mo
         }}
         formProps={{
             hiddenFields: ['label'],
-            visibleFields: ['type', 'sample', 'speed', ...visibleFiels],
+            visibleFields: ['type', 'sample', 'speed', 'startRampSeconds','stopRampSeconds', ...visibleFiels],
             fieldOptions: {
                 type: {
                     readonly: true,
@@ -37,6 +38,22 @@ export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, mo
 
                 lowerShutOffThreshold: {
                     helperText: 'Lower shut-off threshold in kN (stops fu))',
+                },
+
+                upperTurnForce: {
+                    helperText: 'Upper turn force in kN',
+                },
+
+                lowerTurnForce: {
+                    helperText: 'Lower turn force in kN',
+                },
+
+                startRampSeconds: {
+                    helperText: 'Start ramp time in seconds',
+                },
+
+                stopRampSeconds: {
+                    helperText: 'Stop ramp time in seconds',
                 },
 
                 sample: {

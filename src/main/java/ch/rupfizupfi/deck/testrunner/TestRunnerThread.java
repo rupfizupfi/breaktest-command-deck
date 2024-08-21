@@ -21,6 +21,7 @@ public class TestRunnerThread implements Runnable {
             template.convertAndSend("/topic/logs", "init test " + testResult.testParameter.type);
             test = switch (testResult.testParameter.type) {
                 case "cyclic" -> new CyclicTest(testResult, template);
+                case "timeCyclic" -> new TimeCyclicTest(testResult, template);
                 case "destructive" -> new DestructiveTest(testResult, template);
                 default -> test;
             };
