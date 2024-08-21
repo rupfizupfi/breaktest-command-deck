@@ -56,7 +56,7 @@ public class CyclicTest extends AbstractTest {
                     double diff = targetLowerLimit - loadCellThread.getMinValue();
 
                     if (diff != 0.0) {
-                        testContext.setLowerLimit(testContext.getLowerLimit() + diff);
+                        testContext.setLowerLimit(Math.max(testContext.getLowerLimit() + diff, targetLowerLimit));
                         log("New lower limit " + testContext.getLowerLimit());
                     }
 
@@ -73,7 +73,7 @@ public class CyclicTest extends AbstractTest {
                     double diff = targetUpperLimit - loadCellThread.getMaxValue();
 
                     if (diff != 0.0) {
-                        testContext.setUpperLimit(testContext.getUpperLimit() + diff);
+                        testContext.setUpperLimit(Math.min(testContext.getUpperLimit() + diff, targetUpperLimit));
                         log("New upper limit " + testContext.getUpperLimit());
                     }
 

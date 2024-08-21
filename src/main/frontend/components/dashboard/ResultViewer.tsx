@@ -28,6 +28,10 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
                 const lines = text.split('\n');
                 const newPoints = lines.reduce((acc: [number[], number[]], line: string) => {
                     const [timestamp, force] = line.split(',').map(parseFloat);
+                    if(isNaN(timestamp) || isNaN(force)){
+                        return acc;
+                    }
+
                     acc[0].push(timestamp);
                     acc[1].push(force);
                     return acc;
@@ -42,13 +46,13 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
     if (dataPoints[0].length > 0) {
         const maxForce = Math.round(Math.max(...dataPoints[1])) / 1000;
         const minForce = Math.round(Math.min(...dataPoints[1])) / 1000;
-        const duration = dataPoints[0][dataPoints[0].length - 1] - dataPoints[0][0];
+        const duration = (dataPoints[0][dataPoints[0].length - 1] - dataPoints[0][0]) / 1000;
         info = (
-            <VerticalLayout theme="padding spacing-l stretch evenly">
-                <h3 style={{width: '8em'}}>Duration: {duration} kN</h3>
-                <h3 style={{width: '8em'}}>Max Force: {maxForce} kN</h3>
-                <h3 style={{width: '8em'}}>Min Force: {minForce} kN</h3>
-            </VerticalLayout>
+            <HorizontalLayout theme="padding spacing-l stretch evenly">
+                <h3 style={{width: '9em'}}>Duration: {duration} s</h3>
+                <h3 style={{width: '9em'}}>Max Force: {maxForce} kN</h3>
+                <h3 style={{width: '9em'}}>Min Force: {minForce} kN</h3>
+            </HorizontalLayout>
         )
 
         chart = (<Plot
