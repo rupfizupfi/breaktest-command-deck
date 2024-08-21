@@ -16,7 +16,6 @@ public class CyclicTest extends AbstractTest {
 
     void setup() {
         testContext = new CyclicTestContext(testResult.getId(), testResult.testParameter.upperTurnForce * 1000, testResult.testParameter.lowerTurnForce * 1000, testResult.testParameter.cycleCount);
-        super.testContext = testContext;
         initContext();
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
@@ -40,13 +39,18 @@ public class CyclicTest extends AbstractTest {
 //        controller.setStart(true);
     }
 
+    void initContext() {
+        super.testContext = testContext;
+        super.initContext();
+    }
+
     @Override
     public void handleSignal(int signal) throws FinishTestException {
         switch (signal) {
             case 0:
                 finish();
                 break;
-            case 1: //upper limit triggered
+            case TestContext.RELEASE_SIGNAL: //upper limit triggered
                 if (cfw11IsPull()) {
                     log("Current min value " + loadCellThread.getMinValue());
                     double diff = targetLowerLimit - loadCellThread.getMinValue();
@@ -63,7 +67,7 @@ public class CyclicTest extends AbstractTest {
                     loadCellThread.setMinValue((float) targetUpperLimit);
                 }
                 break;
-            case 2:
+            case TestContext.PULL_SIGNAL:
                 if (cfw11IsRelease()) {
                     log("Current max value " + loadCellThread.getMaxValue());
                     double diff = targetUpperLimit - loadCellThread.getMaxValue();

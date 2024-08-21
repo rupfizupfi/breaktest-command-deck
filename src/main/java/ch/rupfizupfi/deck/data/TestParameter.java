@@ -28,8 +28,10 @@ public class TestParameter extends AbstractEntity {
     @Nullable
     public int cycleCount;
 
+    @Nullable
     public double startRampSeconds;
 
+    @Nullable
     public double stopRampSeconds;
 
     @Transient

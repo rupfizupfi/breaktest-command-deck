@@ -6,6 +6,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class TestContext {
+    public static final int RELEASE_SIGNAL = 1;
+    public static final int PULL_SIGNAL = 2;
+
     private volatile double upperLimit;
     private volatile double lowerLimit;
     private volatile int lastSendSignal = -1;

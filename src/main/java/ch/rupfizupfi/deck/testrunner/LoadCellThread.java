@@ -89,10 +89,10 @@ public class LoadCellThread implements Runnable   {
 
                 var lastMeasurement = measurements.getLast();
                 if (lastMeasurement.getForce() > testContext.getUpperLimit()) {
-                    testContext.sendSignal(1);
+                    testContext.sendSignal(TestContext.RELEASE_SIGNAL);
                 }
                 else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
-                    testContext.sendSignal(2);
+                    testContext.sendSignal(TestContext.PULL_SIGNAL);
                 }
 
                 wsMeasurements.addAll(measurements);

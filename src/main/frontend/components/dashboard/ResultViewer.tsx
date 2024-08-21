@@ -87,7 +87,7 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
     const items = dataFiles.map((file) => ({label: file, value: file, disabled: false}));
     items.unshift({label: 'Select file', value: "", disabled: true});
 
-    let testparamInfo = null;
+    let testparamInfo;
     if (testResult.testParameter.type === 'cyclic') {
         testparamInfo = (
             <ul>
