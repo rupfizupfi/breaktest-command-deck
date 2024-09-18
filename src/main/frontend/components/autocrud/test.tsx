@@ -5,7 +5,7 @@ import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestP
 import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
 import TestParameter from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameter";
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
-import {SampleService, TestParameterService} from "Frontend/generated/endpoints";
+import {SampleService} from "Frontend/generated/endpoints";
 
 export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, model: DetachedModelConstructor<any>, visibleFiels: string[]): JSX.Element  {
     const localSampleService = createAutoComboBoxService(SampleService, "name");
