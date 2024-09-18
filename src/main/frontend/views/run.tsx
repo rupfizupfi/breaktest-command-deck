@@ -5,7 +5,7 @@ import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResu
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
-import {GridColumn, VerticalLayout} from "@vaadin/react-components";
+import {GridColumn, TextArea, VerticalLayout} from "@vaadin/react-components";
 import React, {useState} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
@@ -23,13 +23,18 @@ export default function RunView() {
     const status = useSignal('');
     const service = getService();
     const [testResultData, setTestResultData] = useState<TestResult>();
+    const [readyTestResultData, setReadyTestResultData] = useState<TestResult>();
     service.updateObservable.subscribe((value: IMessage) => status.value = value.body);
 
     LocalTestResultService.save = async (entity: TestResult, init: EndpointRequestInit | undefined) => {
         return TestResultService.save(entity, init).then((value) => {
-            setTestResultData(value);
+            setReadyTestResultData(value);
             return value;
         });
+    }
+
+    function startRun(){
+        setTestResultData(readyTestResultData);
     }
 
     const localTestParameterService = createAutoComboBoxService(TestParameterService, ["type", "sample.name"]);
@@ -41,7 +46,6 @@ export default function RunView() {
                 service={LocalTestResultService}
                 model={TestResultModel}
                 gridProps={{
-
                     visibleColumns: ['testParameter', 'description', 'results'],
                     columnOptions: {
                         testParameter: {
@@ -53,12 +57,21 @@ export default function RunView() {
                     ]
                 }}
                 formProps={{
-                    visibleFields: ['testParameter', 'description'],
+                    visibleFields: ['testParameter', 'description', 'run'],
                     fieldOptions: {
                         testParameter: {
                             renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="id" itemLabelPath="label" service={localTestParameterService}/>,
-                        }
-                    },
+                        },
+                        description: {
+                            renderer: ({ field }) => <TextArea {...field} />,
+                        },
+                        comment: {
+                            renderer: ({ field }) => <TextArea {...field} />,
+                        },
+                        run: {
+                            renderer: () => <button disabled={!readyTestResultData} onClick={() => startRun()}>Run test</button>,
+                        },
+                    }
                 }}
             />
             {testResultData && <TestResultBoard testResult={testResultData} reset={() => setTestResultData(undefined)}/>}
