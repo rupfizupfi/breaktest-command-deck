@@ -14,25 +14,25 @@ public class TestParameter extends AbstractEntity {
     public int speed;
 
     @Nullable
-    public double upperShutOffThreshold;
+    public Double upperShutOffThreshold;
 
     @Nullable
-    public double lowerShutOffThreshold;
+    public Double lowerShutOffThreshold;
 
     @Nullable
-    public double upperTurnForce;
+    public Double upperTurnForce;
 
     @Nullable
-    public double lowerTurnForce;
+    public Double lowerTurnForce;
 
     @Nullable
-    public int cycleCount;
+    public Integer cycleCount;
 
     @Nullable
-    public double startRampSeconds;
+    public Double startRampSeconds;
 
     @Nullable
-    public double stopRampSeconds;
+    public Double stopRampSeconds;
 
     @Transient
     public String getLabel() {

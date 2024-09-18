@@ -10,4 +10,12 @@ public class TestResult extends AbstractEntity {
 
     @Column(columnDefinition = "TEXT")
     public String description;
+
+    @Column(columnDefinition = "TEXT")
+    public String comment;
+
+    @Transient
+    public boolean getRun() {
+        return false;
+    }
 }
