@@ -39,7 +39,7 @@ public class TimeCyclicTest extends CyclicTest {
         cfw11.setSpeedValueAsRpm((int) Math.round(50 / 0.375));
         cfw11.setDirection(true);
         cfw11.setGeneralEnable(true);
-        //cfw11.setSecondSpeedRampTime(0.3,0.3);
+        cfw11.setSecondSpeedRampTime(3,3); //300ms each
         cfw11.setUseSecondRamp(true);
         cfw11.setStart(true);
     }
@@ -52,7 +52,7 @@ public class TimeCyclicTest extends CyclicTest {
             double stopRampSeconds = testResult.testParameter.stopRampSeconds;
 
             if (startRampSeconds > 0 && stopRampSeconds > 0) {
-                //cfw11.setSecondSpeedRampTime(startRampSeconds, stopRampSeconds);
+                cfw11.setSecondSpeedRampTime((int)(startRampSeconds * 10), (int)(stopRampSeconds*10));
             } else {
                 cfw11.setUseSecondRamp(false);
             }
