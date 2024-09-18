@@ -6,14 +6,14 @@ export interface ListEndpointService<T> {
     list(pageable: Pageable, filter: Filter | undefined, init?: EndpointRequestInit): Promise<T[]>;
 }
 
-export function constraintServiceToFilter<Item, T extends ListEndpointService<Item>>(endpointService: T, filter:Filter): T {
+export function constraintServiceToFilter<Item, T extends ListEndpointService<Item>>(endpointService: T, mainFilter:Filter): T {
     return new Proxy(endpointService, {
         get: function(target, prop, receiver) {
             if (prop === 'list') {
                 return (pageable: Pageable, filter: Filter | undefined, init?: EndpointRequestInit) => {
                     return target.list(pageable, {
                         "@type": "and",
-                        "children": [filter, filter]
+                        "children": [mainFilter, filter]
                     }, init);
                 }
             }

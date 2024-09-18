@@ -9,7 +9,6 @@ export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/test
 
 class DestructionTestParameterModel extends TestParameterModel {
     static override createEmptyValue() {
-        console.log(TestParameterModel.createEmptyValue());
         return {
             ...TestParameterModel.createEmptyValue(),
             type: 'destructive',
