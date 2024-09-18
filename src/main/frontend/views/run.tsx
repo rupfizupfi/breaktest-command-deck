@@ -57,7 +57,7 @@ export default function RunView() {
                     ]
                 }}
                 formProps={{
-                    visibleFields: ['testParameter', 'description', 'run'],
+                    visibleFields: ['testParameter', 'description', 'resultText', 'run'],
                     fieldOptions: {
                         testParameter: {
                             renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="id" itemLabelPath="label" service={localTestParameterService}/>,
@@ -65,7 +65,7 @@ export default function RunView() {
                         description: {
                             renderer: ({ field }) => <TextArea {...field} />,
                         },
-                        comment: {
+                        resultText: {
                             renderer: ({ field }) => <TextArea {...field} />,
                         },
                         run: {

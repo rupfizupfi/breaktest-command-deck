@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.data;
 
+import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 
 @Entity
@@ -12,7 +13,8 @@ public class TestResult extends AbstractEntity {
     public String description;
 
     @Column(columnDefinition = "TEXT")
-    public String comment;
+    @Nullable
+    public String resultText;
 
     @Transient
     public boolean getRun() {
