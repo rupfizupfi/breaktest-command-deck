@@ -1,7 +1,6 @@
 package ch.rupfizupfi.deck.rest;
 
 import com.vaadin.flow.server.auth.AnonymousAllowed;
-import org.jfree.util.Log;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
