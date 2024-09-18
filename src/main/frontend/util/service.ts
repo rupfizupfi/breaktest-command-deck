@@ -14,10 +14,24 @@ export function constraintServiceToFilter<Item, T extends ListEndpointService<It
                     return target.list(pageable, {
                         "@type": "and",
                         "children": [mainFilter, filter]
-                    }, init);
+                    }, init).then((items)=>items.map(replaceNullValues));
+                }
+            }
+            if (prop === 'save') {
+                return (entity: TestResult, init: EndpointRequestInit | undefined) => {
+                    return target.save(entity, init).then((value)=>replaceNullValues(value))
                 }
             }
             return Reflect.get(target, prop, receiver);
         }
     });
+}
+
+/**
+ * The Vaadin hilla library has  some serious problems with null or not existing values
+ */
+function replaceNullValues(item:any) {
+    if(!item.startRampSeconds) item.startRampSeconds = 0;
+    if(!item.stopRampSeconds) item.stopRampSeconds = 0;
+    return item;
 }
