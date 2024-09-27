@@ -12,13 +12,17 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.logging.Logger;
 
 @RestController
 @RequestMapping("/api/DownloadEndpoint")
 @AnonymousAllowed
 public class DownloadResults {
+    Logger log = Logger.getLogger(DownloadResults.class.getName());
+
     protected TestResultRepository testResultRepository;
     protected CSVStoreService csvStoreService;
+    protected long minTimeStamp;
 
     public DownloadResults(TestResultRepository testResultRepository) {
         this.testResultRepository = testResultRepository;
@@ -27,6 +31,7 @@ public class DownloadResults {
 
     @RequestMapping(value = "/get", method = RequestMethod.GET)
     public String get() {
+        this.minTimeStamp = (System.currentTimeMillis() / 1000) - 60 * 60 * 24 * 4;
         StringBuilder result = new StringBuilder();
         testResultRepository.findAll().forEach(testResult -> {
             // create array of field from testResult, name, result:
@@ -56,12 +61,28 @@ public class DownloadResults {
         Path file = Paths.get(path);
         String data = this.csvStoreService.readCSVDataForTestResult(id, file.getFileName().toString());
 
-        List<String> lines = Arrays.asList(data.split("\n"));
+        if(data.contains("@")){
+            return null;
+        }
+
+        List<String> lines = Arrays.asList(data.split(System.lineSeparator()));
         if (lines.size() < 100) {
             return null;
         }
 
-        List<String[]> csv = lines.stream().map(line -> line.split(",")).toList();
-        return csv.stream().map(line -> line[line.length - 1]).max(String::compareTo).orElse("");
+        var peake = lines.stream().map(line -> line.split(",")).filter(cols -> cols.length == 2 && isValidTimeStamp(cols[0]))
+                .map(cols -> Double.parseDouble(cols[1]))
+                .max(Double::compareTo).orElse(0.0);
+
+        return String.valueOf(peake);
+    }
+
+    protected boolean isValidTimeStamp(String millisecondsString) {
+        try {
+            long milliseconds = Long.parseLong(millisecondsString);
+            return this.minTimeStamp < milliseconds/1000;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 }
