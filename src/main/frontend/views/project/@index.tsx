@@ -20,6 +20,9 @@ export default function ProjectView() {
             service={ProjectService}
             gridProps={{
                 columnOptions: {
+                    owner: {
+                        renderer: ({item}: { item: TestResult }) => item.owner?.username + ' (' + item.owner?.name + ')'
+                    },
                     customer: {
                         renderer: ({item}: { item: Project }) => <span>{item.customer?.label}</span>,
                         headerFilterRenderer: ({setFilter}) => (
