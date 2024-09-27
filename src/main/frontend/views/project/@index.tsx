@@ -7,6 +7,7 @@ import Project from "Frontend/generated/ch/rupfizupfi/deck/data/Project";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
 import {TextField} from "@vaadin/react-components";
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
+import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg'}, title: 'Projects', loginRequired: true};
 
@@ -55,6 +56,9 @@ export default function ProjectView() {
             }}
             formProps={{
                 fieldOptions: {
+                    owner: {
+                        renderer: ({field}) => <OwnerSelector {...field} />,
+                    },
                     customer: {
                         renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="label" itemLabelPath="label" service={service}/>,
                     }

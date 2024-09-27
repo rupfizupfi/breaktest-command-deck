@@ -15,6 +15,7 @@ import org.springframework.boot.autoconfigure.sql.init.SqlInitializationProperti
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 
 /**
  * The entry point of the Spring Boot application.
@@ -23,6 +24,7 @@ import org.springframework.context.annotation.ComponentScan;
  * and some desktop browsers.
  */
 @SpringBootApplication
+@EnableAspectJAutoProxy
 @Theme(value = "breaktest-command-deck", variant = Lumo.DARK)
 
 public class Application implements AppShellConfigurator {

@@ -1,4 +1,4 @@
-package ch.rupfizupfi.deck.endpoint;
+package ch.rupfizupfi.deck.api;
 
 import ch.rupfizupfi.deck.messaging.StatusThread;
 import com.vaadin.flow.server.auth.AnonymousAllowed;

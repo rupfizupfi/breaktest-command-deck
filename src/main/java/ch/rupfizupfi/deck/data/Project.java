@@ -1,11 +1,21 @@
 package ch.rupfizupfi.deck.data;
 
+import ch.rupfizupfi.deck.security.DataWithOwner;
+import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 
 @Entity
 @Table(name = "project")
-public class Project extends AbstractEntity {
+public class Project extends AbstractEntity implements DataWithOwner {
+    @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    public User owner;
+
+    @Nullable
+    public User getOwner() {
+        return owner;
+    }
+
     @NotBlank
     public String name;
 

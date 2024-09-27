@@ -1,4 +1,4 @@
-package ch.rupfizupfi.deck.services;
+package ch.rupfizupfi.deck.api.services;
 
 import ch.rupfizupfi.deck.data.User;
 import ch.rupfizupfi.deck.data.UserRepository;

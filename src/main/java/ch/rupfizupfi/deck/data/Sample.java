@@ -1,5 +1,7 @@
 package ch.rupfizupfi.deck.data;
 
+import ch.rupfizupfi.deck.security.DataWithOwner;
+import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -8,7 +10,15 @@ import java.util.List;
 
 @Entity
 @Table(name = "sample")
-public class Sample extends AbstractEntity {
+public class Sample extends AbstractEntity implements DataWithOwner {
+    @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    public User owner;
+
+    @Nullable
+    public User getOwner() {
+        return owner;
+    }
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     public Project project;
 

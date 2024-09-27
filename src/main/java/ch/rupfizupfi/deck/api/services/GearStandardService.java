@@ -1,12 +1,12 @@
-package ch.rupfizupfi.deck.services;
+package ch.rupfizupfi.deck.api.services;
 
 import ch.rupfizupfi.deck.data.GearStandard;
 import ch.rupfizupfi.deck.data.GearStandardRepository;
 import com.vaadin.hilla.BrowserCallable;
-import com.vaadin.hilla.crud.CrudRepositoryService;
+import ch.rupfizupfi.deck.hilla.crud.CrudRepositoryService;
 import jakarta.annotation.security.PermitAll;
 
 @BrowserCallable
 @PermitAll
-public class GearStandardService extends CrudRepositoryService<GearStandard, Long, GearStandardRepository> {
+public class GearStandardService extends CrudRepositoryService<GearStandard, GearStandardRepository> {
 }
