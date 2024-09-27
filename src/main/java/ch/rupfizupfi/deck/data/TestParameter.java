@@ -1,15 +1,21 @@
 package ch.rupfizupfi.deck.data;
 
+import ch.rupfizupfi.deck.security.DataWithOwner;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 
 @Entity
 @Table(name = "test_parameter")
-public class TestParameter extends AbstractEntity {
-    public String type;
+public class TestParameter extends AbstractEntity implements DataWithOwner {
+    @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    public User owner;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    public Sample sample;
+    @Nullable
+    public User getOwner() {
+        return owner;
+    }
+
+    public String type;
 
     public int speed;
 
@@ -36,6 +42,6 @@ public class TestParameter extends AbstractEntity {
 
     @Transient
     public String getLabel() {
-        return type + " " + sample.name;
+        return type + " " + speed + " m/s";
     }
 }

@@ -1,4 +1,4 @@
-package ch.rupfizupfi.deck.rest;
+package ch.rupfizupfi.deck.api.rest;
 
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import org.springframework.web.bind.annotation.PathVariable;

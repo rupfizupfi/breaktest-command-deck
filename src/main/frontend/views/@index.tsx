@@ -2,7 +2,7 @@ import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {useSignal} from '@vaadin/hilla-react-signals';
 import {Button} from '@vaadin/react-components/Button.js';
 import {Notification} from '@vaadin/react-components/Notification.js';
-import {HelloWorldService, StreamControl} from 'Frontend/generated/endpoints.js';
+import {StreamControl} from 'Frontend/generated/endpoints.js';
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
 
@@ -35,15 +35,6 @@ export default function DeckView() {
                         Notification.show('stopped')
                         service.disconnect();
                     })}>Stop</Button>
-
-                    <Button
-                        onClick={async () => {
-                            const serverResponse = await HelloWorldService.sayHello(status.value);
-                            Notification.show(serverResponse!);
-                        }}
-                    >
-                        Say hello
-                    </Button>
                 </div>
             </section>
         </>

@@ -2,29 +2,28 @@ import type {DetachedModelConstructor, Value} from "@vaadin/hilla-lit-form";
 import type {JSX} from "react";
 import {AutoCrud, CrudService} from "@vaadin/hilla-react-crud";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
-import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
 import TestParameter from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameter";
-import {createAutoComboBoxService} from "Frontend/components/combobox/service";
-import {SampleService} from "Frontend/generated/endpoints";
+import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 
-export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, model: DetachedModelConstructor<any>, visibleFiels: string[]): JSX.Element  {
-    const localSampleService = createAutoComboBoxService(SampleService, "name");
-
+export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, model: DetachedModelConstructor<any>, visibleFiels: string[]): JSX.Element {
     return <AutoCrud
         model={model}
         service={service}
         gridProps={{
-            visibleColumns: ['type', 'sample', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
+            visibleColumns: ['type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
             columnOptions: {
-                sample: {
-                    renderer: ({item}: { item: TestParameter }) => item.sample?.name
+                owner: {
+                    renderer: ({item}: { item: TestParameter }) => item.owner?.username + ' (' + item.owner?.name + ')'
                 }
             }
         }}
         formProps={{
             hiddenFields: ['label'],
-            visibleFields: ['type', 'sample', 'speed', 'startRampSeconds','stopRampSeconds', ...visibleFiels],
+            visibleFields: ['type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
             fieldOptions: {
+                owner: {
+                    renderer: ({field}) => <OwnerSelector {...field} />,
+                },
                 type: {
                     readonly: true,
                 },
@@ -54,11 +53,7 @@ export function buildAutoCrud(service:CrudService<Value<TestParameterModel>>, mo
 
                 stopRampSeconds: {
                     helperText: 'Stop ramp time in seconds',
-                },
-
-                sample: {
-                    renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="id" itemLabelPath="name" service={localSampleService}/>,
-                },
+                }
             }
         }}
     />;

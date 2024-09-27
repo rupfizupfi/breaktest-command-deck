@@ -1,4 +1,4 @@
-package ch.rupfizupfi.deck.rest;
+package ch.rupfizupfi.deck.api.rest;
 
 import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
@@ -31,7 +31,7 @@ public class DownloadResults {
         testResultRepository.findAll().forEach(testResult -> {
             // create array of field from testResult, name, result:
             var fields = new String[] {
-                    testResult.testParameter.sample.name,
+                    testResult.sample.name,
                     testResult.testParameter.type,
                     getPeaksFromResultFiles(testResult.getId()),
                     testResult.description,
