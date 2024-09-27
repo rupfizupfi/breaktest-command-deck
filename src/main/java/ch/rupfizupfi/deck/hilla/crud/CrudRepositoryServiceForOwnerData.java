@@ -4,9 +4,11 @@ import ch.rupfizupfi.deck.data.User;
 import ch.rupfizupfi.deck.security.AuthenticatedUser;
 import ch.rupfizupfi.deck.security.DataWithOwner;
 import ch.rupfizupfi.deck.security.UserUtils;
+import com.vaadin.hilla.Nonnull;
 import com.vaadin.hilla.Nullable;
 import com.vaadin.hilla.crud.filter.AndFilter;
 import com.vaadin.hilla.crud.filter.Filter;
+import com.vaadin.hilla.crud.filter.OrFilter;
 import com.vaadin.hilla.crud.filter.PropertyStringFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
@@ -33,18 +35,30 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
     }
 
     @Override
-    public List<T> list(Pageable pageable, @Nullable Filter filter) {
+    @Nonnull public List<@Nonnull T> list(Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
             return super.list(pageable, filter);
         }
 
-        var onwerFilter = new PropertyStringFilter();
-        onwerFilter.setFilterValue(this.getAuthenticatedUser().getId().toString());
-        onwerFilter.setPropertyId("ownerId");
-        onwerFilter.setMatcher(PropertyStringFilter.Matcher.EQUALS);
+        var currentOwnerFilter = new PropertyStringFilter();
+        currentOwnerFilter.setFilterValue(this.getAuthenticatedUser().getId().toString());
+        currentOwnerFilter.setPropertyId("owner.id");
+        currentOwnerFilter.setMatcher(PropertyStringFilter.Matcher.EQUALS);
+        var emptyOwnerFilter = new PropertyStringFilter();
+        emptyOwnerFilter.setFilterValue("1");
+        emptyOwnerFilter.setPropertyId("owner.id");
+        emptyOwnerFilter.setMatcher(PropertyStringFilter.Matcher.LESS_THAN);
+        var ownerFilter = new OrFilter();
+        ownerFilter.setChildren(List.of(currentOwnerFilter, emptyOwnerFilter));
 
-        var rootFilter = new AndFilter();
-        rootFilter.setChildren(List.of(filter, onwerFilter));
+        if(filter == null){
+            filter = ownerFilter;
+        }
+        else {
+            var rootFilter = new AndFilter();
+            rootFilter.setChildren(List.of(ownerFilter, filter));
+            filter = rootFilter;
+        }
 
         return super.list(pageable, filter);
     }

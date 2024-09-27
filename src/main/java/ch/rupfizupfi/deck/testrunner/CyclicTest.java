@@ -35,6 +35,13 @@ public class CyclicTest extends AbstractTest {
         cfw11.setGeneralEnable(true);
         cfw11.setStart(true);
 
+        double startRampSeconds = testResult.testParameter.startRampSeconds;
+        double stopRampSeconds = testResult.testParameter.stopRampSeconds;
+        if (startRampSeconds > 0 && stopRampSeconds > 0) {
+            cfw11.setUseSecondRamp(true);
+            cfw11.setSecondSpeedRampTime((int)(startRampSeconds * 10), (int)(stopRampSeconds*10));
+        }
+
 //        controller.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
 //        controller.setStart(true);
     }
@@ -86,5 +93,11 @@ public class CyclicTest extends AbstractTest {
                 }
                 break;
         }
+    }
+
+    @Override
+    void cleanup() {
+        super.cleanup();
+        cfw11.setUseSecondRamp(false);
     }
 }

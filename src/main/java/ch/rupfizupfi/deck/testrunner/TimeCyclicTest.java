@@ -46,7 +46,7 @@ public class TimeCyclicTest extends CyclicTest {
 
     @Override
     public void handleSignal(int signal) throws FinishTestException {
-        if (this.analyze()) {
+        if (this.analyseRun && this.analyze()) {
             this.analyseRun = false;
             double startRampSeconds = testResult.testParameter.startRampSeconds;
             double stopRampSeconds = testResult.testParameter.stopRampSeconds;
@@ -68,14 +68,16 @@ public class TimeCyclicTest extends CyclicTest {
                 case TestContext.RELEASE_SIGNAL:
                     analysedData[index].startTime = System.currentTimeMillis();
                     analysedData[alter].endTime = System.currentTimeMillis();
+                    var minForceValue = loadCellThread.getMinValue();
 
-
-                    log("Current min value " + loadCellThread.getMinValue());
+                    log("Current min value " + minForceValue);
+                    log("<b>init: start release round<b/>");
                     cfw11Release();
-                    log("change direction to release");
-                    log("CycleCount " + testContext.getCycleCount());
 
-                    analysedData[index].minForce = loadCellThread.getMinValue();
+                    if(Math.abs(minForceValue - targetLowerLimit)<300){
+                        analysedData[index].minForce = minForceValue;
+                    }
+
                     loadCellThread.setMinValue((float) targetUpperLimit);
                     break;
                 case TestContext.PULL_SIGNAL:
@@ -84,12 +86,16 @@ public class TimeCyclicTest extends CyclicTest {
                         analysedData[alter].endTime = System.currentTimeMillis();
                     }
 
-                    log("Current max value " + loadCellThread.getMaxValue());
-                    cfw11Pull();
-                    log("change direction to pull");
-                    log("CycleCount " + testContext.getCycleCount());
+                    var maxForceValue = loadCellThread.getMaxValue();
 
-                    analysedData[index].maxForce = loadCellThread.getMaxValue();
+                    log("Current max value " + maxForceValue);
+                    log("<b>init: start pull round<b/>");
+                    cfw11Pull();
+
+                    if(Math.abs(maxForceValue - targetUpperLimit)<300){
+                        analysedData[index].maxForce = maxForceValue;
+                    }
+
                     loadCellThread.setMaxValue((float) targetLowerLimit);
                     break;
             }
@@ -112,17 +118,11 @@ public class TimeCyclicTest extends CyclicTest {
         log("Pull time: " + pullTime + " ms");
 
         releaseTime = releaseTime * analyseSpeed / this.testResult.testParameter.speed;
-        pullTime = releaseTime * analyseSpeed / this.testResult.testParameter.speed;
+        pullTime = pullTime * analyseSpeed / this.testResult.testParameter.speed;
 
         log("Adapted Release time: " + releaseTime + " ms");
         log("Adapted Pull time: " + pullTime + " ms");
 
         return true;
-    }
-
-    @Override
-    void cleanup() {
-        super.cleanup();
-        cfw11.setUseSecondRamp(false);
     }
 }

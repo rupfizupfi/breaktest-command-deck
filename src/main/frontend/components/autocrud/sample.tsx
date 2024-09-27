@@ -20,6 +20,9 @@ export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Elem
         model={SampleModel}
         gridProps={{
             columnOptions: {
+                owner: {
+                    renderer: ({item}: { item: TestResult }) => item.owner?.username + ' (' + item.owner?.name + ')'
+                },
                 project: {
                     renderer: ({item}: { item: Sample }) => <a href={`/project/${item.project?.id}/sample`}>{item.project?.name}</a>
                 }

@@ -10,6 +10,7 @@ import com.vaadin.hilla.Endpoint;
 import java.util.List;
 import java.util.Optional;
 
+import com.vaadin.hilla.Nonnull;
 import com.vaadin.hilla.Nullable;
 import com.vaadin.hilla.crud.JpaFilterConverter;
 import com.vaadin.hilla.crud.filter.Filter;
@@ -39,7 +40,7 @@ public class UserEndpoint {
         return authenticatedUser.get();
     }
 
-    public @NotNull List<User> list(Pageable pageable, @Nullable Filter filter) {
+    @Nonnull public @NotNull List<@Nonnull User> list(Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
             Specification<User> spec = this.jpaFilterConverter.toSpec(filter, User.class);
             return userRepository.findAll(spec, pageable).getContent();

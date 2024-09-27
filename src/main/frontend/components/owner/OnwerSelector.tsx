@@ -12,7 +12,7 @@ import {ComboBoxProps} from "@vaadin/react-components/ComboBox";
 export default function OwnerSelector(field: ComboBoxProps<User>): React.JSX.Element {
     const [values, setValues] = useState<(User | null)[]>([]);
     const emptyUser = UserModel.createEmptyValue();
-    emptyUser.id = null;
+    emptyUser.id = 0;
     emptyUser.name = 'All Users';
 
     useEffect(() => {
@@ -24,7 +24,7 @@ export default function OwnerSelector(field: ComboBoxProps<User>): React.JSX.Ele
         <ComboBox
             {...field}
             itemIdPath="id"
-            itemValuePath="id"
+            itemValuePath="name"
             itemLabelPath="name"
             items={values}
         />
