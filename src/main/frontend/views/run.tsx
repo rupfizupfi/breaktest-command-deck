@@ -13,10 +13,20 @@ import {IMessage} from "@stomp/rx-stomp";
 import {EndpointRequestInit} from "@vaadin/hilla-frontend/Connect.js";
 import TestResultBoard from "Frontend/components/dashboard/TestResultBoard";
 import {Link} from "react-router-dom";
+import type Pageable from "Frontend/generated/com/vaadin/hilla/mappedtypes/Pageable";
+import type Filter from "Frontend/generated/com/vaadin/hilla/crud/filter/Filter";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 
 // Shit design requires sheet solutions
 const LocalTestResultService = {...TestResultService};
+
+/**
+ * The Vaadin hilla library has  some serious problems with null or not existing values
+ */
+function replaceNullValues(item:any) {
+    if(!item.resultText) item.resultText = "";
+    return item;
+}
 
 export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/play-circle-solid.svg'}, title: 'Ausführen', loginRequired: true};
 
@@ -30,12 +40,20 @@ export default function RunView() {
     LocalTestResultService.save = async (entity: TestResult, init: EndpointRequestInit | undefined) => {
         return TestResultService.save(entity, init).then((value) => {
             setReadyTestResultData(value);
-            return value;
+            return replaceNullValues(value);
         });
     }
 
-    function startRun() {
-        setTestResultData(readyTestResultData);
+    LocalTestResultService.list = async (pageable: Pageable, filter: Filter | undefined, init?: EndpointRequestInit) => {
+        return TestResultService.list(pageable, filter, init).then((items)=>items.map(replaceNullValues));
+    }
+
+    function startRun(){
+        if(testResultData){
+            alert("Stop old run first!");
+        } else {
+            setTestResultData(readyTestResultData);
+        }
     }
 
     const localTestParameterService = createAutoComboBoxService(TestParameterService, ["type", "sample.name"]);
