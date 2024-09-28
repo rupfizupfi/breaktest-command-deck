@@ -9,7 +9,9 @@ import {GearStandardService, GearTypeService, MaterialService, ProjectService} f
 import Sample from "Frontend/generated/ch/rupfizupfi/deck/data/Sample";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
+import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
 
+createEmptyValueProxy(SampleModel);
 
 export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Element  {
     const projectService = createAutoComboBoxService(ProjectService, "name");

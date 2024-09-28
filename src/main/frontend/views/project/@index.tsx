@@ -9,8 +9,11 @@ import {TextField} from "@vaadin/react-components";
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
+import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg'}, title: 'Projects', loginRequired: true};
+
+createEmptyValueProxy(ProjectModel);
 
 export default function ProjectView() {
     const service = createAutoComboBoxService(CustomerService, "firstname");
