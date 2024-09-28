@@ -2,8 +2,8 @@ import type {DetachedModelConstructor, Value} from "@vaadin/hilla-lit-form";
 import type {JSX} from "react";
 import {AutoCrud, CrudService} from "@vaadin/hilla-react-crud";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
-import TestParameter from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameter";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
+import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 
 export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, model: DetachedModelConstructor<any>, visibleFiels: string[]): JSX.Element {
     return <AutoCrud
@@ -13,7 +13,7 @@ export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, m
             visibleColumns: ['type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
             columnOptions: {
                 owner: {
-                    renderer: ({item}: { item: TestParameter }) => item.owner?.username + ' (' + item.owner?.name + ')'
+                    renderer: OwnerGridView
                 }
             }
         }}

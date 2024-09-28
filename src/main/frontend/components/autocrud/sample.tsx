@@ -7,6 +7,8 @@ import type {Value} from "@vaadin/hilla-lit-form";
 import type {JSX} from "react";
 import {GearStandardService, GearTypeService, MaterialService, ProjectService} from "Frontend/generated/endpoints";
 import Sample from "Frontend/generated/ch/rupfizupfi/deck/data/Sample";
+import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
+import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 
 
 export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Element  {
@@ -21,7 +23,7 @@ export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Elem
         gridProps={{
             columnOptions: {
                 owner: {
-                    renderer: ({item}: { item: TestResult }) => item.owner?.username + ' (' + item.owner?.name + ')'
+                    renderer: OwnerGridView
                 },
                 project: {
                     renderer: ({item}: { item: Sample }) => <a href={`/project/${item.project?.id}/sample`}>{item.project?.name}</a>
@@ -29,8 +31,11 @@ export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Elem
             }
         }}
         formProps={{
-            visibleFields: ['name', 'description', 'project', 'gearTypes', 'gearStandards', 'materials', 'manufacturer', 'model', 'yearOfManufacture'],
+            visibleFields: ['owner', 'name', 'description', 'project', 'gearTypes', 'gearStandards', 'materials', 'manufacturer', 'model', 'yearOfManufacture'],
             fieldOptions: {
+                owner: {
+                    renderer: ({field}) => <OwnerSelector {...field} />,
+                },
                 project: {
                     renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="id" itemLabelPath="name" service={projectService}/>,
                 },
