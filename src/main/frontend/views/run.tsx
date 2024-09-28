@@ -5,7 +5,7 @@ import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResu
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
-import {GridColumn, TextArea, VerticalLayout} from "@vaadin/react-components";
+import {GridColumn, Icon, TextArea, VerticalLayout} from "@vaadin/react-components";
 import React, {useState} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
@@ -15,9 +15,14 @@ import TestResultBoard from "Frontend/components/dashboard/TestResultBoard";
 import {Link} from "react-router-dom";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
+import {Button} from "@vaadin/react-components/Button.js";
+import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
 
 // Shit design requires sheet solutions
 const LocalTestResultService = {...TestResultService};
+
+
+createEmptyValueProxy(TestResultModel);
 
 export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/play-circle-solid.svg'}, title: 'Ausführen', loginRequired: true};
 
@@ -44,18 +49,18 @@ export default function RunView() {
     }
 
     function headerRenderer(editedItem: TestResult | null, disabled: boolean) {
-        setReadyTestResultData(editedItem || undefined);
+        setTimeout(setReadyTestResultData, 0, editedItem);
         const colorVar = disabled ? 'var(--lumo-disabled-text-color)' : 'var(--lumo-text-color)';
         return <h3 style={{ color: colorVar }}>{editedItem ? 'Edit item' : 'New item'}</h3>;
     }
 
-    const localTestParameterService = createAutoComboBoxService(TestParameterService, ["type", "sample.name"]);
+    const localTestParameterService = createAutoComboBoxService(TestParameterService, "type");
     const localSampleService = createAutoComboBoxService(SampleService, "name");
 
     return (
-        <VerticalLayout theme="spacing-l stretch evenly">
+        <VerticalLayout theme="spacing-l stretch evenly h-full min-h-full">
             <AutoCrud
-                className={'w-full'}
+                className="w-full h-full min-h-full"
                 service={LocalTestResultService}
                 model={TestResultModel}
                 gridProps={{
@@ -95,7 +100,10 @@ export default function RunView() {
                             renderer: ({field}) => <TextArea {...field} />,
                         },
                         run: {
-                            renderer: () => <button disabled={!readyTestResultData} onClick={() => startRun()}>Run test</button>,
+                            renderer: () => <Button theme="pirmary large icon" style={{marginTop:'1em'}} disabled={!readyTestResultData} onClick={() => startRun()}>
+                                <Icon icon="vaadin:bolt" slot={'prefix'} style={{ height: 'var(--lumo-icon-size-l)', width: 'var(--lumo-icon-size-l)' }} />
+                                Run test
+                            </Button>,
                         }
                     }
                 }}

@@ -4,13 +4,16 @@ import {AutoCrud, CrudService} from "@vaadin/hilla-react-crud";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
+import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
+
+createEmptyValueProxy(TestParameterModel);
 
 export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, model: DetachedModelConstructor<any>, visibleFiels: string[]): JSX.Element {
     return <AutoCrud
         model={model}
         service={service}
         gridProps={{
-            visibleColumns: ['type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
+            visibleColumns: ['owner', 'type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
             columnOptions: {
                 owner: {
                     renderer: OwnerGridView
@@ -19,7 +22,7 @@ export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, m
         }}
         formProps={{
             hiddenFields: ['label'],
-            visibleFields: ['type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
+            visibleFields: ['owner', 'type', 'speed', 'startRampSeconds', 'stopRampSeconds', ...visibleFiels],
             fieldOptions: {
                 owner: {
                     renderer: ({field}) => <OwnerSelector {...field} />,
