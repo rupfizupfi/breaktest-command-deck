@@ -17,11 +17,6 @@ export function constraintServiceToFilter<Item, T extends ListEndpointService<It
                     }, init).then((items)=>items.map(replaceNullValues));
                 }
             }
-            if (prop === 'save') {
-                return (entity: TestResult, init: EndpointRequestInit | undefined) => {
-                    return target.save(entity, init).then((value)=>replaceNullValues(value))
-                }
-            }
             return Reflect.get(target, prop, receiver);
         }
     });
@@ -30,8 +25,11 @@ export function constraintServiceToFilter<Item, T extends ListEndpointService<It
 /**
  * The Vaadin hilla library has  some serious problems with null or not existing values
  */
-function replaceNullValues(item:any) {
-    if(!item.startRampSeconds) item.startRampSeconds = 0;
-    if(!item.stopRampSeconds) item.stopRampSeconds = 0;
+export function replaceNullValues(item:any) {
+    for (let key in item) {
+        if (item[key] === null) {
+            item[key] = undefined;
+        }
+    }
     return item;
 }

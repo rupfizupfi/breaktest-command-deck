@@ -6,12 +6,10 @@ import ch.rupfizupfi.deck.security.DataWithOwner;
 import ch.rupfizupfi.deck.security.UserUtils;
 import com.vaadin.hilla.Nonnull;
 import com.vaadin.hilla.Nullable;
-import com.vaadin.hilla.crud.filter.AndFilter;
 import com.vaadin.hilla.crud.filter.Filter;
-import com.vaadin.hilla.crud.filter.OrFilter;
-import com.vaadin.hilla.crud.filter.PropertyStringFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.repository.CrudRepository;
 
@@ -27,7 +25,7 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
         if (UserUtils.isAdmin()) {
             return super.get(id);
         }
-        return this.getRepository().findOne((root, query, criteriaBuilder) -> criteriaBuilder.and(criteriaBuilder.equal(root.get("id"), id), criteriaBuilder.or(criteriaBuilder.equal(root.get("ownerId"), this.getAuthenticatedUser()), criteriaBuilder.isNull(root.get("ownerId")))));
+        return this.getRepository().findOne(addOwnerCriteriaToSpec(Specification.where(null)));
     }
 
     protected User getAuthenticatedUser() {
@@ -40,26 +38,11 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
             return super.list(pageable, filter);
         }
 
-        var currentOwnerFilter = new PropertyStringFilter();
-        currentOwnerFilter.setFilterValue(this.getAuthenticatedUser().getId().toString());
-        currentOwnerFilter.setPropertyId("owner.id");
-        currentOwnerFilter.setMatcher(PropertyStringFilter.Matcher.EQUALS);
-        var emptyOwnerFilter = new PropertyStringFilter();
-        emptyOwnerFilter.setFilterValue("1");
-        emptyOwnerFilter.setPropertyId("owner.id");
-        emptyOwnerFilter.setMatcher(PropertyStringFilter.Matcher.LESS_THAN);
-        var ownerFilter = new OrFilter();
-        ownerFilter.setChildren(List.of(currentOwnerFilter, emptyOwnerFilter));
+        Specification<T> spec = this.toSpec(filter);
+        return this.getRepository().findAll(addOwnerCriteriaToSpec(spec), pageable).getContent();
+    }
 
-        if(filter == null){
-            filter = ownerFilter;
-        }
-        else {
-            var rootFilter = new AndFilter();
-            rootFilter.setChildren(List.of(ownerFilter, filter));
-            filter = rootFilter;
-        }
-
-        return super.list(pageable, filter);
+    protected Specification<T> addOwnerCriteriaToSpec(Specification<T> spec) {
+        return spec.and((root, query, criteriaBuilder) -> criteriaBuilder.or(criteriaBuilder.equal(root.get("owner"), this.getAuthenticatedUser()), criteriaBuilder.isNull(root.get("owner"))));
     }
 }
