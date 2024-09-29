@@ -63,4 +63,8 @@ public class TestContext {
     public void addSignalListener(SignalListener listener){
         signalListeners.add(listener);
     }
+
+    public void removeSignalListener(SignalListener listener){
+        signalListeners.remove(listener);
+    }
 }

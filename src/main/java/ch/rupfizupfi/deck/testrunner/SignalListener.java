@@ -1,5 +1,5 @@
 package ch.rupfizupfi.deck.testrunner;
 
-interface SignalListener {
+public interface SignalListener {
     void handleSignal(int signal) throws FinishTestException;
 }
