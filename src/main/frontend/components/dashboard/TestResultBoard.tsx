@@ -32,6 +32,7 @@ export default function TestResultBoard({testResult, reset}: TestResultBoardProp
     const service = getService();
     const [dataPoints, setDataPoints] = useState<[number[], number[]]>([[], []]);
     const [logs, setLogs] = useState<string[]>([]);
+    const [stopped, setStopped] = useState<boolean>(false);
 
     useEffect(() => {
         const start = Date.now();
@@ -114,8 +115,15 @@ export default function TestResultBoard({testResult, reset}: TestResultBoardProp
                 <Button theme="primary" onClick={() => {
                     TestRunnerService.stop();
                     Notification.show('stopped');
-                    reset();
+                    setStopped(true);
                 }}>Stop</Button>
+                <Button theme="primary error" onClick={() => {
+                    if(!stopped){
+                        TestRunnerService.stop();
+                        Notification.show('stopped');
+                    }
+                    reset();
+                }}>Close</Button>
                 <h3 style={{width: '8em'}}>Force: {currentValue} kN</h3>
                 <h3 style={{width: '8em'}}>Max: {maxForce} kN</h3>
             </HorizontalLayout>
