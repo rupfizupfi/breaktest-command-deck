@@ -10,17 +10,12 @@ import React, {useState} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
-import {EndpointRequestInit} from "@vaadin/hilla-frontend/Connect.js";
 import TestResultBoard from "Frontend/components/dashboard/TestResultBoard";
 import {Link} from "react-router-dom";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 import {Button} from "@vaadin/react-components/Button.js";
 import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
-
-// Shit design requires sheet solutions
-const LocalTestResultService = {...TestResultService};
-
 
 createEmptyValueProxy(TestResultModel);
 
@@ -32,13 +27,6 @@ export default function RunView() {
     const [testResultData, setTestResultData] = useState<TestResult>();
     const [readyTestResultData, setReadyTestResultData] = useState<TestResult>();
     service.updateObservable.subscribe((value: IMessage) => status.value = value.body);
-
-    LocalTestResultService.save = async (entity: TestResult, init: EndpointRequestInit | undefined) => {
-        return TestResultService.save(entity, init).then((value) => {
-            setReadyTestResultData(value);
-            return value;
-        });
-    }
 
     function startRun(){
         if(testResultData){
@@ -61,7 +49,7 @@ export default function RunView() {
         <VerticalLayout theme="spacing-l stretch evenly h-full min-h-full">
             <AutoCrud
                 className="w-full h-full min-h-full"
-                service={LocalTestResultService}
+                service={TestResultService}
                 model={TestResultModel}
                 gridProps={{
                     visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results'],
