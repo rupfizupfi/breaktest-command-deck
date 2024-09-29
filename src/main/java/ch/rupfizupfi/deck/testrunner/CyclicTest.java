@@ -34,6 +34,7 @@ public class CyclicTest extends AbstractTest {
         cfw11.setDirection(true);
         cfw11.setGeneralEnable(true);
         cfw11.setStart(true);
+        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
 
         double startRampSeconds = testResult.testParameter.startRampSeconds;
         double stopRampSeconds = testResult.testParameter.stopRampSeconds;

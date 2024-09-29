@@ -1,6 +1,7 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class TestRunnerThread implements Runnable {
@@ -32,14 +33,19 @@ public class TestRunnerThread implements Runnable {
             }
         } catch (InterruptedException e) {
             template.convertAndSend("/topic/logs", "interrupt test " + testResult.testParameter.type);
-        } catch (FinishTestException e) {
-            template.convertAndSend("/topic/logs", "Test finished test " + testResult.testParameter.type + " : " + testResult.sample.name);
+        } catch (FinishTestException ignored) {
         } catch (Exception e) {
             template.convertAndSend("/topic/logs", "error: " + e.getClass() + ", " + e.getMessage());
             template.convertAndSend("/topic/logs", "error test " + testResult.testParameter.type);
         } finally {
             if (test != null) {
-                test.cleanup();
+                try {
+                    test.cleanup();
+                    test.destroy();
+                } catch (Exception e) {
+                    template.convertAndSend("/topic/logs", "error: " + e.getClass() + ", " + e.getMessage());
+                    retryShutdownOnException();
+                }
             }
             this.test = null;
             this.running = false;
@@ -59,5 +65,21 @@ public class TestRunnerThread implements Runnable {
         if (this.running) {
             this.test.getContext().sendSignal(0);
         }
+    }
+
+    protected void retryShutdownOnException() {
+        try {
+            test.destroy();
+        }
+        catch (Exception ignored) {
+            test = null;
+            System.gc();
+        }
+
+        var cfw11 = new Cfw11();
+        cfw11.setGeneralEnable(false);
+        cfw11.setSpeedValueAsRpm(0);
+        cfw11.setStart(false);
+        cfw11.getUsbComm().closeUSBComm();
     }
 }
