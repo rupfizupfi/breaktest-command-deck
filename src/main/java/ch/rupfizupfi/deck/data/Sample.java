@@ -1,6 +1,10 @@
 package ch.rupfizupfi.deck.data;
 
+import ch.rupfizupfi.deck.data.jsonViews.Views;
+import ch.rupfizupfi.deck.data.serializer.OwnerSerializer;
 import ch.rupfizupfi.deck.security.DataWithOwner;
+import com.fasterxml.jackson.annotation.JsonView;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Max;
@@ -12,12 +16,8 @@ import java.util.List;
 @Table(name = "sample")
 public class Sample extends AbstractEntity implements DataWithOwner {
     @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    @JsonSerialize(using = OwnerSerializer.class)
     public User owner;
-
-    @Nullable
-    public User getOwner() {
-        return owner;
-    }
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     public Project project;
@@ -46,4 +46,19 @@ public class Sample extends AbstractEntity implements DataWithOwner {
     @ManyToMany
     @JoinTable(name = "sample_material")
     public List<Material> materials;
+
+    @Nullable
+    public User getOwner() {
+        return owner;
+    }
+
+    @JsonView(Views.Simple.class)
+    public Long getId() {
+        return super.getId();
+    }
+
+    @JsonView(Views.Simple.class)
+    public String getName() {
+        return name;
+    }
 }

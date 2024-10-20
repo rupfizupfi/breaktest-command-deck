@@ -1,6 +1,8 @@
 package ch.rupfizupfi.deck.data;
 
+import ch.rupfizupfi.deck.data.serializer.OwnerSerializer;
 import ch.rupfizupfi.deck.security.DataWithOwner;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
@@ -9,6 +11,7 @@ import jakarta.validation.constraints.NotBlank;
 @Table(name = "project")
 public class Project extends AbstractEntity implements DataWithOwner {
     @ManyToOne(fetch = FetchType.EAGER, optional = true)
+    @JsonSerialize(using = OwnerSerializer.class)
     public User owner;
 
     @Nullable
