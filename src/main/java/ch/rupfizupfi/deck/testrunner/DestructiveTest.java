@@ -1,18 +1,19 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class DestructiveTest extends AbstractTest {
-    DestructiveTest(TestResult testResult, SimpMessagingTemplate template) {
-        super(testResult, template);
+    DestructiveTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
+        super(testResult, template, deviceService);
     }
 
     void setup() {
         testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold * 1000, testResult.testParameter.lowerShutOffThreshold * 1000);
         initContext();
-        loadCellThread = new LoadCellThread(template, testContext);
+        loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
         loadCellThread.setRunning(true);
         new Thread(loadCellThread).start();
 

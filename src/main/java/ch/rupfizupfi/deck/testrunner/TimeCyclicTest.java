@@ -1,6 +1,7 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.testrunner.cyclic.AnalyseData;
 import ch.rupfizupfi.deck.testrunner.cyclic.CyclicTestContext;
 import ch.rupfizupfi.deck.testrunner.cyclic.TimeProcessor;
@@ -19,8 +20,8 @@ public class TimeCyclicTest extends CyclicTest {
     private final AnalyseData[] analysedData = new AnalyseData[2];
     private TimeProcessor timeProcessor;
 
-    public TimeCyclicTest(TestResult testResult, SimpMessagingTemplate template) {
-        super(testResult, template);
+    TimeCyclicTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
+        super(testResult, template, deviceService);
     }
 
     public void setup() {
@@ -32,7 +33,7 @@ public class TimeCyclicTest extends CyclicTest {
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
 
-        loadCellThread = new LoadCellThread(template, testContext);
+        loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
         loadCellThread.setRunning(true);
         new Thread(loadCellThread).start();
 
@@ -41,7 +42,8 @@ public class TimeCyclicTest extends CyclicTest {
         log("CycleCount " + testContext.getCycleCount());
         log("time cyclic test start");
 
-        cfw11 = new Cfw11();
+        deviceService.getFrequencyConverter().connect();
+        cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
         cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
         cfw11.setSpeedValueAsRpm((int) Math.round(INITIAL_SPEED / (double) SPEED_DIVISOR));
         cfw11.setSecondSpeedRampTime(INITIAL_RAMP_TIME, INITIAL_RAMP_TIME); // 300ms each
@@ -122,6 +124,7 @@ public class TimeCyclicTest extends CyclicTest {
 
     /**
      * Analyze the data and calculate the release and pull time
+     *
      * @return true if the data is complete
      */
     protected boolean analyze() {

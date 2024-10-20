@@ -6,6 +6,7 @@ import { Button } from '@vaadin/react-components/Button.js';
 import { useAuth } from 'Frontend/util/auth.js';
 import { Suspense, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import InfoBoard from "Frontend/components/dashboard/InfoBoard";
 
 const defaultTitle = document.title;
 const documentTitleSignal = signal('');
@@ -44,6 +45,7 @@ export default function MainLayout() {
               </SideNavItem>
             ))}
           </SideNav>
+            <InfoBoard />
         </header>
         <footer className="flex flex-col gap-s">
           {state.user ? (

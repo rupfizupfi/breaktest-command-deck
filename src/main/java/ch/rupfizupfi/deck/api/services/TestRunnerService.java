@@ -1,7 +1,7 @@
 package ch.rupfizupfi.deck.api.services;
 
 import ch.rupfizupfi.deck.data.TestResultRepository;
-import ch.rupfizupfi.deck.security.CheckUserCanOnlyAccessOwnData;
+import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.testrunner.TestRunnerThread;
 import com.vaadin.hilla.BrowserCallable;
 import jakarta.annotation.security.PermitAll;
@@ -9,14 +9,13 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @BrowserCallable
 @PermitAll
-@CheckUserCanOnlyAccessOwnData
 public class TestRunnerService {
     private final TestRunnerThread testRunnerThread;
     private final TestResultRepository testResultRepository;
 
-    public TestRunnerService(SimpMessagingTemplate template, TestResultRepository testResultRepository) {
-        this.testRunnerThread = new TestRunnerThread(template);
+    public TestRunnerService(TestResultRepository testResultRepository, SimpMessagingTemplate template, DeviceService deviceService) {
         this.testResultRepository = testResultRepository;
+        this.testRunnerThread = new TestRunnerThread(template, deviceService);
     }
 
     public void start(int testId) {
