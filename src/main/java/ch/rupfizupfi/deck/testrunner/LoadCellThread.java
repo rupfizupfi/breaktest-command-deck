@@ -1,27 +1,30 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
+import ch.rupfizupfi.deck.device.loadcell.MeasurementObserver;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
-import ch.rupfizupfi.dscusb.CellValueStream;
 import ch.rupfizupfi.dscusb.Measurement;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
-public class LoadCellThread implements Runnable   {
-    private final SimpMessagingTemplate template;
+public class LoadCellThread implements Runnable, MeasurementObserver {
     private volatile boolean running = false;
-    private BufferedWriter writer;
-    private CellValueStream stream;
-    private TestContext testContext;
+    private final TestContext testContext;
     private volatile float minValue;
     private volatile float maxValue;
-    private CSVStoreService csvStoreService;
+    private final CSVStoreService csvStoreService;
+    private final LoadCellDevice loadCellDevice;
+    private final List<Measurement> measurementBuffer = new CopyOnWriteArrayList<>();
+    private final Object lock = new Object();
 
-    LoadCellThread(SimpMessagingTemplate template, TestContext testContext) {
-        this.template = template;
+    LoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice) {
         this.testContext = testContext;
+        this.loadCellDevice = loadCellDevice;
         minValue = (float) testContext.getLowerLimit();
         maxValue = (float) testContext.getUpperLimit();
         csvStoreService = new CSVStoreService();
@@ -48,72 +51,52 @@ public class LoadCellThread implements Runnable   {
     }
 
     @Override
+    public void update(List<Measurement> measurements) {
+        synchronized (lock) {
+            measurementBuffer.addAll(measurements);
+        }
+    }
+
+    @Override
     public void run() {
         String filePath = csvStoreService.generateFilePathForTestResult(testContext.getTestResultId());
 
-        try {
-            writer = new BufferedWriter(new FileWriter(filePath));
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create file stream", e);
-        }
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {
+            loadCellDevice.connect();
+            loadCellDevice.registerObserver(this);
 
-        var wsMeasurements = new ArrayList<Measurement>();
-        stream = new CellValueStream();
-        stream.startReading();
-
-        try {
             while (running) {
-                var measurements = stream.getNextValues();
-
-                if(measurements.isEmpty()){
+                if (measurementBuffer.isEmpty()) {
                     Thread.sleep(20);
                     continue;
                 }
 
-                measurements.forEach(measurement -> {
-                    try {
-                        if(minValue > measurement.getForce()){
-                            minValue = measurement.getForce();
-                        }
+                List<Measurement> measurements;
+                synchronized (lock) {
+                    measurements = new ArrayList<>(measurementBuffer);
+                    measurementBuffer.clear();
+                }
 
-                        if(maxValue < measurement.getForce()){
-                            maxValue = measurement.getForce();
-                        }
+                for (Measurement measurement : measurements) {
+                    minValue = Math.min(minValue, measurement.getForce());
+                    maxValue = Math.max(maxValue, measurement.getForce());
 
-                        writer.write(measurement.getTimestamp() + "," + measurement.getForce());
-                        writer.newLine();
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to write to file stream", e);
-                    }
-                });
+                    writer.write(measurement.getTimestamp() + "," + measurement.getForce());
+                    writer.newLine();
+                }
 
-                var lastMeasurement = measurements.getLast();
+                Measurement lastMeasurement = measurements.getLast();
                 if (lastMeasurement.getForce() > testContext.getUpperLimit()) {
                     testContext.sendSignal(TestContext.RELEASE_SIGNAL);
                 }
                 else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
                     testContext.sendSignal(TestContext.PULL_SIGNAL);
                 }
-
-                wsMeasurements.addAll(measurements);
-                if(System.currentTimeMillis() - wsMeasurements.getFirst().getTimestamp() > 60){
-                    template.convertAndSend("/topic/updates", wsMeasurements);
-                    wsMeasurements.clear();
-                }
             }
 
-        } catch (InterruptedException e) {
+            loadCellDevice.disconnect();
+        } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);
-        } finally {
-            if (writer != null) {
-                try {
-                    writer.close();
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to close file stream", e);
-                }
-            }
-
-            stream.stopReading();
         }
     }
 }

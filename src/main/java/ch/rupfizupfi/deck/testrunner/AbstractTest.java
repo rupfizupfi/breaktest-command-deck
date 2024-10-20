@@ -1,6 +1,7 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
@@ -10,10 +11,12 @@ public abstract class AbstractTest implements SignalListener {
     protected TestResult testResult;
     protected TestContext testContext;
     protected final SimpMessagingTemplate template;
+    protected DeviceService deviceService;
 
-    AbstractTest(TestResult testResult, SimpMessagingTemplate template) {
+    AbstractTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
         this.testResult = testResult;
         this.template = template;
+        this.deviceService = deviceService;
     }
 
     abstract void setup();
