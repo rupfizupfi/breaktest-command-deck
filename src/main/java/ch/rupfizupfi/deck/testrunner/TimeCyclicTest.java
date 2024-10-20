@@ -5,7 +5,6 @@ import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.testrunner.cyclic.AnalyseData;
 import ch.rupfizupfi.deck.testrunner.cyclic.CyclicTestContext;
 import ch.rupfizupfi.deck.testrunner.cyclic.TimeProcessor;
-import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class TimeCyclicTest extends CyclicTest {

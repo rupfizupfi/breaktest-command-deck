@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * The connector should know when the connection is established.
  */
 public abstract class Device {
-    private AtomicInteger connectionCount = new AtomicInteger(0);
+    private final AtomicInteger connectionCount = new AtomicInteger(0);
     private CompletableFuture<Boolean> connectionFuture = new CompletableFuture<>();
 
     // Method to connect to the device
@@ -43,6 +43,8 @@ public abstract class Device {
 
     // Abstract methods to be implemented by subclasses
     protected abstract void openConnection();
+
     protected abstract void closeConnection();
+
     public abstract Object getHardwareComponent();
 }

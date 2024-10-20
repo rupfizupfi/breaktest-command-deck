@@ -2,8 +2,8 @@ package ch.rupfizupfi.deck.api.services;
 
 import ch.rupfizupfi.deck.data.Material;
 import ch.rupfizupfi.deck.data.MaterialRepository;
-import com.vaadin.hilla.BrowserCallable;
 import ch.rupfizupfi.deck.hilla.crud.CrudRepositoryService;
+import com.vaadin.hilla.BrowserCallable;
 import jakarta.annotation.security.PermitAll;
 
 import java.util.Optional;

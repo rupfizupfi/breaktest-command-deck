@@ -35,7 +35,7 @@ public class DownloadResults {
         StringBuilder result = new StringBuilder();
         testResultRepository.findAll().forEach(testResult -> {
             // create array of field from testResult, name, result:
-            var fields = new String[] {
+            var fields = new String[]{
                     testResult.sample.name,
                     testResult.testParameter.type,
                     getPeaksFromResultFiles(testResult.getId()),
@@ -48,7 +48,7 @@ public class DownloadResults {
         return result.toString();
     }
 
-    protected String getPeaksFromResultFiles(long id){
+    protected String getPeaksFromResultFiles(long id) {
         String[] paths = this.csvStoreService.listCSVFilesForTestResult(id);
         var results = Arrays.stream(paths).map(path -> getPeakFromResultFile(id, path))
                 .filter(Objects::nonNull)
@@ -57,11 +57,11 @@ public class DownloadResults {
         return String.join(",", results);
     }
 
-    protected String getPeakFromResultFile(long id, String path){
+    protected String getPeakFromResultFile(long id, String path) {
         Path file = Paths.get(path);
         String data = this.csvStoreService.readCSVDataForTestResult(id, file.getFileName().toString());
 
-        if(data.contains("@")){
+        if (data.contains("@")) {
             return null;
         }
 
@@ -80,7 +80,7 @@ public class DownloadResults {
     protected boolean isValidTimeStamp(String millisecondsString) {
         try {
             long milliseconds = Long.parseLong(millisecondsString);
-            return this.minTimeStamp < milliseconds/1000;
+            return this.minTimeStamp < milliseconds / 1000;
         } catch (NumberFormatException e) {
             return false;
         }

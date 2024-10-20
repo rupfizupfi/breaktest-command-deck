@@ -73,8 +73,7 @@ public class TestRunnerThread implements Runnable {
     protected void retryShutdownOnException() {
         try {
             test.destroy();
-        }
-        catch (Exception ignored) {
+        } catch (Exception ignored) {
             test = null;
             System.gc();
         }

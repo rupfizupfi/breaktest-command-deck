@@ -88,8 +88,7 @@ public class LoadCellThread implements Runnable, MeasurementObserver {
                 Measurement lastMeasurement = measurements.getLast();
                 if (lastMeasurement.getForce() > testContext.getUpperLimit()) {
                     testContext.sendSignal(TestContext.RELEASE_SIGNAL);
-                }
-                else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
+                } else if (lastMeasurement.getForce() < testContext.getLowerLimit()) {
                     testContext.sendSignal(TestContext.PULL_SIGNAL);
                 }
             }

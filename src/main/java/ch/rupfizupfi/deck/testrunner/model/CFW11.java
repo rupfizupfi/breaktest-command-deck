@@ -9,5 +9,4 @@ public class CFW11 {
     public int voltage;
 
 
-
 }

@@ -10,14 +10,14 @@ public class CyclicTestContext extends TestContext {
         this.cycleCount = cycleCount;
     }
 
-    public void decrementCycleCount(){
+    public void decrementCycleCount() {
         cycleCount--;
-        if(cycleCount<1){
+        if (cycleCount < 1) {
             sendSignal(0);
         }
     }
 
-    public int getCycleCount(){
+    public int getCycleCount() {
         return cycleCount;
     }
 }

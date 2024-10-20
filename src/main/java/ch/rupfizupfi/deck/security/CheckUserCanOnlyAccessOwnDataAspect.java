@@ -24,10 +24,12 @@ public class CheckUserCanOnlyAccessOwnDataAspect {
 
 
     @Pointcut("@annotation(ch.rupfizupfi.deck.security.CheckUserCanOnlyAccessOwnData)")
-    public void applyToAllAnnotatedMethods() {}
+    public void applyToAllAnnotatedMethods() {
+    }
 
     @Pointcut("within(@ch.rupfizupfi.deck.security.CheckUserCanOnlyAccessOwnData *)")
-    public void applyToAllMethodsOfAnnotatedClass() {}
+    public void applyToAllMethodsOfAnnotatedClass() {
+    }
 
     @Autowired
     private AuthenticatedUser authenticatedUser;
