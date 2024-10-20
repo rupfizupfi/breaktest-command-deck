@@ -2,11 +2,12 @@ package ch.rupfizupfi.deck.api.services;
 
 import ch.rupfizupfi.deck.data.User;
 import ch.rupfizupfi.deck.data.UserRepository;
-import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+
+import java.util.Optional;
 
 @Service
 public class UserService {

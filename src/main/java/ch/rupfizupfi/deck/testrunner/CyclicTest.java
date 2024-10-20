@@ -41,7 +41,7 @@ public class CyclicTest extends AbstractTest {
         double stopRampSeconds = testResult.testParameter.stopRampSeconds;
         if (startRampSeconds > 0 && stopRampSeconds > 0) {
             cfw11.setUseSecondRamp(true);
-            cfw11.setSecondSpeedRampTime((int)(startRampSeconds * 10), (int)(stopRampSeconds*10));
+            cfw11.setSecondSpeedRampTime((int) (startRampSeconds * 10), (int) (stopRampSeconds * 10));
         }
 
 //        controller.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));

@@ -2,8 +2,8 @@ package ch.rupfizupfi.deck.device;
 
 import ch.rupfizupfi.deck.device.frequencyconverter.CFW11Device;
 import ch.rupfizupfi.deck.device.frequencyconverter.DeviceInfoBroadcaster;
-import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
 import ch.rupfizupfi.deck.device.loadcell.ForceBroadcaster;
+import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
 import org.springframework.context.annotation.Scope;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;

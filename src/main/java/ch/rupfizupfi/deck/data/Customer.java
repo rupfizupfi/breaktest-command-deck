@@ -1,6 +1,8 @@
 package ch.rupfizupfi.deck.data;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 

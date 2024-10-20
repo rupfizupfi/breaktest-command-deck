@@ -33,7 +33,8 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
     }
 
     @Override
-    @Nonnull public List<@Nonnull T> list(Pageable pageable, @Nullable Filter filter) {
+    @Nonnull
+    public List<@Nonnull T> list(Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
             return super.list(pageable, filter);
         }

@@ -21,11 +21,11 @@ public abstract class AbstractTest implements SignalListener {
 
     abstract void setup();
 
-    void initContext(){
+    void initContext() {
         testContext.addSignalListener(this);
     }
 
-    TestContext getContext(){
+    TestContext getContext() {
         return testContext;
     }
 
@@ -57,15 +57,15 @@ public abstract class AbstractTest implements SignalListener {
         template.convertAndSend("/topic/logs", message);
     }
 
-    protected void cfw11Pull(){
+    protected void cfw11Pull() {
         cfw11.setDirection(false);
     }
 
-    protected boolean cfw11IsPull(){
+    protected boolean cfw11IsPull() {
         return !cfw11.getDirection();
     }
 
-    protected void cfw11Release(){
+    protected void cfw11Release() {
         cfw11.setDirection(true);
     }
 

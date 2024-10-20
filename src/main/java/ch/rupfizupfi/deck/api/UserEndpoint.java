@@ -6,10 +6,6 @@ import ch.rupfizupfi.deck.security.AuthenticatedUser;
 import ch.rupfizupfi.deck.security.UserUtils;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.hilla.Endpoint;
-
-import java.util.List;
-import java.util.Optional;
-
 import com.vaadin.hilla.Nonnull;
 import com.vaadin.hilla.Nullable;
 import com.vaadin.hilla.crud.JpaFilterConverter;
@@ -18,7 +14,9 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+
+import java.util.List;
+import java.util.Optional;
 
 @Endpoint
 @AnonymousAllowed
@@ -40,7 +38,8 @@ public class UserEndpoint {
         return authenticatedUser.get();
     }
 
-    @Nonnull public @NotNull List<@Nonnull User> list(Pageable pageable, @Nullable Filter filter) {
+    @Nonnull
+    public @NotNull List<@Nonnull User> list(Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
             Specification<User> spec = this.jpaFilterConverter.toSpec(filter, User.class);
             return userRepository.findAll(spec, pageable).getContent();

@@ -5,5 +5,5 @@ import jakarta.annotation.Nullable;
 
 public interface DataWithOwner {
     @Nullable
-    public User getOwner();
+    User getOwner();
 }
