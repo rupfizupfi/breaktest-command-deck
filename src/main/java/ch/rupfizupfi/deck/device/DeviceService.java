@@ -31,14 +31,14 @@ public class DeviceService {
     }
 
     public void enableInfoBroadcasting() {
-        frequencyConverter.connect();
         loadCell.connect();
+        frequencyConverter.connect();
         frequencyConverter.registerObserver(deviceInfoBroadcaster);
     }
 
     public void disableInfoBroadcasting() {
+        loadCell.disconnect();
         frequencyConverter.unregisterObserver(deviceInfoBroadcaster);
         frequencyConverter.disconnect();
-        loadCell.disconnect();
     }
 }

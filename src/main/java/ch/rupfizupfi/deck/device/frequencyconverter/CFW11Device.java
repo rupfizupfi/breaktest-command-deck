@@ -10,6 +10,7 @@ public class CFW11Device extends Device {
     private Cfw11 cfw11;
     private final List<InfoObserver> observers = new CopyOnWriteArrayList<>();
     private Thread dataThread;
+    private volatile boolean isRunning = false;
 
     @Override
     protected void openConnection() {
@@ -19,12 +20,14 @@ public class CFW11Device extends Device {
 
     protected synchronized void tryStartThread() {
         if (dataThread == null && !observers.isEmpty()) {
+            isRunning = true;
             dataThread = new Thread(this::readData);
             dataThread.start();
         }
     }
 
     protected synchronized void tryStopThread() {
+        isRunning = false;
         if (dataThread != null && observers.isEmpty()) {
             try {
                 dataThread.join();
@@ -37,8 +40,6 @@ public class CFW11Device extends Device {
 
     @Override
     protected void closeConnection() {
-        getConnectionStatus().complete(false);
-
         tryStopThread();
 
         if (cfw11 != null) {
@@ -69,7 +70,7 @@ public class CFW11Device extends Device {
     }
 
     private void readData() {
-        while (!getConnectionStatus().isDone()) {
+        while (isRunning) {
             var info = new Info();
             var controlParameters = cfw11.getControlParameters();
             info.start = controlParameters.get("start");
