@@ -8,18 +8,28 @@ import jakarta.annotation.security.PermitAll;
 @PermitAll
 public class DeviceInfoService {
     private final DeviceService deviceService;
-
+    protected boolean isEnabled = false;
 
     public DeviceInfoService(DeviceService deviceService) {
         this.deviceService = deviceService;
     }
 
     public boolean enable() {
+        if (isEnabled) {
+            return false;
+        }
+
+        isEnabled = true;
         deviceService.enableInfoBroadcasting();
         return true;
     }
 
     public boolean disable() {
+        if (!isEnabled) {
+            return false;
+        }
+
+        isEnabled = false;
         deviceService.disableInfoBroadcasting();
         return true;
     }
