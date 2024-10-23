@@ -26,7 +26,7 @@ export default function RunView() {
     const service = getService();
     const [testResultData, setTestResultData] = useState<TestResult>();
     const [readyTestResultData, setReadyTestResultData] = useState<TestResult>();
-    service.updateObservable.subscribe((value: IMessage) => status.value = value.body);
+    service.loadCellObservable.subscribe((value: IMessage) => status.value = value.body);
 
     function startRun(){
         if(testResultData){

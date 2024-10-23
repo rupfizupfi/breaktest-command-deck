@@ -29,7 +29,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             return;
         }
 
-        const subscription = service.updateObservable.subscribe({
+        const subscription = service.loadCellObservable.subscribe({
             next: (value: IMessage) => {
                 const newStatus: object[] = JSON.parse(value.body);
                 // @ts-ignore
@@ -37,7 +37,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             }
         });
 
-        const infoSubscription = service.logObservable.subscribe((value: IMessage) => {
+        const infoSubscription = service.frequencyConverterInfoObservable.subscribe((value: IMessage) => {
             const newInfo: Info = JSON.parse(value.body);
             setFCInfo(newInfo);
         });

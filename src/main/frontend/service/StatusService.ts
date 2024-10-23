@@ -3,8 +3,9 @@ import {Observable} from "rxjs/internal/Observable";
 
 export default class StatusService {
     private rxStomp: RxStomp;
-    private updateTopic: Observable<IMessage>;
+    private loadCellTopic: Observable<IMessage>;
     private updateLog: Observable<IMessage>;
+    private frequencyConverterInfoTopic: Observable<IMessage>;
 
     constructor() {
         this.rxStomp = new RxStomp();
@@ -12,15 +13,14 @@ export default class StatusService {
             brokerURL: 'ws://localhost:8080/status',
         });
 
-        this.updateTopic = this.rxStomp
-            .watch({destination: "/topic/updates"});
+        this.loadCellTopic = this.rxStomp
+            .watch({destination: "/topic/load-cell"});
+
+        this.frequencyConverterInfoTopic = this.rxStomp
+            .watch({destination: "/topic/frequency-converter-info"});
 
         this.updateLog = this.rxStomp
             .watch({destination: "/topic/logs"});
-
-        // this.updateTopic.subscribe((message: IMessage) => {
-        //     console.log("Received message: " + message.body);
-        // });
 
         this.rxStomp.stompErrors$.subscribe((frame: IFrame) => {
             console.error('Broker reported error: ' + frame.headers['message']);
@@ -28,12 +28,16 @@ export default class StatusService {
         });
     }
 
-    get updateObservable() {
-        return this.updateTopic;
+    get loadCellObservable() {
+        return this.loadCellTopic;
     }
 
     get logObservable(){
         return this.updateLog;
+    }
+
+    get frequencyConverterInfoObservable(){
+        return this.frequencyConverterInfoTopic;
     }
 
     connect() {
