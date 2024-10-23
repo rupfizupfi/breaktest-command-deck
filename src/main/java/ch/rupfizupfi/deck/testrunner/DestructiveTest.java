@@ -21,7 +21,8 @@ public class DestructiveTest extends AbstractTest {
         log("lowerShutOffThreshold " + testContext.getLowerLimit() + " Newton");
         log("Destructive test start");
 
-        cfw11 = new Cfw11();
+        deviceService.getFrequencyConverter().connect();
+        cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
         cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
         cfw11Pull();
         cfw11.setGeneralEnable(true);

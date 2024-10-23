@@ -40,6 +40,7 @@ public class TestRunnerThread implements Runnable {
         } catch (Exception e) {
             template.convertAndSend("/topic/logs", "error: " + e.getClass() + ", " + e.getMessage());
             template.convertAndSend("/topic/logs", "error test " + testResult.testParameter.type);
+            throw e;
         } finally {
             if (test != null) {
                 try {

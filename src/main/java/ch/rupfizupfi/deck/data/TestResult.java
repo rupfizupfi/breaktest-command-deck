@@ -15,11 +15,11 @@ public class TestResult extends AbstractEntity implements DataWithOwner {
     @JsonSerialize(using = OwnerSerializer.class)
     public User owner;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JsonSerialize(using = SimpleSampleSerializer.class)
     public Sample sample;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JsonSerialize(using = SimpleTestParameterSerializer.class)
     public TestParameter testParameter;
 
