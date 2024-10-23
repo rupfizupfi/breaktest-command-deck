@@ -11,6 +11,7 @@ public class CFW11Device extends Device {
     private final List<InfoObserver> observers = new CopyOnWriteArrayList<>();
     private Thread dataThread;
     private volatile boolean isRunning = false;
+    private int idProvider = 0;
 
     @Override
     protected void openConnection() {
@@ -78,10 +79,11 @@ public class CFW11Device extends Device {
             info.useSecondRamp = controlParameters.get("useSecondRamp");
             info.directionIsForward = controlParameters.get("directionIsForward");
             info.speed = cfw11.getSpeedValueAsRpm() * 0.375;
+            info.id = idProvider++;
             this.notifyObservers(info);
 
             try {
-                Thread.sleep(200);
+                Thread.sleep(400);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

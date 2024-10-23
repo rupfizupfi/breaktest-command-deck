@@ -30,7 +30,8 @@ public class CyclicTest extends AbstractTest {
         log("CycleCount " + testContext.getCycleCount());
         log("cyclic test start");
 
-        cfw11 = new Cfw11();
+        deviceService.getFrequencyConverter().connect();
+        cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
         cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
         cfw11.setDirection(true);
         cfw11.setGeneralEnable(true);

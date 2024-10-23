@@ -6,6 +6,7 @@ import { Checkbox } from "@vaadin/react-components";
 import './InfoBoard.css';
 
 interface Info {
+    id: number;
     speed: number;
     start: boolean;
     generalEnable: boolean;
@@ -55,9 +56,9 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
 
     const infoDom = info ? (
         <>
-            <h3 className="lumo-typography">Status:</h3>
+            <h3 className="lumo-typography">Status: {info.id}</h3>
             <ul className="info-list">
-                <li className="info-item"><span>Speed:</span> <span>{info.speed}</span></li>
+                <li className="info-item"><span>Speed:</span> <span>{info.speed} m/s</span></li>
                 <li className="info-item"><span>Ramp:</span> <span>{info.useSecondRamp ? 'second' : 'first'}</span></li>
                 <li className="info-item"><span>Direction:</span> <span>{info.directionIsForward ? 'forwards' : 'backwards'}</span></li>
             </ul>
@@ -68,7 +69,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         <div className="info-board">
             <h2>Info:</h2>
             <ul className="info-list">
-                <li className="info-item"><span>Force:</span> <span>{force}</span></li>
+                <li className="info-item"><span>Force:</span> <span>{force / 1000} Kn</span></li>
             </ul>
             {infoDom}
             <label>

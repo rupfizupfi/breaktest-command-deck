@@ -1,13 +1,10 @@
 package ch.rupfizupfi.deck.device.frequencyconverter;
 
-import java.io.Serializable;
-
-public class Info implements Serializable {
-    private static final long serialVersionUID = 1L;
-
-    double speed;
-    boolean start;
-    boolean generalEnable;
-    boolean useSecondRamp;
-    boolean directionIsForward;
+public class Info {
+    public int id;
+    public double speed;
+    public boolean start;
+    public boolean generalEnable;
+    public boolean useSecondRamp;
+    public boolean directionIsForward;
 }
