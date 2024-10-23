@@ -36,7 +36,7 @@ export default function TestResultBoard({testResult, reset}: TestResultBoardProp
 
     useEffect(() => {
         const start = Date.now();
-        const subscription = service.updateObservable.subscribe({
+        const subscription = service.loadCellObservable.subscribe({
             next: (value: IMessage) => {
                 const newStatus = JSON.parse(value.body);
                 const newPoints = newStatus.reduce((acc: [number[], number[]], item: any) => {

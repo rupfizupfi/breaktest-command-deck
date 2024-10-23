@@ -18,7 +18,7 @@ public class ForceBroadcaster implements MeasurementObserver {
     public void update(List<Measurement> measurements) {
         wsMeasurements.addAll(measurements);
         if (System.currentTimeMillis() - wsMeasurements.getFirst().getTimestamp() > 60) {
-            template.convertAndSend("/topic/updates", wsMeasurements);
+            template.convertAndSend("/topic/load-cell", wsMeasurements);
             wsMeasurements.clear();
         }
     }

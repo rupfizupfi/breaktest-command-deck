@@ -15,7 +15,7 @@ export const config: ViewConfig = {
 export default function DeckView() {
     const status = useSignal('');
     const service = getService();
-    service.updateObservable.subscribe((value: IMessage) => status.value = value.body);
+    service.loadCellObservable.subscribe((value: IMessage) => status.value = value.body);
 
     return (
         <>
