@@ -73,12 +73,16 @@ public class CFW11Device extends Device {
     private void readData() {
         while (isRunning) {
             var info = new Info();
+            var motorData = cfw11.getMotorData();
             var controlParameters = cfw11.getControlParameters();
             info.start = controlParameters.get("start");
             info.generalEnable = controlParameters.get("generalEnable");
             info.useSecondRamp = controlParameters.get("useSecondRamp");
             info.directionIsForward = controlParameters.get("directionIsForward");
-            info.speed = cfw11.getSpeedValueAsRpm() * 0.375;
+            info.speed = motorData.get("speed");
+            info.motorCurrent = motorData.get("current");
+            info.motorVoltage = motorData.get("voltage");
+            info.motorTorque = motorData.get("torque");
             info.id = idProvider++;
             this.notifyObservers(info);
 
