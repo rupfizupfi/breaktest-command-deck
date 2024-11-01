@@ -10,7 +10,6 @@ import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
-import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
 import {Link} from "react-router-dom";
 import React from "react";
 
