@@ -9,4 +9,5 @@ import jakarta.annotation.security.PermitAll;
 @BrowserCallable
 @PermitAll
 public class ProjectService extends CrudRepositoryServiceForOwnerData<Project, ProjectRepository> {
+
 }
