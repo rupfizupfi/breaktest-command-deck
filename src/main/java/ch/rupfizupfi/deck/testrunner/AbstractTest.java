@@ -47,7 +47,6 @@ public abstract class AbstractTest implements SignalListener {
 
     void destroy() {
         deviceService.getFrequencyConverter().disconnect();
-        cfw11.getUsbComm().closeUSBComm();
         cfw11 = null;
         loadCellThread = null;
         testContext = null;
