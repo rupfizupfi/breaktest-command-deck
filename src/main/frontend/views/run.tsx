@@ -1,5 +1,4 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
-import {AutoCrud} from "@vaadin/hilla-react-crud";
 import {SampleService, TestParameterService, TestResultService} from "Frontend/generated/endpoints";
 import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResultModel";
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
@@ -16,10 +15,11 @@ import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 import {Button} from "@vaadin/react-components/Button.js";
 import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
+import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
 
 createEmptyValueProxy(TestResultModel);
 
-export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/play-circle-solid.svg'}, title: 'Ausführen', loginRequired: true};
+export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/play-circle-solid.svg'}, title: 'Execute test', loginRequired: true};
 
 export default function RunView() {
     const status = useSignal('');
@@ -39,7 +39,8 @@ export default function RunView() {
     function headerRenderer(editedItem: TestResult | null, disabled: boolean) {
         setTimeout(setReadyTestResultData, 0, editedItem);
         const colorVar = disabled ? 'var(--lumo-disabled-text-color)' : 'var(--lumo-text-color)';
-        return <h3 style={{ color: colorVar }}>{editedItem ? 'Edit item' : 'New item'}</h3>;
+        // @ts-ignore
+        return <h3 style={{ color: colorVar }}>{editedItem ? (editedItem.__copy?'Copy' :'Edit' ): 'New'} item</h3>;
     }
 
     const localTestParameterService = createAutoComboBoxService(TestParameterService, "type");
