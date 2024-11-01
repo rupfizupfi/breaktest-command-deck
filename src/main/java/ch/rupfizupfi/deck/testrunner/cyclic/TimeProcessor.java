@@ -43,12 +43,12 @@ public class TimeProcessor implements SignalListener {
     public void handleSignal(int signal) throws FinishTestException {
         if (signal == TestContext.RELEASE_SIGNAL) {
             // send pull signal after release time
-            scheduler.scheduleAtFixedRate(this::sendPullSignal, 0, releaseTime, TimeUnit.MILLISECONDS);
+            scheduler.schedule(this::sendPullSignal, releaseTime, TimeUnit.MILLISECONDS);
         }
 
         if (signal == TestContext.PULL_SIGNAL) {
             // send release signal after pull time
-            scheduler.scheduleAtFixedRate(this::sendReleaseSignal, 0, pullTime, TimeUnit.MILLISECONDS);
+            scheduler.schedule(this::sendReleaseSignal, pullTime, TimeUnit.MILLISECONDS);
         }
     }
 }
