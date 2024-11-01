@@ -63,7 +63,7 @@ export default function ProjectView() {
                     }
                 },
                 customColumns: [
-                    <GridColumn key="results" renderer={({item}: { item: Project }) => <Link to={`/api/DownloadEndpoint/project/${item.id}`}>Results</Link>} header="Results" autoWidth/>
+                    <GridColumn key="results" renderer={({item}: { item: Project }) => <Link target="_blank" to={`/api/DownloadEndpoint/project/${item.id}`}>Export</Link>} header="Results" autoWidth/>
                 ]
             }}
             formProps={{
