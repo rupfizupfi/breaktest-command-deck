@@ -69,7 +69,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         <div className="info-board">
             <h2>Info:</h2>
             <ul className="info-list">
-                <li className="info-item"><span>Force:</span> <span>{force / 1000} Kn</span></li>
+                <li className="info-item"><span>Force:</span> <span>{(force / 1000).toFixed(4).padStart(9, '0')} Kn</span></li>
             </ul>
             {infoDom}
             <label>
