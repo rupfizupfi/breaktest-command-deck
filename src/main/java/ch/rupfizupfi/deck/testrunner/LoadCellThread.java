@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public class LoadCellThread implements Runnable, MeasurementObserver {
+public class LoadCellThread implements MeasurementObserver {
     private volatile boolean running = false;
     private final TestContext testContext;
     private volatile float minValue;
@@ -21,6 +21,7 @@ public class LoadCellThread implements Runnable, MeasurementObserver {
     private final LoadCellDevice loadCellDevice;
     private final List<Measurement> measurementBuffer = new CopyOnWriteArrayList<>();
     private final Object lock = new Object();
+    private Thread thread;
 
     LoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice) {
         this.testContext = testContext;
@@ -28,6 +29,22 @@ public class LoadCellThread implements Runnable, MeasurementObserver {
         minValue = (float) testContext.getLowerLimit();
         maxValue = (float) testContext.getUpperLimit();
         csvStoreService = new CSVStoreService();
+    }
+
+    public void start() {
+        setRunning(true);
+        thread = new Thread(this::run);
+        thread.start();
+    }
+
+    public void stop() {
+        setRunning(false);
+        thread.interrupt();
+        try {
+            thread.join(100);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void setRunning(boolean running) {
@@ -57,8 +74,7 @@ public class LoadCellThread implements Runnable, MeasurementObserver {
         }
     }
 
-    @Override
-    public void run() {
+    protected void run() {
         String filePath = csvStoreService.generateFilePathForTestResult(testContext.getTestResultId());
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {

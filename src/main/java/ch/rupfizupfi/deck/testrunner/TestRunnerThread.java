@@ -5,20 +5,20 @@ import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-public class TestRunnerThread implements Runnable {
+public class TestRunnerThread {
     private final SimpMessagingTemplate template;
     private final DeviceService deviceService;
     private volatile boolean running = false;
     private TestResult testResult;
     private AbstractTest test;
+    private Thread thread;
 
     public TestRunnerThread(SimpMessagingTemplate template, DeviceService deviceService) {
         this.template = template;
         this.deviceService = deviceService;
     }
 
-    @Override
-    public void run() {
+    protected void run() {
         try {
             // Sleep for 50ms to allow the client to set up the websocket connection
             Thread.sleep(50);
@@ -61,13 +61,23 @@ public class TestRunnerThread implements Runnable {
             this.running = true;
             this.test = null;
             this.testResult = testResult;
-            new Thread(this).start();
+            this.thread = new Thread(this::run, "TestRunnerThread");
+            this.thread.start();
         }
     }
 
     public void stopThread() {
         if (this.running) {
             this.test.getContext().sendSignal(0);
+            try {
+                this.thread.join(1000);
+                if(this.thread.isAlive()) {
+                    this.thread.interrupt();
+                    this.thread.join();
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 

@@ -22,8 +22,7 @@ public class CyclicTest extends AbstractTest {
         targetUpperLimit = testContext.getUpperLimit();
 
         loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
-        loadCellThread.setRunning(true);
-        new Thread(loadCellThread).start();
+        loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");
         log("lowerShutOffThreshold " + testContext.getLowerLimit() + " Newton");
@@ -32,11 +31,11 @@ public class CyclicTest extends AbstractTest {
 
         deviceService.getFrequencyConverter().connect();
         cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
+        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
         cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
         cfw11.setDirection(true);
         cfw11.setGeneralEnable(true);
         cfw11.setStart(true);
-        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
 
         double startRampSeconds = testResult.testParameter.startRampSeconds;
         double stopRampSeconds = testResult.testParameter.stopRampSeconds;
@@ -44,9 +43,6 @@ public class CyclicTest extends AbstractTest {
             cfw11.setUseSecondRamp(true);
             cfw11.setSecondSpeedRampTime((int) (startRampSeconds * 10), (int) (stopRampSeconds * 10));
         }
-
-//        controller.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
-//        controller.setStart(true);
     }
 
     void initContext() {

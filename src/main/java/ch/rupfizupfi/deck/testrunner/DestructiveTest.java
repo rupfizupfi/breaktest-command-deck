@@ -2,7 +2,6 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
-import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class DestructiveTest extends AbstractTest {
@@ -14,8 +13,7 @@ public class DestructiveTest extends AbstractTest {
         testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold * 1000, testResult.testParameter.lowerShutOffThreshold * 1000);
         initContext();
         loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
-        loadCellThread.setRunning(true);
-        new Thread(loadCellThread).start();
+        loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");
         log("lowerShutOffThreshold " + testContext.getLowerLimit() + " Newton");
@@ -23,6 +21,7 @@ public class DestructiveTest extends AbstractTest {
 
         deviceService.getFrequencyConverter().connect();
         cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
+        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
         cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
         cfw11Pull();
         cfw11.setGeneralEnable(true);
