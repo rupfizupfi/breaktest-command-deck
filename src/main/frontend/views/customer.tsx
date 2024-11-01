@@ -3,7 +3,7 @@ import {AutoCrud} from "@vaadin/hilla-react-crud";
 import {CustomerService} from "Frontend/generated/endpoints";
 import CustomerModel from "Frontend/generated/ch/rupfizupfi/deck/data/CustomerModel";
 
-export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/file.svg'}, title: 'Kunde', loginRequired: true};
+export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/file.svg'}, title: 'Customer', loginRequired: true};
 
 export default function CustomerView() {
     return (
