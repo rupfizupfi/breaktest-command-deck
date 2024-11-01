@@ -64,7 +64,7 @@ public class CSVStoreService {
         }
 
         var peake = lines.stream().map(line -> line.split(",")).filter(cols -> cols.length == 2 && isValidTimeStamp(cols[0]))
-                .map(cols -> Double.parseDouble(cols[1]))
+                .map(cols -> Double.parseDouble(cols[1])/1000)
                 .max(Double::compareTo).orElse(0.0);
 
         return String.valueOf(peake);

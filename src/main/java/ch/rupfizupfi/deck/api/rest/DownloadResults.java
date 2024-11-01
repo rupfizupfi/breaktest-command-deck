@@ -142,7 +142,7 @@ public class DownloadResults {
         Sheet sheet2 = workbook.createSheet("Test Results");
         Row headerRow = sheet2.createRow(0);
         String[] headers = {
-                "Test Result ID", "Sample Name", "Test Type", "Peaks", "Description", "Result Text",
+                "Test Result ID", "Sample Name", "Test Type", "Peaks (kN)", "Description", "Result Text",
                 "Speed", "Upper Shut Off Threshold", "Lower Shut Off Threshold",
                 "Upper Turn Force", "Lower Turn Force", "Cycle Count",
                 "Start Ramp Seconds", "Stop Ramp Seconds", "Sample Description",
