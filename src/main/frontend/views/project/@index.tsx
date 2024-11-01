@@ -5,11 +5,14 @@ import ProjectModel from "Frontend/generated/ch/rupfizupfi/deck/data/ProjectMode
 import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
 import Project from "Frontend/generated/ch/rupfizupfi/deck/data/Project";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
-import {TextField} from "@vaadin/react-components";
+import {GridColumn, TextField} from "@vaadin/react-components";
 import {createAutoComboBoxService} from "Frontend/components/combobox/service";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
 import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
+import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
+import {Link} from "react-router-dom";
+import React from "react";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg'}, title: 'Projects', loginRequired: true};
 
@@ -59,7 +62,10 @@ export default function ProjectView() {
                             />
                         )
                     }
-                }
+                },
+                customColumns: [
+                    <GridColumn key="results" renderer={({item}: { item: Project }) => <Link to={`/api/DownloadEndpoint/project/${item.id}`}>Results</Link>} header="Results" autoWidth/>
+                ]
             }}
             formProps={{
                 fieldOptions: {
