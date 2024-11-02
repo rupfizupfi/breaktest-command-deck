@@ -7,28 +7,26 @@ public class SuckJob {
     Thread thread;
 
     public void start() {
-        try {
-            this.thread = new Thread(this::suck);
-            this.thread.start();
-        } catch (ComportNotFoundException e) {
-            e.printStackTrace();
-        }
+        this.thread = new Thread(this::suck);
+        this.thread.start();
     }
 
-    protected void suck() throws ComportNotFoundException {
-        FourWayRelaySwitch relaySwitch = new FourWayRelaySwitch();
-        relaySwitch.connect();
-        relaySwitch.enableRelay1();
-
+    protected void suck() {
         try {
-
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
+            FourWayRelaySwitch relaySwitch = new FourWayRelaySwitch();
+            relaySwitch.connect();
+            relaySwitch.enableRelay1();
+            try {
+                Thread.sleep(8000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            finally {
+                relaySwitch.disableRelay1();
+                relaySwitch.disconnect();
+            }
+        } catch (ComportNotFoundException e) {
             e.printStackTrace();
-        }
-        finally {
-            relaySwitch.disableRelay1();
-            relaySwitch.disconnect();
         }
     }
 }

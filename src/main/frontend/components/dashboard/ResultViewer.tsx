@@ -25,10 +25,15 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
     useEffect(() => {
         if (selectedFile) {
             TestResultService.readCSVData(testResult.id!, selectedFile).then((text) => {
-                const lines = text.split('\n');
+                const lines = text.replace(/\r/g,'').split('\n');
                 const newPoints = lines.reduce((acc: [number[], number[]], line: string) => {
                     const [timestamp, force] = line.split(',').map(parseFloat);
+
                     if(isNaN(timestamp) || isNaN(force)){
+                        return acc;
+                    }
+
+                    if(line.split(',')[1].includes('E')){
                         return acc;
                     }
 
