@@ -40,6 +40,9 @@ export default function TestResultBoard({testResult, reset}: TestResultBoardProp
             next: (value: IMessage) => {
                 const newStatus = JSON.parse(value.body);
                 const newPoints = newStatus.reduce((acc: [number[], number[]], item: any) => {
+                    if (item.timestamp - start < 0) {
+                        return acc;
+                    }
                     acc[0].push(item.timestamp - start);
                     acc[1].push(item.force);
                     return acc;
