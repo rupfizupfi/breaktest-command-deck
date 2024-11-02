@@ -32,7 +32,7 @@ public class CyclicTest extends AbstractTest {
         deviceService.getFrequencyConverter().connect();
         cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
         cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
-        cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
+        cfw11.setSpeedReferenceValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
         cfw11.setDirection(true);
         cfw11.setGeneralEnable(true);
         cfw11.setStart(true);

@@ -43,7 +43,7 @@ public class TimeCyclicTest extends CyclicTest {
         deviceService.getFrequencyConverter().connect();
         cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
         cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
-        cfw11.setSpeedValueAsRpm((int) Math.round(INITIAL_SPEED / (double) SPEED_DIVISOR));
+        cfw11.setSpeedReferenceValueAsRpm((int) Math.round(INITIAL_SPEED / (double) SPEED_DIVISOR));
         cfw11.setSecondSpeedRampTime(INITIAL_RAMP_TIME, INITIAL_RAMP_TIME); // 300ms each
         cfw11.setControlParameters(true, true, true, null, true);
     }
@@ -61,7 +61,7 @@ public class TimeCyclicTest extends CyclicTest {
                 cfw11.setUseSecondRamp(false);
             }
 
-            cfw11.setSpeedValueAsRpm((int) Math.round(testResult.testParameter.speed / (double) SPEED_DIVISOR));
+            cfw11.setSpeedReferenceValueAsRpm((int) Math.round(testResult.testParameter.speed / (double) SPEED_DIVISOR));
         }
 
         if (this.analyseRun) {
