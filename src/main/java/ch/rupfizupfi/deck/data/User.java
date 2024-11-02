@@ -10,6 +10,7 @@ import java.util.Set;
 @Entity
 @Table(name = "application_user")
 public class User extends AbstractEntity {
+    @JsonView(Views.Simple.class)
     private String username;
 
     @JsonView(Views.Simple.class)
