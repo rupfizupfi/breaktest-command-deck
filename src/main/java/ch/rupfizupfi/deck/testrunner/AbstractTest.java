@@ -19,7 +19,7 @@ public abstract class AbstractTest implements SignalListener {
         this.testResult = testResult;
         this.template = template;
         this.deviceService = deviceService;
-        this.relaySwitch = new FourWayRelaySwitch("COM3");
+        this.relaySwitch = new FourWayRelaySwitch();
         this.relaySwitch.connect();
         this.relaySwitch.enableRelay1();
     }

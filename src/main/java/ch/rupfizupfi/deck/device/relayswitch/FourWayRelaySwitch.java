@@ -6,17 +6,31 @@ public class FourWayRelaySwitch {
     private SerialPort serialPort;
     private boolean isConnected;
 
-    public FourWayRelaySwitch(String comPortName) {
+    public FourWayRelaySwitch() throws ComportNotFoundException {
         SerialPort[] ports = SerialPort.getCommPorts();
         System.out.println("Available Ports:");
         for (SerialPort port : ports) {
             System.out.println(port.getSystemPortName());
+            System.out.println(port.getDescriptivePortName());
+            System.out.println(port.getSystemPortPath());
         }
 
-        serialPort = SerialPort.getCommPort(comPortName);
+        serialPort = SerialPort.getCommPort(getComPort());
         serialPort.setComPortParameters(115200, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY);
         serialPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 0, 0);
         isConnected = false;
+    }
+
+    protected String getComPort() throws ComportNotFoundException {
+        SerialPort[] ports = SerialPort.getCommPorts();
+        System.out.println("Available Ports:");
+        for (SerialPort port : ports) {
+            if(port.getDescriptivePortName().contains("CH9102")){
+                return port.getSystemPortName();
+            }
+        }
+
+        throw new ComportNotFoundException("Four way switch com port not found");
     }
 
     public boolean connect() {
