@@ -91,7 +91,7 @@ public class TestRunnerThread {
 
         var cfw11 = new Cfw11();
         cfw11.setGeneralEnable(false);
-        cfw11.setSpeedValueAsRpm(0);
+        cfw11.setSpeedReferenceValueAsRpm(0);
         cfw11.setStart(false);
         cfw11.getUsbComm().closeUSBComm();
     }

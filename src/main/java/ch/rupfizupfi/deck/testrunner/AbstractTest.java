@@ -43,7 +43,7 @@ public abstract class AbstractTest implements SignalListener {
      */
     void cleanup() {
         cfw11.setControlParameters(false, false, null, null, null);
-        cfw11.setSpeedValueAsRpm(0);
+        cfw11.setSpeedReferenceValueAsRpm(0);
         loadCellThread.setRunning(false);
     }
 
