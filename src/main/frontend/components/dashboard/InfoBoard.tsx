@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, {useEffect, useState} from "react";
 import {DeviceInfoService, SuckService} from "Frontend/generated/endpoints";
-import { getService } from "Frontend/service/StatusService";
-import { IMessage } from "@stomp/rx-stomp";
-import { Checkbox } from "@vaadin/react-components";
+import {getService} from "Frontend/service/StatusService";
+import {IMessage} from "@stomp/rx-stomp";
+import {Checkbox} from "@vaadin/react-components";
 import './InfoBoard.css';
 import {Notification} from "@vaadin/react-components/Notification";
 
@@ -18,7 +18,8 @@ interface Info {
     motorTorque: number;
 }
 
-interface InfoBoardProps {}
+interface InfoBoardProps {
+}
 
 /**
  * This component is placed under the navigation bar and shows the current status of the system.
@@ -28,6 +29,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
     const [info, setFCInfo] = useState<Info | null>(null);
     const [force, setForce] = useState<number>(0);
     const [enabled, setEnabled] = useState<boolean>(false);
+    const [suckEnabled, setSuck] = useState<boolean>(false);
 
     useEffect(() => {
         if (!enabled) {
@@ -86,15 +88,15 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             </label>
             <br/>
             <label>
-                Suck: <Checkbox theme="primary" checked={enabled} onChange={function (e) {
-                    (e.target.checked ? SuckService.enable().then(confirm=> {
-                        if(confirm){
-                            Notification.show('it works')
-                        }
-                        else {
-                            Notification.show('action is not possible')
-                        }
-                    }) : SuckService.disable());
+                Suck: <Checkbox theme="primary" checked={suckEnabled} onChange={function (e) {
+                setSuck(e.target.checked);
+                (e.target.checked ? SuckService.enable().then(confirm => {
+                    if (confirm) {
+                        Notification.show('it works')
+                    } else {
+                        Notification.show('action is not possible')
+                    }
+                }) : SuckService.disable());
             }}/>
             </label>
         </div>
