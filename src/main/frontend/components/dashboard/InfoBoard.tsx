@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { DeviceInfoService } from "Frontend/generated/endpoints";
+import {DeviceInfoService, SuckService} from "Frontend/generated/endpoints";
 import { getService } from "Frontend/service/StatusService";
 import { IMessage } from "@stomp/rx-stomp";
 import { Checkbox } from "@vaadin/react-components";
 import './InfoBoard.css';
+import {Notification} from "@vaadin/react-components/Notification";
 
 interface Info {
     id: number;
@@ -79,8 +80,21 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             </ul>
             {infoDom}
             <label>
-                Show status: <Checkbox checked={enabled} onChange={function (e) {
+                Show status: <Checkbox theme="primary" checked={enabled} onChange={function (e) {
                 setEnabled(e.target.checked);
+            }}/>
+            </label>
+            <br/>
+            <label>
+                Suck: <Checkbox theme="primary" checked={enabled} onChange={function (e) {
+                    (e.target.checked ? SuckService.enable().then(confirm=> {
+                        if(confirm){
+                            Notification.show('it works')
+                        }
+                        else {
+                            Notification.show('action is not possible')
+                        }
+                    }) : SuckService.disable());
             }}/>
             </label>
         </div>
