@@ -13,15 +13,11 @@ public abstract class AbstractTest implements SignalListener {
     protected TestContext testContext;
     protected final SimpMessagingTemplate template;
     protected DeviceService deviceService;
-    protected FourWayRelaySwitch relaySwitch;
 
     AbstractTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
         this.testResult = testResult;
         this.template = template;
         this.deviceService = deviceService;
-        this.relaySwitch = new FourWayRelaySwitch();
-        this.relaySwitch.connect();
-        this.relaySwitch.enableRelay1();
     }
 
     abstract void setup();
@@ -38,6 +34,7 @@ public abstract class AbstractTest implements SignalListener {
         cleanup();
         String className = this.getClass().getSimpleName();
         log(className + " finishing test");
+        new SuckJob().start();
         throw new FinishTestException();
     }
 
@@ -48,8 +45,6 @@ public abstract class AbstractTest implements SignalListener {
         cfw11.setControlParameters(false, false, null, null, null);
         cfw11.setSpeedValueAsRpm(0);
         loadCellThread.setRunning(false);
-        relaySwitch.disableRelay1();
-        relaySwitch.disconnect();
     }
 
     void destroy() {
