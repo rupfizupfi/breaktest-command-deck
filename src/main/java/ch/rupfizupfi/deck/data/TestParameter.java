@@ -55,6 +55,6 @@ public class TestParameter extends AbstractEntity implements DataWithOwner {
     @Transient
     @JsonView(Views.Simple.class)
     public String getLabel() {
-        return type + " " + speed + " m/s " + lowerShutOffThreshold + "kN - " + upperShutOffThreshold+ "kN";
+        return type + " " + speed + " mm/min " + lowerShutOffThreshold + "kN - " + upperShutOffThreshold+ "kN";
     }
 }
