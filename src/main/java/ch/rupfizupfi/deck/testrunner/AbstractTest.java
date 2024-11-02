@@ -13,11 +13,13 @@ public abstract class AbstractTest implements SignalListener {
     protected TestContext testContext;
     protected final SimpMessagingTemplate template;
     protected DeviceService deviceService;
+    protected long startTime;
 
     AbstractTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
         this.testResult = testResult;
         this.template = template;
         this.deviceService = deviceService;
+        this.startTime = System.currentTimeMillis();
     }
 
     abstract void setup();
@@ -34,7 +36,11 @@ public abstract class AbstractTest implements SignalListener {
         cleanup();
         String className = this.getClass().getSimpleName();
         log(className + " finishing test");
-        new SuckJob().start();
+
+        if (System.currentTimeMillis() - startTime > 2000) {
+            new SuckJob().start();
+        }
+
         throw new FinishTestException();
     }
 
