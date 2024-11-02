@@ -61,7 +61,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         <>
             <h3 className="lumo-typography">Status: {info.id}</h3>
             <ul className="info-list">
-                <li className="info-item"><span>Speed:</span> <span>{info.speed} m/s</span></li>
+                <li className="info-item"><span>Speed:</span> <span>{info.speed * 375} mm/min</span></li>
                 <li className="info-item"><span>Ramp:</span> <span>{info.useSecondRamp ? 'second' : 'first'}</span></li>
                 <li className="info-item"><span>Direction:</span> <span>{info.directionIsForward ? 'forwards' : 'backwards'}</span></li>
                 <li className="info-item"><span>Motor current:</span> <span>{info.motorCurrent} A</span></li>
