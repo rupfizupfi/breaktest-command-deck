@@ -25,7 +25,7 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
         if (UserUtils.isAdmin()) {
             return super.get(id);
         }
-        return this.getRepository().findOne(addOwnerCriteriaToSpec(Specification.where(null)));
+        return this.getRepository().findOne(addOwnerCriteriaToSpec(Specification.where((root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("id"), id))));
     }
 
     protected User getAuthenticatedUser() {
