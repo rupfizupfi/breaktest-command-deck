@@ -7,6 +7,7 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class CSVStoreService {
     protected long minTimeStamp = 0;
@@ -43,9 +44,10 @@ public class CSVStoreService {
         this.minTimeStamp = (System.currentTimeMillis() / 1000) - 60 * 60 * 24 * 4;
 
         String[] paths = this.listCSVFilesForTestResult(id);
-        var results = Arrays.stream(paths).map(path -> getPeakFromResultFile(id, path))
+        var results = Arrays.stream(paths)
+                .map(path -> getPeakFromResultFile(id, path))
                 .filter(Objects::nonNull)
-                .toArray(String[]::new);
+                .collect(Collectors.toList());
 
         return String.join(",", results);
     }
