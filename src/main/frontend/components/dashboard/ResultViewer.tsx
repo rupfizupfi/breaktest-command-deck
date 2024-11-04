@@ -42,6 +42,8 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
                     return acc;
                 }, [[], []]);
 
+                const time = newPoints[0][0];
+                newPoints[0] = newPoints[0].map(v=>v-time);
                 setDataPoints(newPoints);
             });
         }
