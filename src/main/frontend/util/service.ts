@@ -7,33 +7,12 @@ export interface ListEndpointService<T> {
 }
 
 export function constraintServiceToFilter<Item, T extends ListEndpointService<Item>>(endpointService: T, mainFilter:Filter): T {
-    return new Proxy(endpointService, {
-        get: function(target, prop, receiver) {
-            if (prop === 'list') {
-                return (pageable: Pageable, filter: Filter | undefined, init?: EndpointRequestInit) => {
-                    return Reflect.apply(target.list, target, [pageable, {
-                        "@type": "and",
-                        "children": [mainFilter, filter]
-                    }, init]).then((items:Item[]) => items.map(replaceNullValues));
-                    // return target.list(pageable, {
-                    //     "@type": "and",
-                    //     "children": [mainFilter, filter]
-                    // }, init).then((items)=>items.map(replaceNullValues));
-                }
-            }
-            return Reflect.get(target, prop, receiver);
-        }
-    });
-}
-
-/**
- * The Vaadin hilla library has  some serious problems with null or not existing values
- */
-export function replaceNullValues(item:any) {
-    for (let key in item) {
-        if (item[key] === null) {
-            item[key] = undefined;
-        }
+    const filteredEndpointService = {...endpointService};
+    filteredEndpointService.list = (pageable: Pageable, filter: Filter | undefined, init?: EndpointRequestInit) => {
+        return endpointService.list(pageable, {
+            "@type": "and",
+            "children": [mainFilter, filter]
+        }, init);
     }
-    return item;
+    return filteredEndpointService;
 }

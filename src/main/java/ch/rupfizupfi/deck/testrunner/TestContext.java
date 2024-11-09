@@ -3,6 +3,7 @@ package ch.rupfizupfi.deck.testrunner;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class TestContext {
@@ -13,14 +14,13 @@ public class TestContext {
     private volatile double lowerLimit;
     private volatile int lastSendSignal = -1;
     private final long testResultId;
-    private final List<SignalListener> signalListeners;
+    private final List<SignalListener> signalListeners = new CopyOnWriteArrayList<>();
     private final BlockingQueue<Integer> signalQueue = new LinkedBlockingQueue<>();
 
     public TestContext(long testId, double upperLimit, double lowerLimit) {
         this.testResultId = testId;
         this.upperLimit = upperLimit;
         this.lowerLimit = lowerLimit;
-        this.signalListeners = new ArrayList<>();
     }
 
     public double getUpperLimit() {
