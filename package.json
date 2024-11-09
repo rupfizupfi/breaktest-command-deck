@@ -70,6 +70,12 @@
     "workbox-precaching": "7.3.0"
   },
   "overrides": {
+    "@fontsource/barlow-condensed": "$@fontsource/barlow-condensed",
+    "ws": "$ws",
+    "react-plotly.js": "$react-plotly.js",
+    "react-chartjs-2": "$react-chartjs-2",
+    "chartjs-adapter-date-fns": "$chartjs-adapter-date-fns",
+    "@stomp/rx-stomp": "$@stomp/rx-stomp",
     "@vaadin/bundles": "$@vaadin/bundles",
     "@vaadin/polymer-legacy-adapter": "$@vaadin/polymer-legacy-adapter",
     "@vaadin/vaadin-development-mode-detector": "$@vaadin/vaadin-development-mode-detector",
@@ -77,11 +83,6 @@
     "@vaadin/vaadin-usage-statistics": "$@vaadin/vaadin-usage-statistics",
     "@vaadin/react-components": "$@vaadin/react-components",
     "@vaadin/react-components-pro": "$@vaadin/react-components-pro",
-    "@fontsource/barlow-condensed": "$@fontsource/barlow-condensed",
-    "ws": "$ws",
-    "react-plotly.js": "$react-plotly.js",
-    "react-chartjs-2": "$react-chartjs-2",
-    "chartjs-adapter-date-fns": "$chartjs-adapter-date-fns",
     "@vaadin/common-frontend": "$@vaadin/common-frontend",
     "react-dom": "$react-dom",
     "@vaadin/hilla-frontend": "$@vaadin/hilla-frontend",
@@ -101,8 +102,7 @@
     "proj4": "$proj4",
     "@vaadin/vaadin-themable-mixin": "$@vaadin/vaadin-themable-mixin",
     "@vaadin/vaadin-lumo-styles": "$@vaadin/vaadin-lumo-styles",
-    "@vaadin/vaadin-material-styles": "$@vaadin/vaadin-material-styles",
-    "@stomp/rx-stomp": "$@stomp/rx-stomp"
+    "@vaadin/vaadin-material-styles": "$@vaadin/vaadin-material-styles"
   },
   "vaadin": {
     "dependencies": {
