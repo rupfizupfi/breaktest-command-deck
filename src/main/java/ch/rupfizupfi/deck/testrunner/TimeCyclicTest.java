@@ -86,8 +86,12 @@ public class TimeCyclicTest extends CyclicTest {
     }
 
     private void handleReleaseSignal(int index, int alter) {
-        analysedData[index].setAndCheckStartTime(System.currentTimeMillis());
-        analysedData[alter].endTime = System.currentTimeMillis();
+        if (Math.abs(loadCellThread.getMaxValue() - targetUpperLimit) < FORCE_THRESHOLD) {
+            log("set start time for release");
+            analysedData[index].setAndCheckStartTime(System.currentTimeMillis());
+            analysedData[alter].endTime = System.currentTimeMillis();
+        }
+
         float minForceValue = loadCellThread.getMinValue();
 
         log("Current min value " + minForceValue);
@@ -102,7 +106,8 @@ public class TimeCyclicTest extends CyclicTest {
     }
 
     private void handlePullSignal(int index, int alter) {
-        if (targetLowerLimit - loadCellThread.getMinValue() > FORCE_THRESHOLD) {
+        if (Math.abs(targetLowerLimit - loadCellThread.getMinValue()) < FORCE_THRESHOLD) {
+            log("set start time for pull");
             analysedData[index].setAndCheckStartTime(System.currentTimeMillis());
             analysedData[alter].endTime = System.currentTimeMillis();
         }
