@@ -12,10 +12,11 @@ import {IMessage} from "@stomp/rx-stomp";
 import TestResultBoard from "Frontend/components/dashboard/TestResultBoard";
 import {Link} from "react-router-dom";
 import OwnerSelector from "Frontend/components/owner/OnwerSelector";
-import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
 import {Button} from "@vaadin/react-components/Button.js";
 import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
 import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
+import ownerGridColumn from "Frontend/model/owner/ownerGridColumn";
+import sampleGridColumn from "Frontend/model/sample/sampleGridColumn";
 
 createEmptyValueProxy(TestResultModel);
 
@@ -55,15 +56,11 @@ export default function RunView() {
                 gridProps={{
                     visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results'],
                     columnOptions: {
-                        owner: {
-                            renderer: OwnerGridView
-                        },
+                        owner: ownerGridColumn,
                         testParameter: {
                             renderer: ({item}: { item: TestResult }) => item.testParameter.label
                         },
-                        sample: {
-                            renderer: ({item}: { item: TestResult }) => item.sample?.name
-                        }
+                        sample: sampleGridColumn
                     },
                     customColumns: [
                         <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>

@@ -4,6 +4,7 @@ import ch.rupfizupfi.deck.data.jsonViews.Views;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonView;
 import jakarta.persistence.*;
+import org.springframework.lang.Nullable;
 
 import java.util.Set;
 
@@ -18,6 +19,9 @@ public class User extends AbstractEntity {
 
     @JsonIgnore
     private String hashedPassword;
+
+    @Transient
+    private String newPassword;
 
     @Enumerated(EnumType.STRING)
     @ElementCollection(fetch = FetchType.EAGER)
@@ -54,6 +58,15 @@ public class User extends AbstractEntity {
 
     public void setHashedPassword(String hashedPassword) {
         this.hashedPassword = hashedPassword;
+    }
+
+    @Nullable
+    public String getNewPassword() {
+        return newPassword;
+    }
+
+    public void setNewPassword(@Nullable String newPassword) {
+        this.newPassword = newPassword;
     }
 
     public Set<Role> getRoles() {

@@ -12,7 +12,7 @@ REM Wait for a short period to ensure the Java process starts
 timeout /t 5 /nobreak > nul
 
 REM Find the PID of the running Java process using wmic and command line
-for /f "skip=1 tokens=1" %%i in ('wmic process where "CommandLine like '%%breaktest-command-deck.jar%%'" get ProcessId') do (
+for /f "skip=1 tokens=1" %%i in ('wmic process where "CommandLine like 'java%%' and CommandLine like '%%breaktest-command-deck.jar%%'" get ProcessId') do (
     set "APP_PID=%%i"
     goto :found_pid
 )
