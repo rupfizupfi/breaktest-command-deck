@@ -11,10 +11,14 @@ export function constraintServiceToFilter<Item, T extends ListEndpointService<It
         get: function(target, prop, receiver) {
             if (prop === 'list') {
                 return (pageable: Pageable, filter: Filter | undefined, init?: EndpointRequestInit) => {
-                    return target.list(pageable, {
+                    return Reflect.apply(target.list, target, [pageable, {
                         "@type": "and",
                         "children": [mainFilter, filter]
-                    }, init).then((items)=>items.map(replaceNullValues));
+                    }, init]).then((items:Item[]) => items.map(replaceNullValues));
+                    // return target.list(pageable, {
+                    //     "@type": "and",
+                    //     "children": [mainFilter, filter]
+                    // }, init).then((items)=>items.map(replaceNullValues));
                 }
             }
             return Reflect.get(target, prop, receiver);
