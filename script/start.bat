@@ -1,8 +1,10 @@
 @echo off
 echo Breaktest command deck App is starting...
 
+cd ..
+
 REM Start the Java application and redirect output to app.log
-start "breaktest-command-deck" /high /B cmd /c "java -jar ../build/libs/breaktest-command-deck.jar > app.log"
+start "breaktest-command-deck" /high /B cmd /c "java -jar build/libs/breaktest-command-deck.jar > log/app.log"
 
 REM Wait for a short period to ensure the Java process starts
 timeout /t 5 /nobreak > nul
