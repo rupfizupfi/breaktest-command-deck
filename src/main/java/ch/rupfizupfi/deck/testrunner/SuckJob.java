@@ -4,11 +4,15 @@ import ch.rupfizupfi.deck.device.relayswitch.ComportNotFoundException;
 import ch.rupfizupfi.deck.device.relayswitch.FourWayRelaySwitch;
 
 public class SuckJob {
-    Thread thread;
+    private final int duration;
+
+    SuckJob(int duration) {
+        this.duration = duration;
+    }
 
     public void start() {
-        this.thread = new Thread(this::suck);
-        this.thread.start();
+        Thread thread = new Thread(this::suck);
+        thread.start();
     }
 
     protected void suck() {
@@ -17,11 +21,10 @@ public class SuckJob {
             relaySwitch.connect();
             relaySwitch.enableRelay1();
             try {
-                Thread.sleep(8000);
+                Thread.sleep(this.duration * 1000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
-            }
-            finally {
+            } finally {
                 relaySwitch.disableRelay1();
                 relaySwitch.disconnect();
             }
