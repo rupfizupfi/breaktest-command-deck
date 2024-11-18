@@ -7,6 +7,9 @@ import {AutoCrudDialog} from "Frontend/components/autocrud/AutoCrudDialog";
 import {useMediaQuery} from "Frontend/components/autocrud/mediaQuery";
 import {ComponentStyleProps} from "Frontend/components/autocrud/util";
 import 'Frontend/components/autocrud/autoCrud.css';
+// @ts-ignore
+import {AutoFormFieldProps} from "@vaadin/hilla-react-crud/autoform-field";
+
 
 export type AutoCrudFormHeaderRenderer<TItem> = (
     editedItem: TItem | null,
@@ -28,6 +31,7 @@ export type AutoCrudFormProps<TModel extends AbstractModel> = Omit<
          * "Edit item" when editing an existing item.
          */
         headerRenderer?: AutoCrudFormHeaderRenderer<Value<TModel>>;
+        disableAddButtons?: boolean;
     }>;
 
 export type AutoCrudGridProps<TItem> = Omit<
@@ -81,6 +85,7 @@ export type AutoCrudProps<TModel extends AbstractModel = AbstractModel> = Compon
          */
         gridProps?: AutoCrudGridProps<Value<TModel>>;
         copyItemCallback?: (item: Value<TModel>) => Value<TModel>;
+        formFieldUpdater?: (item: Value<TModel>, formProps: AutoFormFieldProps) => void;
     }>;
 
 function defaultFormHeaderRenderer<TItem>(editedItem: TItem | null, disabled: boolean): JSX.Element | null | undefined {
@@ -120,11 +125,12 @@ export function AutoCrud<TModel extends AbstractModel>({
                                                            id,
                                                            className,
                                                            copyItemCallback,
+                                                           formFieldUpdater
                                                        }: AutoCrudProps<TModel>): JSX.Element {
     const [item, setItem] = useState<Value<TModel> | typeof emptyItem | undefined>(undefined);
     const fullScreen = useMediaQuery('(max-width: 600px), (max-height: 600px)');
     const autoGridRef = useRef<AutoGridRef>(null);
-    const { headerRenderer: customFormHeaderRenderer, ...autoFormProps } = formProps ?? {};
+    const {headerRenderer: customFormHeaderRenderer, disableAddButtons, ...autoFormProps} = formProps ?? {};
     const formHeaderRenderer: AutoCrudFormHeaderRenderer<Value<TModel>> =
         customFormHeaderRenderer ?? defaultFormHeaderRenderer;
 
@@ -142,6 +148,17 @@ export function AutoCrud<TModel extends AbstractModel>({
 
     const formHeader = item && item !== emptyItem ? formHeaderRenderer(item, !item) : formHeaderRenderer(null, !item);
 
+    const buttons = disableAddButtons ? null : (
+        <div className="auto-crud-toolbar">
+            <Button theme="primary" onClick={() => setItem((item && item !== emptyItem) ? copyItem(item) : emptyItem)}>
+                + Copy
+            </Button>
+            <Button theme="primary" onClick={() => setItem(emptyItem)}>
+                + New
+            </Button>
+        </div>
+    );
+
     const mainSection = (
         <div className="auto-crud-main">
             <AutoGrid
@@ -157,16 +174,11 @@ export function AutoCrud<TModel extends AbstractModel>({
                 ref={autoGridRef}
                 aria-controls={autoFormProps.id ?? `auto-form-${id ?? autoCrudId}`}
             ></AutoGrid>
-            <div className="auto-crud-toolbar">
-                <Button theme="primary" onClick={() => setItem((item && item !== emptyItem) ? copyItem(item) : emptyItem)}>
-                    + Copy
-                </Button>
-                <Button theme="primary" onClick={() => setItem(emptyItem)}>
-                    + New
-                </Button>
-            </div>
+            {buttons}
         </div>
     );
+
+    formFieldUpdater && item && item !== emptyItem && formFieldUpdater(item, autoFormProps);
 
     const autoForm = (
         <AutoForm
@@ -178,7 +190,7 @@ export function AutoCrud<TModel extends AbstractModel>({
             model={model}
             itemIdProperty={itemIdProperty}
             item={item}
-            onSubmitSuccess={({ item: submittedItem }) => {
+            onSubmitSuccess={({item: submittedItem}) => {
                 if (fullScreen) {
                     setItem(undefined);
                 } else {
