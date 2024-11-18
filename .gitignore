@@ -24,3 +24,7 @@ webpack.generated.js
 frontend/themes/hilla-react-app/theme-editor.css
 
 .fleet/
+
+lib/usbmodbus.jar
+script/.data
+scrtip/app.log
