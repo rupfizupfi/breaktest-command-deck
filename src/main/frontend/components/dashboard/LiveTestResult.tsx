@@ -23,12 +23,38 @@ ChartJS.register(
     Legend,
 );
 
-interface TestResultBoardProps {
+export interface TestResultBoardProps {
+    testResult?: TestResult;
+    reset: () => void;
+}
+
+export default function LiveTestResult({testResult, reset}: TestResultBoardProps): React.JSX.Element {
+    const [runningTestResult, setRunningTestResult] = useState<TestResult | null>(null);
+
+    if (!testResult) {
+        TestRunnerService.status().then((statusResponse: any) => {
+            if (statusResponse.isRunning) {
+                setRunningTestResult(statusResponse.testResult);
+            }
+        });
+
+        if (!runningTestResult) {
+            return <div>No test running</div>;
+        }
+    } else {
+        setRunningTestResult(null);
+    }
+
+    // @ts-ignore
+    return <TestResultGraph testResult={testResult || runningTestResult} reset={reset}/>;
+}
+
+export interface TestResultGraphProps {
     testResult: TestResult;
     reset: () => void;
 }
 
-export default function TestResultBoard({testResult, reset}: TestResultBoardProps): React.JSX.Element {
+export function TestResultGraph({testResult, reset}: TestResultGraphProps): React.JSX.Element {
     const service = getService();
     const [dataPoints, setDataPoints] = useState<[number[], number[]]>([[], []]);
     const [logs, setLogs] = useState<string[]>([]);
@@ -64,10 +90,10 @@ export default function TestResultBoard({testResult, reset}: TestResultBoardProp
         });
 
         TestRunnerService.start(testResult.id!);
-        service.connect();
+        service.connectComponent(TestResultGraph);
 
         return () => {
-            service.disconnect();
+            service.disconnectComponent(TestResultGraph);
             subscription.unsubscribe();
             logSubscription.unsubscribe();
         };
@@ -121,7 +147,7 @@ export default function TestResultBoard({testResult, reset}: TestResultBoardProp
                     setStopped(true);
                 }}>Stop</Button>
                 <Button theme="primary error" onClick={() => {
-                    if(!stopped){
+                    if (!stopped) {
                         TestRunnerService.stop();
                         Notification.show('stopped');
                     }

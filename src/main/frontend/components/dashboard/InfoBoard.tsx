@@ -50,11 +50,11 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         });
 
         DeviceInfoService.enable();
-        service.connect();
+        service.connectComponent(InfoBoard);
 
         return () => {
             DeviceInfoService.disable();
-            service.disconnect();
+            service.disconnectComponent(InfoBoard);
             subscription.unsubscribe();
             infoSubscription.unsubscribe();
         };

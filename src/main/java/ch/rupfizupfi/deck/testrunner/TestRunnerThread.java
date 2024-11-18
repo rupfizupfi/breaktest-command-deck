@@ -81,6 +81,14 @@ public class TestRunnerThread {
         }
     }
 
+    public boolean isRunning() {
+        return this.running;
+    }
+
+    public TestResult getTestResult() {
+        return testResult;
+    }
+
     protected void retryShutdownOnException() {
         try {
             test.destroy();
