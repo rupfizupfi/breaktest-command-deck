@@ -23,7 +23,7 @@ export default function SampleView() {
                 propertyId: 'project.id',
                 filterValue: projectId,
                 matcher: Matcher.EQUALS,
-                '@type': 'propertyNumber',
+                '@type': 'propertyString',
             }));
         }
     }, [projectId]);
