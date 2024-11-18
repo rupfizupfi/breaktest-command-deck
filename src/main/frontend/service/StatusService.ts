@@ -6,6 +6,7 @@ export default class StatusService {
     private loadCellTopic: Observable<IMessage>;
     private updateLog: Observable<IMessage>;
     private frequencyConverterInfoTopic: Observable<IMessage>;
+    private connectedComponents: Set<object> = new Set();
 
     constructor() {
         this.rxStomp = new RxStomp();
@@ -55,8 +56,21 @@ export default class StatusService {
             body: JSON.stringify({'name': name})
         });
     }
-}
 
+    connectComponent(component: object) {
+        if (this.connectedComponents.size === 0) {
+            this.connect();
+        }
+        this.connectedComponents.add(component);
+    }
+
+    disconnectComponent(component: object) {
+        this.connectedComponents.delete(component);
+        if (this.connectedComponents.size === 0) {
+            this.disconnect();
+        }
+    }
+}
 
 let service: StatusService;
 
