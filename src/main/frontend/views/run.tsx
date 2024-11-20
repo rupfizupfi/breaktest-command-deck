@@ -17,6 +17,8 @@ import createEmptyValueProxy from "Frontend/components/owner/createEmptyValuePro
 import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
 import ownerGridColumn from "Frontend/model/owner/ownerGridColumn";
 import sampleGridColumn from "Frontend/model/sample/sampleGridColumn";
+import DistanceMeasureCam from "Frontend/components/webcam/DistanceMeasureCam";
+import FileUpload from "Frontend/components/control/FileUpload";
 
 createEmptyValueProxy(TestResultModel);
 
@@ -68,7 +70,7 @@ export default function RunView() {
                 }}
                 formProps={{
                     headerRenderer,
-                    visibleFields: ['owner', 'testParameter', 'sample', 'description', 'resultText', 'run'],
+                    visibleFields: ['owner', 'testParameter', 'sample', 'description', 'resultText', 'run', 'images'],
                     fieldOptions: {
                         owner: {
                             renderer: ({field}) => <OwnerSelector {...field} />,
@@ -90,11 +92,16 @@ export default function RunView() {
                                 <Icon icon="vaadin:bolt" slot={'prefix'} style={{ height: 'var(--lumo-icon-size-l)', width: 'var(--lumo-icon-size-l)' }} />
                                 Run test
                             </Button>,
+                        },
+                        images: {
+                            renderer: ({field}) => <FileUpload {...field} />,
                         }
+
                     }
                 }}
             />
             <LiveTestResult testResult={testResultData} reset={() => setTestResultData(undefined)}/>
+            <DistanceMeasureCam/>
         </VerticalLayout>
     );
 }

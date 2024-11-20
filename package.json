@@ -6,6 +6,7 @@
     "@fontsource/barlow-condensed": "^4.5.0",
     "@polymer/polymer": "3.5.2",
     "@stomp/rx-stomp": "^2.0.0",
+    "@techstark/opencv-js": "^4.10.0-release.1",
     "@vaadin/bundles": "24.5.2",
     "@vaadin/common-frontend": "0.0.19",
     "@vaadin/hilla-file-router": "24.5.3",
@@ -35,6 +36,7 @@
     "react-dom": "18.3.1",
     "react-plotly.js": "^2.6.0",
     "react-router-dom": "6.26.2",
+    "react-webcam": "^7.2.0",
     "ws": "^8.17.0"
   },
   "devDependencies": {
@@ -102,7 +104,9 @@
     "proj4": "$proj4",
     "@vaadin/vaadin-themable-mixin": "$@vaadin/vaadin-themable-mixin",
     "@vaadin/vaadin-lumo-styles": "$@vaadin/vaadin-lumo-styles",
-    "@vaadin/vaadin-material-styles": "$@vaadin/vaadin-material-styles"
+    "@vaadin/vaadin-material-styles": "$@vaadin/vaadin-material-styles",
+    "react-webcam": "$react-webcam",
+    "@techstark/opencv-js": "$@techstark/opencv-js"
   },
   "vaadin": {
     "dependencies": {
@@ -165,6 +169,6 @@
       "workbox-core": "7.3.0",
       "workbox-precaching": "7.3.0"
     },
-    "hash": "8de5a60743a1f4a2306afc6a4bb252249e4cfe2aeabe974e636bb83e53a31dc1"
+    "hash": "1b677e31b0e9a467711cd77ea8406ea319d079aa67a8fd0b4b6943d63a945b76"
   }
 }
