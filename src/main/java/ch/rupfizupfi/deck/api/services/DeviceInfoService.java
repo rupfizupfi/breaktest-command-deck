@@ -24,6 +24,10 @@ public class DeviceInfoService {
         return true;
     }
 
+    public boolean isEnabled() {
+        return isEnabled;
+    }
+
     public boolean disable() {
         if (!isEnabled) {
             return false;
