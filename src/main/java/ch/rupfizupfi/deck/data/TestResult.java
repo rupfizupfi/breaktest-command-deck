@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 
+import java.util.List;
+
 @Entity
 @Table(name = "test_result")
 public class TestResult extends AbstractEntity implements DataWithOwner {
@@ -39,4 +41,7 @@ public class TestResult extends AbstractEntity implements DataWithOwner {
     public boolean getRun() {
         return false;
     }
+
+    @OneToMany(mappedBy = "testResult", cascade = CascadeType.ALL, orphanRemoval = true)
+    public List<FileMetadata> files;
 }
