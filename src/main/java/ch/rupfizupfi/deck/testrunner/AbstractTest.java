@@ -9,15 +9,17 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 public abstract class AbstractTest implements SignalListener {
     protected LoadCellThread loadCellThread;
     protected Cfw11 cfw11;
-    protected TestResult testResult;
     protected TestContext testContext;
+    protected final TestResult testResult;
     protected final SimpMessagingTemplate template;
+    protected final TestRunnerFactory testRunnerFactory;
     protected DeviceService deviceService;
     protected long startTime;
 
-    AbstractTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
+    AbstractTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
         this.testResult = testResult;
         this.template = template;
+        this.testRunnerFactory = testRunnerFactory;
         this.deviceService = deviceService;
         this.startTime = System.currentTimeMillis();
     }

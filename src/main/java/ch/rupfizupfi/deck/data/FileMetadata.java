@@ -9,7 +9,7 @@ public class FileMetadata extends AbstractEntity {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
-    @Column(name = "file_path", nullable = false)
+    @Column(name = "file_path", nullable = true)
     private String filePath;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -17,9 +17,8 @@ public class FileMetadata extends AbstractEntity {
 
     public FileMetadata() {}
 
-    public FileMetadata(String fileName, String filePath) {
+    public FileMetadata(String fileName) {
         this.fileName = fileName;
-        this.filePath = filePath;
     }
 
     public String getFileName() {

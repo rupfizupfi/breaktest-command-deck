@@ -2,39 +2,64 @@ package ch.rupfizupfi.deck.service;
 
 import ch.rupfizupfi.deck.data.FileMetadata;
 import ch.rupfizupfi.deck.data.FileMetadataRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import ch.rupfizupfi.deck.filesystem.StorageLocationService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
 public class FileService {
+    private static final Logger log = Logger.getLogger(FileService.class.getName());
 
-    private final Path fileStorageLocation = Paths.get("uploads").toAbsolutePath().normalize();
+    private final FileMetadataRepository fileMetadataRepository;
 
-    @Autowired
-    private FileMetadataRepository fileMetadataRepository;
+    private final StorageLocationService storageLocationService;
 
-    public FileService() throws IOException {
-        Files.createDirectories(fileStorageLocation);
+    public FileService(FileMetadataRepository fileMetadataRepository, StorageLocationService storageLocationService) throws IOException {
+        this.fileMetadataRepository = fileMetadataRepository;
+        this.storageLocationService = storageLocationService;
+    }
+
+    protected Path getStorageLocation() {
+        var storageLocation = storageLocationService.getUploadLocation();
+        if (!Files.exists(storageLocation)) {
+            try {
+                Files.createDirectories(storageLocation);
+            } catch (IOException ex) {
+                log.severe("Could not create the directory where the uploaded files will be stored.");
+            }
+        }
+        return storageLocation;
     }
 
     public List<FileMetadata> saveFiles(MultipartFile[] files) throws IOException {
         return List.of(files).stream().map(file -> {
             try {
-                Path targetLocation = fileStorageLocation.resolve(file.getOriginalFilename());
-                Files.copy(file.getInputStream(), targetLocation);
-                FileMetadata metadata = new FileMetadata(file.getOriginalFilename(), targetLocation.toString());
-                return fileMetadataRepository.save(metadata);
+                return saveFile(file);
             } catch (IOException ex) {
                 throw new RuntimeException("Could not store file " + file.getOriginalFilename() + ". Please try again!", ex);
             }
         }).collect(Collectors.toList());
+    }
+
+    public FileMetadata saveFile(MultipartFile file) throws IOException {
+        FileMetadata metadata = new FileMetadata(file.getOriginalFilename());
+        FileMetadata savedMetadata = fileMetadataRepository.save(metadata);
+
+        Path targetLocation = getStorageLocation().resolve(generateFileName(file, savedMetadata));
+        Files.copy(file.getInputStream(), targetLocation);
+        savedMetadata.setFilePath(targetLocation.getFileName().toString());
+
+        return savedMetadata;
+    }
+
+    protected String generateFileName(MultipartFile file, FileMetadata metadata) {
+        return metadata.getId() + "-" + file.getOriginalFilename();
     }
 }

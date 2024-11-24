@@ -20,19 +20,19 @@ public class SecurityConfiguration extends VaadinWebSecurity {
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
+        // Disable CSRF protection for specific endpoints
+        http.csrf(csrf -> csrf.ignoringRequestMatchers(
+                new AntPathRequestMatcher("/api/files/uploads"),
+                new AntPathRequestMatcher("/api/files/upload")
+        ));
+
         // Public access
-        http.authorizeHttpRequests(
-                authorize -> authorize.requestMatchers(new AntPathRequestMatcher("/tests")).permitAll());
-
-        http.authorizeHttpRequests(
-                authorize -> authorize.requestMatchers(new AntPathRequestMatcher("/images/*.png")).permitAll());
-
-        // Icons from the line-awesome addon
         http.authorizeHttpRequests(authorize -> authorize
-                .requestMatchers(new AntPathRequestMatcher("/line-awesome/**/*.svg")).permitAll());
-
-        http.authorizeHttpRequests(authorize -> authorize
-                .requestMatchers(new AntPathRequestMatcher("/api/**")).permitAll());
+                .requestMatchers(new AntPathRequestMatcher("/tests")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/images/*.png")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/line-awesome/**/*.svg")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/**")).permitAll()
+        );
 
         super.configure(http);
         setLoginView(http, "/login");
