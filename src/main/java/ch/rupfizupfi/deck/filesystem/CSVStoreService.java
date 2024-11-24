@@ -9,10 +9,13 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
 public class CSVStoreService {
+    private static final Logger log = Logger.getLogger(CSVStoreService.class.getName());
+
     protected long minTimeStamp = 0;
     protected final StorageLocationService storageLocationService;
 
@@ -92,6 +95,8 @@ public class CSVStoreService {
     }
 
     private String getBasePathForTestResult(long testResultId) {
-        return storageLocationService.getResultDataLocation().resolve(Long.toString(testResultId)).toString();
+        String path = storageLocationService.getResultDataLocation().resolve(Long.toString(testResultId)).toString();
+        log.info("Base path for test result: " + path);
+        return path;
     }
 }
