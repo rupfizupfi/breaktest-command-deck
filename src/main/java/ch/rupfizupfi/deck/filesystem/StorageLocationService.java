@@ -15,10 +15,16 @@ public class StorageLocationService {
     }
 
     public Path getUploadLocation() {
-        return Paths.get(settingRepository.getSettingValue(Setting.Key.FILE_UPLOAD)).toAbsolutePath().normalize();
+        String path = settingRepository.getSettingValue(Setting.Key.FILE_UPLOAD);
+        return Paths.get(resolvePath(path)).toAbsolutePath().normalize();
     }
 
     public Path getResultDataLocation() {
-        return Paths.get(settingRepository.getSettingValue(Setting.Key.FILE_RESULT_DATA)).toAbsolutePath().normalize();
+        String path = settingRepository.getSettingValue(Setting.Key.FILE_RESULT_DATA);
+        return Paths.get(resolvePath(path)).toAbsolutePath().normalize();
+    }
+
+    protected String resolvePath(String path) {
+        return path.replace("~", System.getProperty("user.home"));
     }
 }

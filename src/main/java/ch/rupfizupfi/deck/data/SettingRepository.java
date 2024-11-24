@@ -3,6 +3,7 @@ package ch.rupfizupfi.deck.data;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
@@ -17,6 +19,9 @@ import java.util.logging.Logger;
 public class SettingRepository {
     private static final Logger log = Logger.getLogger(SettingRepository.class.getName());
     private static final String SETTINGS_FILE = "settings.json";
+
+    @Value("${spring.profiles.active:dev}")
+    private String activeProfile;
 
     private final List<Setting<?>> defaultSettings = List.of(
             Setting.create(Setting.Key.TESTRUNNER_SUCK, true),
@@ -27,12 +32,23 @@ public class SettingRepository {
 
     private final ObjectMapper objectMapper;
     private List<Setting<?>> settingsCache;
+    private boolean initialized = false;
 
     @Autowired
-    public SettingRepository(ObjectMapper objectMapper) throws IOException {
+    public SettingRepository(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        initializeSettingsFile();
         this.settingsCache = new CopyOnWriteArrayList<>();
+    }
+
+    protected void init() {
+        if (!initialized) {
+            try {
+                initializeSettingsFile();
+            } catch (IOException e) {
+                log.throwing(SettingRepository.class.getName(), "init", e);
+            }
+            initialized = true;
+        }
     }
 
     private void initializeSettingsFile() throws IOException {
@@ -44,15 +60,17 @@ public class SettingRepository {
     }
 
     private String getEnvironment() {
-        return System.getProperty("env", "prod");
+        return activeProfile.toLowerCase(Locale.ROOT);
     }
 
     private Path getSettingFilePath() {
-        String baseDir = getEnvironment().equals("dev") ? "./.data/" : Paths.get(System.getProperty("user.home"), "breaktester").toString();
+        log.info("Environment: " + getEnvironment());
+        String baseDir = getEnvironment().equals("dev") ? Paths.get(System.getProperty("user.dir")).toString() : Paths.get(System.getProperty("user.home"), "breaktester").toString();
         return Paths.get(baseDir, SETTINGS_FILE);
     }
 
     private List<Setting<?>> getSettings(boolean forceReload) {
+        init();
         if (forceReload || settingsCache.isEmpty()) {
             settingsCache = new CopyOnWriteArrayList<>(loadSettingsFromJson());
         }
@@ -67,7 +85,7 @@ public class SettingRepository {
         return getSettings(true);
     }
 
-
+    @SuppressWarnings("unchecked")
     public <T> T getSettingValue(Setting.Key key) {
         return (T) getSetting(key.getKey()).getValue();
     }
@@ -76,8 +94,8 @@ public class SettingRepository {
         return getSettings();
     }
 
-    public <T> Setting<T> getSetting(String key) {
-        return (Setting<T>) getSettings().stream().filter(setting -> setting.getKey().equals(key)).findFirst().orElseGet(Setting::new);
+    public <T> Setting<?> getSetting(String key) {
+        return getSettings().stream().filter(setting -> setting.getKey().equals(key)).findFirst().orElseGet(Setting::new);
     }
 
     public <T> void saveSetting(Setting<T> setting) throws IOException {
