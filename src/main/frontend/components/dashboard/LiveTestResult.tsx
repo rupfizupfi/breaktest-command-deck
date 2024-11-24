@@ -31,15 +31,19 @@ export interface TestResultBoardProps {
 export default function LiveTestResult({testResult, reset}: TestResultBoardProps): React.JSX.Element {
     const [runningTestResult, setRunningTestResult] = useState<TestResult | null>(null);
     useEffect(() => {
-       if (!testResult) {
-           TestRunnerService.status().then((statusResponse: any) => {
-               if (statusResponse.isRunning) {
-                   setRunningTestResult(statusResponse.testResult);
-               }
-           });
-       } else {
-                 setRunningTestResult(null);
+        if (!testResult) {
+            TestRunnerService.status().then((statusResponse: any) => {
+                if (statusResponse.isRunning) {
+                    setRunningTestResult(statusResponse.testResult);
                 }
+            });
+        } else {
+            setRunningTestResult(null);
+        }
+
+        return () => {
+            setRunningTestResult(null);
+        }
     }, [testResult]);
 
     if (!(testResult || runningTestResult)) {
