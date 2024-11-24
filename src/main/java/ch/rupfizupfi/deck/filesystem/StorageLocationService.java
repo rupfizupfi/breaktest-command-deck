@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 @Service
 public class StorageLocationService {
     protected SettingRepository settingRepository;
+
     public StorageLocationService(SettingRepository settingRepository) {
         this.settingRepository = settingRepository;
     }

@@ -3,7 +3,7 @@ package ch.rupfizupfi.deck.device.relayswitch;
 import com.fazecast.jSerialComm.SerialPort;
 
 public class FourWayRelaySwitch {
-    private SerialPort serialPort;
+    private final SerialPort serialPort;
     private boolean isConnected;
 
     public FourWayRelaySwitch() throws ComportNotFoundException {
@@ -16,7 +16,7 @@ public class FourWayRelaySwitch {
     protected String getComPort() throws ComportNotFoundException {
         SerialPort[] ports = SerialPort.getCommPorts();
         for (SerialPort port : ports) {
-            if(port.getDescriptivePortName().contains("CH9102")){
+            if (port.getDescriptivePortName().contains("CH9102")) {
                 return port.getSystemPortName();
             }
         }

@@ -65,7 +65,7 @@ export default function RunView() {
                     },
                     customColumns: [
                         <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>,
-                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>Results</Link>} header="Bilder" autoWidth/>
+                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>View</Link>} header="Bilder" autoWidth/>
                     ]
                 }}
                 formProps={{

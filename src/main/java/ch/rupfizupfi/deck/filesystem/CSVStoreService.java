@@ -77,7 +77,7 @@ public class CSVStoreService {
         }
 
         var peake = lines.stream().map(line -> line.split(",")).filter(cols -> cols.length == 2 && isValidTimeStamp(cols[0]))
-                .map(cols -> Double.parseDouble(cols[1])/1000)
+                .map(cols -> Double.parseDouble(cols[1]) / 1000)
                 //remove values above 300, as the load cell can go maximal to 200kN (20 Tonnes)
                 .filter(value -> value < 300)
                 .max(Double::compareTo).orElse(0.0);

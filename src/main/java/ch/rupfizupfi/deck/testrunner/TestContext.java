@@ -1,6 +1,5 @@
 package ch.rupfizupfi.deck.testrunner;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;

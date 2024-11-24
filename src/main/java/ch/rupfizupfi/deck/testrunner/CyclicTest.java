@@ -3,7 +3,6 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.testrunner.cyclic.CyclicTestContext;
-import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class CyclicTest extends AbstractTest {

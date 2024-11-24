@@ -42,6 +42,7 @@ public class SettingRepository {
 
     protected void init() {
         if (!initialized) {
+            log.info("init settings: " + getSettingFilePath());
             try {
                 initializeSettingsFile();
             } catch (IOException e) {
@@ -64,7 +65,6 @@ public class SettingRepository {
     }
 
     private Path getSettingFilePath() {
-        log.info("Environment: " + getEnvironment());
         String baseDir = getEnvironment().equals("dev") ? Paths.get(System.getProperty("user.dir")).toString() : Paths.get(System.getProperty("user.home"), "breaktester").toString();
         return Paths.get(baseDir, SETTINGS_FILE);
     }

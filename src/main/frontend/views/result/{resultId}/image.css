@@ -1,0 +1,30 @@
+.image-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+.image-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    margin:1em;
+    text-align: center;
+    column-gap: 1em;
+}
+
+.image-item vaadin-button {
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.thumbnail {
+    max-width: 50px;
+    max-height: 50px;
+    transition: transform 0.2s;
+    transform-origin: left center;
+}
+
+.thumbnail:hover {
+    transform: scale(5);
+}
