@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.data.Setting;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -33,5 +34,21 @@ public class DestructiveTest extends AbstractTest {
     @Override
     public void handleSignal(int signal) throws FinishTestException {
         finish();
+    }
+
+    @Override
+    void finish() throws FinishTestException {
+        if (System.currentTimeMillis() - startTime > 2000) {
+            var settingsRepository = this.deviceService.getSettingRepository();
+            try {
+                if (settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK)) {
+                    new SuckJob(settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK_DURATION)).start();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        super.finish();
     }
 }
