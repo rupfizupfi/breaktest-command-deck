@@ -39,17 +39,6 @@ public abstract class AbstractTest implements SignalListener {
         String className = this.getClass().getSimpleName();
         log(className + " finishing test");
 
-        if (System.currentTimeMillis() - startTime > 2000) {
-            var settingsRepository = this.deviceService.getSettingRepository();
-            try {
-                if (settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK)) {
-                    new SuckJob(settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK_DURATION)).start();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
         throw new FinishTestException();
     }
 
