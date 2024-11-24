@@ -3,15 +3,13 @@ package ch.rupfizupfi.deck.api.rest;
 import ch.rupfizupfi.deck.data.FileMetadata;
 import ch.rupfizupfi.deck.service.FileService;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
-import jakarta.annotation.security.PermitAll;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -20,8 +18,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/files")
 @AnonymousAllowed
-public class FileUploadController {
-    private static final Logger logger = LoggerFactory.getLogger(FileUploadController.class);
+public class FileEndpoint {
+    private static final Logger logger = LoggerFactory.getLogger(FileEndpoint.class);
 
     @Autowired
     private FileService fileService;
@@ -40,5 +38,14 @@ public class FileUploadController {
         FileMetadata fileMetadata = fileService.saveFile(file);
         logger.info("Successfully uploaded file: {}", fileMetadata.getFileName());
         return ResponseEntity.ok(fileMetadata);
+    }
+
+    @GetMapping("/image/{fileName}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable String fileName) {
+        Resource file = fileService.loadFileAsResource(fileName);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFilename() + "\"")
+                .body(file);
     }
 }

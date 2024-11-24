@@ -1,6 +1,8 @@
 package ch.rupfizupfi.deck.data;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import org.jetbrains.annotations.Nullable;
 
 @Entity
 @Table(name = "file_metadata")
@@ -13,9 +15,11 @@ public class FileMetadata extends AbstractEntity {
     private String filePath;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JsonIgnore
     private TestResult testResult;
 
-    public FileMetadata() {}
+    public FileMetadata() {
+    }
 
     public FileMetadata(String fileName) {
         this.fileName = fileName;
@@ -37,7 +41,7 @@ public class FileMetadata extends AbstractEntity {
         this.filePath = filePath;
     }
 
-    public TestResult getTestResult() {
+    public @Nullable TestResult getTestResult() {
         return testResult;
     }
 

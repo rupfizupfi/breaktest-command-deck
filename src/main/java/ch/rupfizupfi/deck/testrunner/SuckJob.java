@@ -21,7 +21,7 @@ public class SuckJob {
             relaySwitch.connect();
             relaySwitch.enableRelay1();
             try {
-                Thread.sleep(this.duration * 1000);
+                Thread.sleep(this.duration * 1000L);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             } finally {

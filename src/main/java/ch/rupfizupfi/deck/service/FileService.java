@@ -3,10 +3,13 @@ package ch.rupfizupfi.deck.service;
 import ch.rupfizupfi.deck.data.FileMetadata;
 import ch.rupfizupfi.deck.data.FileMetadataRepository;
 import ch.rupfizupfi.deck.filesystem.StorageLocationService;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -61,5 +64,30 @@ public class FileService {
 
     protected String generateFileName(MultipartFile file, FileMetadata metadata) {
         return metadata.getId() + "-" + file.getOriginalFilename();
+    }
+
+
+    public Resource loadFileAsResource(String fileName) {
+        try {
+            Path filePath = this.getStorageLocation().resolve(fileName).normalize();
+            Resource resource = new UrlResource(filePath.toUri());
+            if (resource.exists()) {
+                return resource;
+            } else {
+                throw new RuntimeException("File not found " + fileName);
+            }
+        } catch (MalformedURLException ex) {
+            throw new RuntimeException("File not found " + fileName, ex);
+        }
+    }
+
+    public boolean deleteFile(String fileName) {
+        try {
+            Path filePath = this.getStorageLocation().resolve(fileName).normalize();
+            Files.delete(filePath);
+            return true;
+        } catch (IOException ex) {
+            throw new RuntimeException("Could not delete file " + fileName, ex);
+        }
     }
 }
