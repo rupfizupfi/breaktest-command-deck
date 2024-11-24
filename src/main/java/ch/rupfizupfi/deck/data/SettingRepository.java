@@ -18,7 +18,13 @@ public class SettingRepository {
     private static final Logger log = Logger.getLogger(SettingRepository.class.getName());
     private static final String SETTINGS_FILE = "settings.json";
 
-    private final List<Setting<?>> defaultSettings = List.of(Setting.create(Setting.Key.TESTRUNNER_SUCK, true), Setting.create(Setting.Key.TESTRUNNER_SUCK_DURATION, 10));
+    private final List<Setting<?>> defaultSettings = List.of(
+            Setting.create(Setting.Key.TESTRUNNER_SUCK, true),
+            Setting.create(Setting.Key.TESTRUNNER_SUCK_DURATION, 10),
+            Setting.create(Setting.Key.FILE_RESULT_DATA, "~/breaktester"),
+            Setting.create(Setting.Key.FILE_UPLOAD, "~/breaktester/uploads")
+    );
+
     private final ObjectMapper objectMapper;
     private List<Setting<?>> settingsCache;
 
@@ -42,7 +48,7 @@ public class SettingRepository {
     }
 
     private Path getSettingFilePath() {
-        String baseDir = getEnvironment().equals("dev") ? System.getProperty("user.dir") : Paths.get(System.getProperty("user.home"), "breaktester").toString();
+        String baseDir = getEnvironment().equals("dev") ? "./.data/" : Paths.get(System.getProperty("user.home"), "breaktester").toString();
         return Paths.get(baseDir, SETTINGS_FILE);
     }
 

@@ -3,7 +3,10 @@ package ch.rupfizupfi.deck.data;
 public class Setting<T> {
     public enum Key {
         TESTRUNNER_SUCK("testrunner.suck"),
-        TESTRUNNER_SUCK_DURATION("testrunner.suck.duration");
+        TESTRUNNER_SUCK_DURATION("testrunner.suck.duration"),
+        FILE_UPLOAD("file.upload.directory"),
+        FILE_RESULT_DATA("file.result.data.directory"),
+        ;
 
         private final String key;
 
@@ -19,11 +22,11 @@ public class Setting<T> {
     private String key;
     private T value;
 
-    public static <T> Setting<T> create (Key key, T value) {
+    public static <T> Setting<T> create(Key key, T value) {
         return create(key.getKey(), value);
     }
 
-    public static <T> Setting<T> create (String key, T value) {
+    public static <T> Setting<T> create(String key, T value) {
         var setting = new Setting<T>();
         setting.setKey(key);
         setting.setValue(value);

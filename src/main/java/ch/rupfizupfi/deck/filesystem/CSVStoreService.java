@@ -1,5 +1,7 @@
 package ch.rupfizupfi.deck.filesystem;
 
+import org.springframework.stereotype.Service;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,8 +11,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+@Service
 public class CSVStoreService {
     protected long minTimeStamp = 0;
+    protected final StorageLocationService storageLocationService;
+
+    public CSVStoreService(StorageLocationService storageLocationService) {
+        this.storageLocationService = storageLocationService;
+    }
 
     public String generateFilePathForTestResult(long testResultId) {
         String filePath = Paths.get(getBasePathForTestResult(testResultId), System.currentTimeMillis() + "_force.csv").toString();
@@ -84,7 +92,6 @@ public class CSVStoreService {
     }
 
     private String getBasePathForTestResult(long testResultId) {
-        String userHome = System.getProperty("user.home");
-        return Paths.get(userHome, "breaktester", Long.toString(testResultId)).toString();
+        return storageLocationService.getResultDataLocation().resolve(Long.toString(testResultId)).toString();
     }
 }

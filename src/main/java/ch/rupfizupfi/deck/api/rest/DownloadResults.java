@@ -5,7 +5,7 @@ import ch.rupfizupfi.deck.data.ProjectRepository;
 import ch.rupfizupfi.deck.data.SampleRepository;
 import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
-import com.vaadin.flow.server.auth.AnonymousAllowed;
+import jakarta.annotation.security.PermitAll;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.core.io.ByteArrayResource;
@@ -21,28 +21,27 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/DownloadEndpoint")
-@AnonymousAllowed
+@PermitAll
 public class DownloadResults {
     private static final Logger log = Logger.getLogger(DownloadResults.class.getName());
 
-    protected ProjectRepository projectRepository;
-    protected SampleRepository sampleRepository;
-    protected TestResultRepository testResultRepository;
-    protected CSVStoreService csvStoreService;
+    protected final ProjectRepository projectRepository;
+    protected final SampleRepository sampleRepository;
+    protected final TestResultRepository testResultRepository;
+    protected final CSVStoreService csvStoreService;
     protected long minTimeStamp;
 
-    public DownloadResults(ProjectRepository projectRepository, SampleRepository sampleRepository, TestResultRepository testResultRepository) {
+    public DownloadResults(ProjectRepository projectRepository, SampleRepository sampleRepository, TestResultRepository testResultRepository, CSVStoreService csvStoreService) {
         this.projectRepository = projectRepository;
         this.sampleRepository = sampleRepository;
         this.testResultRepository = testResultRepository;
-        this.csvStoreService = new CSVStoreService();
+        this.csvStoreService = csvStoreService;
     }
 
     @RequestMapping(value = "/get", method = RequestMethod.GET)
@@ -51,13 +50,7 @@ public class DownloadResults {
         StringBuilder result = new StringBuilder();
         testResultRepository.findAll().forEach(testResult -> {
             // create array of field from testResult, name, result:
-            var fields = new String[]{
-                    testResult.sample.name,
-                    testResult.testParameter.type,
-                    csvStoreService.getPeaksFromResultFiles(testResult.getId()),
-                    testResult.description,
-                    testResult.resultText
-            };
+            var fields = new String[]{testResult.sample.name, testResult.testParameter.type, csvStoreService.getPeaksFromResultFiles(testResult.getId()), testResult.description, testResult.resultText};
             result.append('"').append(String.join("\",\"", fields)).append("\"\n");
         });
 
@@ -141,14 +134,7 @@ public class DownloadResults {
     private void createTestResultsSheet(Workbook workbook, long projectId) {
         Sheet sheet2 = workbook.createSheet("Test Results");
         Row headerRow = sheet2.createRow(0);
-        String[] headers = {
-                "Test Result ID", "Sample Name", "Test Type", "Peaks (kN)", "Description", "Result Text",
-                "Speed", "Upper Shut Off Threshold", "Lower Shut Off Threshold",
-                "Upper Turn Force", "Lower Turn Force", "Cycle Count",
-                "Start Ramp Seconds", "Stop Ramp Seconds", "Sample Description",
-                "Sample Model", "Sample Manufacturer", "Year of Manufacture",
-                "Gear Types", "Gear Standards", "Materials"
-        };
+        String[] headers = {"Test Result ID", "Sample Name", "Test Type", "Peaks (kN)", "Description", "Result Text", "Speed", "Upper Shut Off Threshold", "Lower Shut Off Threshold", "Upper Turn Force", "Lower Turn Force", "Cycle Count", "Start Ramp Seconds", "Stop Ramp Seconds", "Sample Description", "Sample Model", "Sample Manufacturer", "Year of Manufacture", "Gear Types", "Gear Standards", "Materials"};
 
         var boldStyle = createBoldStyle(workbook);
 

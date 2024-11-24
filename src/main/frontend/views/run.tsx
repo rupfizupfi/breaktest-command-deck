@@ -18,7 +18,6 @@ import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
 import ownerGridColumn from "Frontend/model/owner/ownerGridColumn";
 import sampleGridColumn from "Frontend/model/sample/sampleGridColumn";
 import DistanceMeasureCam from "Frontend/components/webcam/DistanceMeasureCam";
-import FileUpload from "Frontend/components/control/FileUpload";
 
 createEmptyValueProxy(TestResultModel);
 
@@ -56,7 +55,7 @@ export default function RunView() {
                 service={TestResultService}
                 model={TestResultModel}
                 gridProps={{
-                    visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results'],
+                    visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results', 'images'],
                     columnOptions: {
                         owner: ownerGridColumn,
                         testParameter: {
@@ -65,7 +64,8 @@ export default function RunView() {
                         sample: sampleGridColumn
                     },
                     customColumns: [
-                        <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>
+                        <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>,
+                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>Results</Link>} header="Bilder" autoWidth/>
                     ]
                 }}
                 formProps={{
@@ -92,11 +92,7 @@ export default function RunView() {
                                 <Icon icon="vaadin:bolt" slot={'prefix'} style={{ height: 'var(--lumo-icon-size-l)', width: 'var(--lumo-icon-size-l)' }} />
                                 Run test
                             </Button>,
-                        },
-                        images: {
-                            renderer: ({field}) => <FileUpload {...field} />,
                         }
-
                     }
                 }}
             />

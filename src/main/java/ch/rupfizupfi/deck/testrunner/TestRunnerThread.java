@@ -1,21 +1,20 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
-import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.usbmodbus.Cfw11;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class TestRunnerThread {
     private final SimpMessagingTemplate template;
-    private final DeviceService deviceService;
+    private final TestRunnerFactory testRunnerFactory;
     private volatile boolean running = false;
     private TestResult testResult;
     private AbstractTest test;
     private Thread thread;
 
-    public TestRunnerThread(SimpMessagingTemplate template, DeviceService deviceService) {
+    public TestRunnerThread(SimpMessagingTemplate template, TestRunnerFactory testRunnerFactory) {
         this.template = template;
-        this.deviceService = deviceService;
+        this.testRunnerFactory = testRunnerFactory;
     }
 
     protected void run() {
@@ -24,9 +23,9 @@ public class TestRunnerThread {
             Thread.sleep(50);
             template.convertAndSend("/topic/logs", "init test " + testResult.testParameter.type);
             test = switch (testResult.testParameter.type) {
-                case "cyclic" -> new CyclicTest(testResult, template, deviceService);
-                case "timeCyclic" -> new TimeCyclicTest(testResult, template, deviceService);
-                case "destructive" -> new DestructiveTest(testResult, template, deviceService);
+                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult);
+                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult);
+                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult);
                 default -> test;
             };
 
@@ -71,7 +70,7 @@ public class TestRunnerThread {
             this.test.getContext().sendSignal(0);
             try {
                 this.thread.join(1000);
-                if(this.thread.isAlive()) {
+                if (this.thread.isAlive()) {
                     this.thread.interrupt();
                     this.thread.join();
                 }

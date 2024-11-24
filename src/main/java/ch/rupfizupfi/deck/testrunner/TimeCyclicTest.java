@@ -19,8 +19,8 @@ public class TimeCyclicTest extends CyclicTest {
     private final AnalyseData[] analysedData = new AnalyseData[2];
     private TimeProcessor timeProcessor;
 
-    TimeCyclicTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
-        super(testResult, template, deviceService);
+    TimeCyclicTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
+        super(testResult, testRunnerFactory, template, deviceService);
     }
 
     public void setup() {
@@ -32,7 +32,7 @@ public class TimeCyclicTest extends CyclicTest {
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
 
-        loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
+        loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell());
         loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");

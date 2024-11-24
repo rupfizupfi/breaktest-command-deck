@@ -5,14 +5,14 @@ import ch.rupfizupfi.deck.device.DeviceService;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class DestructiveTest extends AbstractTest {
-    DestructiveTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
-        super(testResult, template, deviceService);
+    DestructiveTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
+        super(testResult, testRunnerFactory, template, deviceService);
     }
 
     void setup() {
         testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold * 1000, testResult.testParameter.lowerShutOffThreshold * 1000);
         initContext();
-        loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
+        loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell());
         loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");

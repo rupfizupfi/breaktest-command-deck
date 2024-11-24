@@ -11,8 +11,8 @@ public class CyclicTest extends AbstractTest {
     protected double targetLowerLimit;
     protected double targetUpperLimit;
 
-    CyclicTest(TestResult testResult, SimpMessagingTemplate template, DeviceService deviceService) {
-        super(testResult, template, deviceService);
+    CyclicTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
+        super(testResult, testRunnerFactory, template, deviceService);
     }
 
     void setup() {
@@ -21,7 +21,7 @@ public class CyclicTest extends AbstractTest {
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
 
-        loadCellThread = new LoadCellThread(testContext, deviceService.getLoadCell());
+        loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell());
         loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");

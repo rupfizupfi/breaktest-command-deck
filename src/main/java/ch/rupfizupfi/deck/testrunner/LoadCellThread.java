@@ -23,12 +23,12 @@ public class LoadCellThread implements MeasurementObserver {
     private final Object lock = new Object();
     private Thread thread;
 
-    LoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice) {
+    LoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice, CSVStoreService csvStoreService) {
         this.testContext = testContext;
         this.loadCellDevice = loadCellDevice;
+        this.csvStoreService = csvStoreService;
         minValue = (float) testContext.getLowerLimit();
         maxValue = (float) testContext.getUpperLimit();
-        csvStoreService = new CSVStoreService();
     }
 
     public void start() {
