@@ -6,7 +6,7 @@ import {IMessage} from "@stomp/rx-stomp";
 import {Icon} from "@vaadin/react-components/Icon.js";
 import './control.css';
 
-export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/cogs-solid.svg'}, title: 'Control board', loginRequired: true};
+export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/cogs-solid.svg', exclude:true}, title: 'Control board', loginRequired: true};
 
 export default function ControlBoard() {
     const [force, setForce] = useState<number>(0);
