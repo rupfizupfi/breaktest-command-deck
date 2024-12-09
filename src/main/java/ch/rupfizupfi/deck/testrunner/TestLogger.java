@@ -36,6 +36,7 @@ public class TestLogger {
             if (writer != null) {
                 writer.write(message);
                 writer.newLine();
+                writer.flush();
             }
         } catch (IOException e) {
             e.printStackTrace();
