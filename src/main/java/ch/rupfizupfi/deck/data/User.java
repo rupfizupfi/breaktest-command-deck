@@ -58,9 +58,12 @@ public class User extends AbstractEntity {
         this.hashedPassword = hashedPassword;
     }
 
-    @Nullable
-    public String getNewPassword() {
+    public @Nullable String getNewPassword() {
         return newPassword;
+    }
+
+    public boolean hasNewPassword() {
+        return newPassword != null && !newPassword.isEmpty();
     }
 
     public void setNewPassword(@Nullable String newPassword) {

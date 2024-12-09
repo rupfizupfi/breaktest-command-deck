@@ -16,7 +16,7 @@ public class UserService extends CrudRepositoryService<User, UserRepository> {
 
     @Override
     public User save(User user) {
-        if (user.getNewPassword() != null && !user.getNewPassword().isEmpty()) {
+        if (user.hasNewPassword()) {
             user.setHashedPassword(passwordEncoder.encode(user.getNewPassword()));
         }
         return super.save(user);
