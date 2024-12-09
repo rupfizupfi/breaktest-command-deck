@@ -21,14 +21,12 @@ public class User extends AbstractEntity {
     private String hashedPassword;
 
     @Transient
+    @Nullable
     private String newPassword;
 
     @Enumerated(EnumType.STRING)
     @ElementCollection(fetch = FetchType.EAGER)
     private Set<Role> roles;
-
-    @Column(length = 1000000, columnDefinition = "BYTEA")
-    private byte[] profilePicture;
 
     @JsonView(Views.Simple.class)
     public Long getId() {
@@ -75,13 +73,5 @@ public class User extends AbstractEntity {
 
     public void setRoles(Set<Role> roles) {
         this.roles = roles;
-    }
-
-    public byte[] getProfilePicture() {
-        return profilePicture;
-    }
-
-    public void setProfilePicture(byte[] profilePicture) {
-        this.profilePicture = profilePicture;
     }
 }

@@ -13,7 +13,7 @@ export default function UserView() {
             service={UserService}
             model={UserModel}
             formProps={{
-                visibleFields: ['username', 'name', 'newPassword', 'roles', 'profilePicture'],
+                visibleFields: ['username', 'name', 'newPassword', 'roles'],
                 fieldOptions: {
                     username: {
                         renderer: ({field}) => <TextField {...field} label="Username"/>,
@@ -26,10 +26,7 @@ export default function UserView() {
                     },
                     roles: {
                         renderer: ({field}) => <MultiSelectComboBox {...field} label="Roles" items={['ADMIN', 'USER']}/>,
-                    },
-                    profilePicture: {
-                        renderer: ({field}) => <AvatarField {...field} />,
-                    },
+                    }
                 }
             }}
         />
