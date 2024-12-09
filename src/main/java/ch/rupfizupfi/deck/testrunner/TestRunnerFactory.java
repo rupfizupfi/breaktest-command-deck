@@ -3,6 +3,9 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
+import ch.rupfizupfi.deck.filesystem.StorageLocationService;
+import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
+import ch.rupfizupfi.deck.testrunner.startup.check.FileSystemCheck;
 import org.springframework.context.ApplicationContext;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -18,11 +21,11 @@ public class TestRunnerFactory {
     }
 
     public TestRunnerThread createTestRunnerThread() {
-        return new TestRunnerThread(applicationContext.getBean(SimpMessagingTemplate.class), this);
+        return new TestRunnerThread(this);
     }
 
     @SuppressWarnings("unchecked")
-    public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult) {
+    public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult, Logger logger) {
         try {
             // Get the constructor of the testRunnerClass
             Constructor<T> constructor;
@@ -42,6 +45,8 @@ public class TestRunnerFactory {
                     parameters[i] = testResult;
                 } else if (parameterTypes[i].equals(TestRunnerFactory.class)) {
                     parameters[i] = this;
+                } else if (parameterTypes[i].equals(Logger.class)) {
+                    parameters[i] = logger;
                 } else {
                     parameters[i] = applicationContext.getBean(parameterTypes[i]);
                 }
@@ -55,5 +60,15 @@ public class TestRunnerFactory {
 
     public LoadCellThread createLoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice) {
         return new LoadCellThread(testContext, loadCellDevice, applicationContext.getBean(CSVStoreService.class));
+    }
+
+    public Logger createLogger(TestResult testResult) {
+        return new Logger(testResult, applicationContext.getBean(SimpMessagingTemplate.class), applicationContext.getBean(StorageLocationService.class));
+    }
+
+    public AbstractCheck[] getStartupChecks() {
+        return new AbstractCheck[] {
+            new FileSystemCheck(applicationContext.getBean(StorageLocationService.class))
+        };
     }
 }
