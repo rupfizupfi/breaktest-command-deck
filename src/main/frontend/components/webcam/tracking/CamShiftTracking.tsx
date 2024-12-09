@@ -76,6 +76,7 @@ export default function useCamShiftTracking() {
             const termCriteria = new cv.TermCriteria(cv.TermCriteria_EPS | cv.TermCriteria_COUNT, 10, 1);
             // @ts-ignore
             const [trackBox, trackWindow] = cv.CamShift(backProj, trackingWindowRef.current, termCriteria);
+            // @ts-ignore
             let pts = cv.rotatedRectPoints(trackBox);
             cv.line(frame, pts[0], pts[1], [255, 0, 0, 255], 3);
             cv.line(frame, pts[1], pts[2], [255, 0, 0, 255], 3);
