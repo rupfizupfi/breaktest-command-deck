@@ -6,7 +6,7 @@ import ch.rupfizupfi.deck.device.DeviceService;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class DestructiveTest extends AbstractTest {
-    DestructiveTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
+    public DestructiveTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
         super(testResult, testRunnerFactory, template, deviceService);
     }
 
