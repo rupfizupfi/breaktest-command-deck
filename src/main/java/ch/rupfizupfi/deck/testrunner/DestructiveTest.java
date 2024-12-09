@@ -5,8 +5,8 @@ import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
 
 public class DestructiveTest extends AbstractTest {
-    public DestructiveTest(TestResult testResult, Logger logger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
-        super(testResult, logger, testRunnerFactory, deviceService);
+    public DestructiveTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
+        super(testResult, testLogger, testRunnerFactory, deviceService);
     }
 
     void setup() {

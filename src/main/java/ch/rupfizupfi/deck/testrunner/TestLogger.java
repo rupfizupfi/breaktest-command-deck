@@ -13,19 +13,20 @@ import java.nio.file.StandardOpenOption;
 /**
  * Specialized class for logging messages to the frontend and file
  */
-public class Logger {
+public class TestLogger {
     private final TestResult testResult;
     private final SimpMessagingTemplate template;
     private final Path logPath;
     private BufferedWriter writer;
 
-    public Logger(TestResult testResult, SimpMessagingTemplate template, StorageLocationService storageLocationService) {
+    public TestLogger(TestResult testResult, SimpMessagingTemplate template, StorageLocationService storageLocationService) {
         this.testResult = testResult;
         this.template = template;
         this.logPath = storageLocationService.getResultDataLocation().resolve(Long.toString(testResult.getId()), System.currentTimeMillis() + "_test.log");
     }
 
     public void begin() throws IOException {
+        logPath.getParent().toFile().mkdirs();
         writer = Files.newBufferedWriter(logPath, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 
