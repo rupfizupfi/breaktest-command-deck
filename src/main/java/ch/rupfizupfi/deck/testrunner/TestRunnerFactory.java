@@ -25,7 +25,7 @@ public class TestRunnerFactory {
     }
 
     @SuppressWarnings("unchecked")
-    public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult, Logger logger) {
+    public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult, TestLogger testLogger) {
         try {
             // Get the constructor of the testRunnerClass
             Constructor<T> constructor;
@@ -45,8 +45,8 @@ public class TestRunnerFactory {
                     parameters[i] = testResult;
                 } else if (parameterTypes[i].equals(TestRunnerFactory.class)) {
                     parameters[i] = this;
-                } else if (parameterTypes[i].equals(Logger.class)) {
-                    parameters[i] = logger;
+                } else if (parameterTypes[i].equals(TestLogger.class)) {
+                    parameters[i] = testLogger;
                 } else {
                     parameters[i] = applicationContext.getBean(parameterTypes[i]);
                 }
@@ -62,8 +62,8 @@ public class TestRunnerFactory {
         return new LoadCellThread(testContext, loadCellDevice, applicationContext.getBean(CSVStoreService.class));
     }
 
-    public Logger createLogger(TestResult testResult) {
-        return new Logger(testResult, applicationContext.getBean(SimpMessagingTemplate.class), applicationContext.getBean(StorageLocationService.class));
+    public TestLogger createLogger(TestResult testResult) {
+        return new TestLogger(testResult, applicationContext.getBean(SimpMessagingTemplate.class), applicationContext.getBean(StorageLocationService.class));
     }
 
     public AbstractCheck[] getStartupChecks() {

@@ -5,7 +5,6 @@ import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.testrunner.cyclic.AnalyseData;
 import ch.rupfizupfi.deck.testrunner.cyclic.CyclicTestContext;
 import ch.rupfizupfi.deck.testrunner.cyclic.TimeProcessor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class TimeCyclicTest extends CyclicTest {
     private static final int ANALYSE_SPEED = 50;
@@ -19,8 +18,8 @@ public class TimeCyclicTest extends CyclicTest {
     private final AnalyseData[] analysedData = new AnalyseData[2];
     private TimeProcessor timeProcessor;
 
-    public TimeCyclicTest(TestResult testResult, Logger logger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
-        super(testResult, logger, testRunnerFactory, deviceService);
+    public TimeCyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
+        super(testResult, testLogger, testRunnerFactory, deviceService);
     }
 
     public void setup() {

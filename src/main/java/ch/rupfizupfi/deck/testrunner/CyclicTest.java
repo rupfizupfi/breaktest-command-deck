@@ -3,15 +3,14 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.testrunner.cyclic.CyclicTestContext;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class CyclicTest extends AbstractTest {
     protected CyclicTestContext testContext;
     protected double targetLowerLimit;
     protected double targetUpperLimit;
 
-    public CyclicTest(TestResult testResult, Logger logger,TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
-        super(testResult, logger, testRunnerFactory, deviceService);
+    public CyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
+        super(testResult, testLogger, testRunnerFactory, deviceService);
     }
 
     void setup() {

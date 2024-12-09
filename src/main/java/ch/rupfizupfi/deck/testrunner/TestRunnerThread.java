@@ -10,7 +10,7 @@ public class TestRunnerThread {
     private volatile boolean running = false;
     private TestResult testResult;
     private AbstractTest test;
-    private Logger logger;
+    private TestLogger testLogger;
     private Thread thread;
 
     public TestRunnerThread(TestRunnerFactory testRunnerFactory) {
@@ -21,11 +21,11 @@ public class TestRunnerThread {
         try {
             // Sleep for 50ms to allow the client to set up the websocket connection
             Thread.sleep(50);
-            logger.log("init test " + testResult.testParameter.type);
+            testLogger.log("init test " + testResult.testParameter.type);
             test = switch (testResult.testParameter.type) {
-                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult, logger);
-                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult, logger);
-                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult, logger);
+                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult, testLogger);
+                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult, testLogger);
+                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult, testLogger);
                 default -> test;
             };
 
@@ -34,11 +34,11 @@ public class TestRunnerThread {
                 test.getContext().processSignals();
             }
         } catch (InterruptedException e) {
-            logger.log("interrupt test " + testResult.testParameter.type);
+            testLogger.log("interrupt test " + testResult.testParameter.type);
         } catch (FinishTestException ignored) {
         } catch (Exception e) {
-            logger.log("error: " + e.getClass() + ", " + e.getMessage());
-            logger.log("error test " + testResult.testParameter.type);
+            testLogger.log("error: " + e.getClass() + ", " + e.getMessage());
+            testLogger.log("error test " + testResult.testParameter.type);
             throw e;
         } finally {
             if (test != null) {
@@ -46,7 +46,7 @@ public class TestRunnerThread {
                     test.cleanup();
                     test.destroy();
                 } catch (Exception e) {
-                    logger.log("error: " + e.getClass() + ", " + e.getMessage());
+                    testLogger.log("error: " + e.getClass() + ", " + e.getMessage());
                     retryShutdownOnException();
                 }
             }
@@ -61,8 +61,8 @@ public class TestRunnerThread {
                 this.running = true;
                 this.test = null;
                 this.testResult = testResult;
-                this.logger = testRunnerFactory.createLogger(testResult);
-                this.logger.begin();
+                this.testLogger = testRunnerFactory.createLogger(testResult);
+                this.testLogger.begin();
                 this.thread = new Thread(this::run, "TestRunnerThread");
                 this.thread.start();
             }
@@ -84,7 +84,9 @@ public class TestRunnerThread {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             } finally {
-                this.logger.end();
+                this.testLogger.end();
+                this.testLogger = null;
+                this.test = null;
             }
         }
     }
