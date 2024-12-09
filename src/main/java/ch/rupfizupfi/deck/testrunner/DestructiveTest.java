@@ -3,11 +3,10 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.data.Setting;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 public class DestructiveTest extends AbstractTest {
-    public DestructiveTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
-        super(testResult, testRunnerFactory, template, deviceService);
+    public DestructiveTest(TestResult testResult, Logger logger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
+        super(testResult, logger, testRunnerFactory, deviceService);
     }
 
     void setup() {
@@ -27,8 +26,6 @@ public class DestructiveTest extends AbstractTest {
         cfw11Pull();
         cfw11.setGeneralEnable(true);
         cfw11.setStart(true);
-
-        template.convertAndSend("/topic/logs", "controller start cfw11");
     }
 
     @Override

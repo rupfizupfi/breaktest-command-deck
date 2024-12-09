@@ -10,8 +10,8 @@ public class CyclicTest extends AbstractTest {
     protected double targetLowerLimit;
     protected double targetUpperLimit;
 
-    public CyclicTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
-        super(testResult, testRunnerFactory, template, deviceService);
+    public CyclicTest(TestResult testResult, Logger logger,TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
+        super(testResult, logger, testRunnerFactory, deviceService);
     }
 
     void setup() {

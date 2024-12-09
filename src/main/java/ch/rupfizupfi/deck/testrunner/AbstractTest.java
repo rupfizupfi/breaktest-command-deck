@@ -1,24 +1,27 @@
 package ch.rupfizupfi.deck.testrunner;
 
-import ch.rupfizupfi.deck.data.Setting;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
+import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
+import ch.rupfizupfi.deck.testrunner.startup.check.CheckFailedException;
 import ch.rupfizupfi.usbmodbus.Cfw11;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public abstract class AbstractTest implements SignalListener {
     protected LoadCellThread loadCellThread;
     protected Cfw11 cfw11;
     protected TestContext testContext;
     protected final TestResult testResult;
-    protected final SimpMessagingTemplate template;
     protected final TestRunnerFactory testRunnerFactory;
+    protected final Logger logger;
     protected DeviceService deviceService;
     protected long startTime;
 
-    AbstractTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
+    AbstractTest(TestResult testResult, Logger logger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
         this.testResult = testResult;
-        this.template = template;
+        this.logger = logger;
         this.testRunnerFactory = testRunnerFactory;
         this.deviceService = deviceService;
         this.startTime = System.currentTimeMillis();
@@ -60,7 +63,7 @@ public abstract class AbstractTest implements SignalListener {
     }
 
     void log(String message) {
-        template.convertAndSend("/topic/logs", message);
+        logger.log(message);
     }
 
     protected void cfw11Pull() {

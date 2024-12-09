@@ -2,18 +2,18 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.usbmodbus.Cfw11;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+
+import java.io.IOException;
 
 public class TestRunnerThread {
-    private final SimpMessagingTemplate template;
     private final TestRunnerFactory testRunnerFactory;
     private volatile boolean running = false;
     private TestResult testResult;
     private AbstractTest test;
+    private Logger logger;
     private Thread thread;
 
-    public TestRunnerThread(SimpMessagingTemplate template, TestRunnerFactory testRunnerFactory) {
-        this.template = template;
+    public TestRunnerThread(TestRunnerFactory testRunnerFactory) {
         this.testRunnerFactory = testRunnerFactory;
     }
 
@@ -21,11 +21,11 @@ public class TestRunnerThread {
         try {
             // Sleep for 50ms to allow the client to set up the websocket connection
             Thread.sleep(50);
-            template.convertAndSend("/topic/logs", "init test " + testResult.testParameter.type);
+            logger.log("init test " + testResult.testParameter.type);
             test = switch (testResult.testParameter.type) {
-                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult);
-                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult);
-                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult);
+                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult, logger);
+                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult, logger);
+                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult, logger);
                 default -> test;
             };
 
@@ -34,11 +34,11 @@ public class TestRunnerThread {
                 test.getContext().processSignals();
             }
         } catch (InterruptedException e) {
-            template.convertAndSend("/topic/logs", "interrupt test " + testResult.testParameter.type);
+            logger.log("interrupt test " + testResult.testParameter.type);
         } catch (FinishTestException ignored) {
         } catch (Exception e) {
-            template.convertAndSend("/topic/logs", "error: " + e.getClass() + ", " + e.getMessage());
-            template.convertAndSend("/topic/logs", "error test " + testResult.testParameter.type);
+            logger.log("error: " + e.getClass() + ", " + e.getMessage());
+            logger.log("error test " + testResult.testParameter.type);
             throw e;
         } finally {
             if (test != null) {
@@ -46,7 +46,7 @@ public class TestRunnerThread {
                     test.cleanup();
                     test.destroy();
                 } catch (Exception e) {
-                    template.convertAndSend("/topic/logs", "error: " + e.getClass() + ", " + e.getMessage());
+                    logger.log("error: " + e.getClass() + ", " + e.getMessage());
                     retryShutdownOnException();
                 }
             }
@@ -57,11 +57,18 @@ public class TestRunnerThread {
 
     public void startThread(TestResult testResult) {
         if (!running) {
-            this.running = true;
-            this.test = null;
-            this.testResult = testResult;
-            this.thread = new Thread(this::run, "TestRunnerThread");
-            this.thread.start();
+            try {
+                this.running = true;
+                this.test = null;
+                this.testResult = testResult;
+                this.logger = testRunnerFactory.createLogger(testResult);
+                this.logger.begin();
+                this.thread = new Thread(this::run, "TestRunnerThread");
+                this.thread.start();
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -76,6 +83,8 @@ public class TestRunnerThread {
                 }
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
+            } finally {
+                this.logger.end();
             }
         }
     }
