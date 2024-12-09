@@ -16,14 +16,15 @@ public class SuckService {
             return false;
         }
 
-        isEnabled = true;
         try {
             suckSwitch = new FourWayRelaySwitch();
+            suckSwitch.connect();
+            suckSwitch.enableRelay1();
         } catch (ComportNotFoundException e) {
             return false;
         }
-        suckSwitch.connect();
-        suckSwitch.enableRelay1();
+
+        isEnabled = true;
         return true;
     }
 
