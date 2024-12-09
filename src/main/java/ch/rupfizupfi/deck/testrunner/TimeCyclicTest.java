@@ -19,7 +19,7 @@ public class TimeCyclicTest extends CyclicTest {
     private final AnalyseData[] analysedData = new AnalyseData[2];
     private TimeProcessor timeProcessor;
 
-    TimeCyclicTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
+    public TimeCyclicTest(TestResult testResult, TestRunnerFactory testRunnerFactory, SimpMessagingTemplate template, DeviceService deviceService) {
         super(testResult, testRunnerFactory, template, deviceService);
     }
 
