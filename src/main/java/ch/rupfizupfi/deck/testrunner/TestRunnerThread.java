@@ -30,6 +30,7 @@ public class TestRunnerThread {
             };
 
             if (test != null) {
+                test.runStartupChecks();
                 test.setup();
                 test.getContext().processSignals();
             }

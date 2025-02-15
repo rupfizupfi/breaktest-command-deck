@@ -82,7 +82,7 @@ public abstract class AbstractTest implements SignalListener {
         return cfw11.getDirection();
     }
 
-    protected void runStartupChecks() throws CheckFailedException {
+    public void runStartupChecks() throws CheckFailedException {
         List<String> messages = new ArrayList<>();
         for (AbstractCheck check : testRunnerFactory.getStartupChecks()) {
             try {
