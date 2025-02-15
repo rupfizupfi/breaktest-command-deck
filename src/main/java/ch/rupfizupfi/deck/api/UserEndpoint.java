@@ -21,9 +21,6 @@ import java.util.Optional;
 @Endpoint
 @AnonymousAllowed
 public class UserEndpoint {
-    @Autowired
-    private JpaFilterConverter jpaFilterConverter;
-
     protected UserRepository userRepository;
 
     UserEndpoint(UserRepository userRepository) {
@@ -41,7 +38,7 @@ public class UserEndpoint {
     @Nonnull
     public @NotNull List<@Nonnull User> list(Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
-            Specification<User> spec = this.jpaFilterConverter.toSpec(filter, User.class);
+            Specification<User> spec = JpaFilterConverter.toSpec(filter, User.class);
             return userRepository.findAll(spec, pageable).getContent();
         }
 

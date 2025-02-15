@@ -41,8 +41,8 @@ dependencies {
 	implementation 'com.fazecast:jSerialComm:2.11.0'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	implementation fileTree(dir: 'lib', include: ['*.jar'])
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+	implementation fileTree(dir: 'lib', include: ['*.jar'])
 }
 
 dependencyManagement {
@@ -60,4 +60,9 @@ java {
 	toolchain {
 		languageVersion.set(JavaLanguageVersion.of(23))
 	}
+}
+
+vaadin {
+	productionMode = false
+	optimizeBundle = false
 }

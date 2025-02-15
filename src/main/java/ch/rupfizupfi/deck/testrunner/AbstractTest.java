@@ -2,7 +2,12 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
+import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
+import ch.rupfizupfi.deck.testrunner.startup.check.CheckFailedException;
 import ch.rupfizupfi.usbmodbus.Cfw11;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public abstract class AbstractTest implements SignalListener {
     protected LoadCellThread loadCellThread;
@@ -75,5 +80,20 @@ public abstract class AbstractTest implements SignalListener {
 
     protected boolean cfw11IsRelease() {
         return cfw11.getDirection();
+    }
+
+    protected void runStartupChecks() throws CheckFailedException {
+        List<String> messages = new ArrayList<>();
+        for (AbstractCheck check : testRunnerFactory.getStartupChecks()) {
+            try {
+                check.execute();
+            } catch (CheckFailedException e) {
+                messages.add(e.getMessage());
+            }
+        }
+
+        if (!messages.isEmpty()) {
+            throw new CheckFailedException("Failed to pass startup checks: " + String.join(",\n ", messages));
+        }
     }
 }
