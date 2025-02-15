@@ -2,6 +2,7 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.filesystem.StorageLocationService;
+import org.slf4j.Logger;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.io.BufferedWriter;
@@ -14,6 +15,7 @@ import java.nio.file.StandardOpenOption;
  * Specialized class for logging messages to the frontend and file
  */
 public class TestLogger {
+    private static final Logger logger = org.slf4j.LoggerFactory.getLogger(TestLogger.class);
     private final TestResult testResult;
     private final SimpMessagingTemplate template;
     private final Path logPath;
@@ -22,7 +24,7 @@ public class TestLogger {
     public TestLogger(TestResult testResult, SimpMessagingTemplate template, StorageLocationService storageLocationService) {
         this.testResult = testResult;
         this.template = template;
-        this.logPath = storageLocationService.getResultDataLocation().resolve(Long.toString(testResult.getId()), System.currentTimeMillis() + "_test.log");
+        this.logPath = storageLocationService.getResultDataLocation().resolve(Long.toString(this.testResult.getId()), System.currentTimeMillis() + "_test.log");
     }
 
     public void begin() throws IOException {
@@ -39,7 +41,7 @@ public class TestLogger {
                 writer.flush();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Failed to write to log file for test id:{}", testResult.getId(), e);
         }
     }
 
@@ -48,7 +50,7 @@ public class TestLogger {
             try {
                 writer.close();
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.error("Failed to close log file for test id:{}", testResult.getId(), e);
             }
         }
     }
