@@ -2,10 +2,13 @@ package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.usbmodbus.Cfw11;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
 public class TestRunnerThread {
+    private static final Logger logger = LoggerFactory.getLogger(TestRunnerThread.class);
     private final TestRunnerFactory testRunnerFactory;
     private volatile boolean running = false;
     private TestResult testResult;
@@ -36,11 +39,12 @@ public class TestRunnerThread {
             }
         } catch (InterruptedException e) {
             testLogger.log("interrupt test " + testResult.testParameter.type);
+            logger.error("TestRunner Thread interrupted", e);
         } catch (FinishTestException ignored) {
         } catch (Exception e) {
             testLogger.log("error: " + e.getClass() + ", " + e.getMessage());
             testLogger.log("error test " + testResult.testParameter.type);
-            throw e;
+            logger.error("Exception occurred during test", e);
         } finally {
             if (test != null) {
                 try {
@@ -48,6 +52,7 @@ public class TestRunnerThread {
                     test.destroy();
                 } catch (Exception e) {
                     testLogger.log("error: " + e.getClass() + ", " + e.getMessage());
+                    logger.error("Exception during cleanup/destroy", e);
                     retryShutdownOnException();
                 }
             }
@@ -66,9 +71,8 @@ public class TestRunnerThread {
                 this.testLogger.begin();
                 this.thread = new Thread(this::run, "TestRunnerThread");
                 this.thread.start();
-            }
-            catch (IOException e) {
-                e.printStackTrace();
+            } catch (IOException e) {
+                logger.error("IOException occurred while starting the thread", e);
             }
         }
     }
