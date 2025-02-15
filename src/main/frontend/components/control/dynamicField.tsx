@@ -1,9 +1,8 @@
 import React from 'react';
 import {Checkbox, DatePicker, NumberField, TextField} from "@vaadin/react-components";
-import {isString} from "@vaadin/router/dist/resolver/utils";
 
 function convertValue(newValue: string | number | Date): any {
-    if (isString(newValue)) {
+    if (typeof newValue === 'string') {
         if (newValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
             return new Date(newValue);
         }
