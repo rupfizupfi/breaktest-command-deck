@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 import Webcam from "react-webcam";
 import cv from "@techstark/opencv-js";
 import useCamShiftTracking from "Frontend/components/webcam/tracking/CamShiftTracking";
+import useCVTracker from "Frontend/components/webcam/tracking/CVTracker";
 
 interface CalibrationPoint {
     x: number;
@@ -18,7 +19,7 @@ export default function DistanceMeasureCam() {
     const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
     const [scaleFactor, setScaleFactor] = useState(1);
     const [facingMode, setFacingMode] = useState(FACING_MODE_USER);
-    const comShiftTracking = useCamShiftTracking();
+    const comShiftTracking = useCVTracker();
 
     const videoConstraints: MediaTrackConstraints = {
         facingMode: facingMode,
@@ -35,16 +36,17 @@ export default function DistanceMeasureCam() {
             }
 
             update();
+            comShiftTracking.init(canvasRef.current!);
         };
     }, []);
 
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        const canvas = canvasRef.current!;
-        const rect = canvas.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
-        const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
-
         if (isCalibrating) {
+            const canvas = canvasRef.current!;
+            const rect = canvas.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
+            const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
+
             setCalibrationPoints([...calibrationPoints, {x, y}]);
             if (calibrationPoints.length === 1) {
                 // Two points selected
@@ -59,10 +61,6 @@ export default function DistanceMeasureCam() {
                 } else {
                     alert("Invalid input. Please enter a numeric value.");
                 }
-            }
-        } else {
-            if (canvasRef.current) {
-                comShiftTracking.startTracking(x, y, canvas.getContext("2d")!, canvasRef.current);
             }
         }
     };
