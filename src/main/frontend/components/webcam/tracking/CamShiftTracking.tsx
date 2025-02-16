@@ -1,18 +1,27 @@
 import cv from "@techstark/opencv-js";
 import {useRef} from "react";
+import useAreaSelector, {SelectedArea} from "Frontend/components/webcam/tracking/AreaSelector";
 
 export default function useCamShiftTracking() {
     const trackingWindowRef = useRef<cv.Rect | null>(null);
     const trackingPointRef = useRef<{ x: number, y: number } | null>(null);
     const histRef = useRef<cv.Mat | null>(null);
 
-    function startTracking(x: number, y: number, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-        const windowSize = 10; // Adjust as needed
-        const startX = Math.max(0, x - windowSize / 2);
-        const startY = Math.max(0, y - windowSize / 2);
-        const width = Math.min(windowSize, canvas.width - startX);
-        const height = Math.min(windowSize, canvas.height - startY);
-        trackingWindowRef.current = new cv.Rect(startX, startY, width, height);
+    function init(canvas: HTMLCanvasElement) {
+        const areaSelector = useAreaSelector(canvas, (selection) => {
+            startTracking(selection, canvas.getContext("2d")!, canvas);
+        });
+
+        return () => {
+            areaSelector.removeEventListeners();
+            if (histRef.current) {
+                histRef.current.delete();
+            }
+        };
+    }
+
+    function startTracking(selection: SelectedArea, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+        trackingWindowRef.current = new cv.Rect(selection.x, selection.y, selection.width, selection.height);
 
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const frame = cv.matFromImageData(imageData);
@@ -22,13 +31,18 @@ export default function useCamShiftTracking() {
         cv.cvtColor(frame, hsv, cv.COLOR_RGB2HSV);
 
         // Define the region of interest (ROI)
-        const roi = hsv.roi(trackingWindowRef.current);
+        const rawRoi = hsv.roi(trackingWindowRef.current);
+        const roi = new cv.Mat();
+        cv.cvtColor(rawRoi, roi, cv.COLOR_RGBA2RGB);
+        cv.cvtColor(roi, roi, cv.COLOR_RGB2HSV);
 
         // Create mask
         const mask = new cv.Mat();
-        const lowScalar = new cv.Mat(1, 1, cv.CV_8UC3, [0, 60, 32, 255]); // [H, S, V]
-        const highScalar = new cv.Mat(1, 1, cv.CV_8UC3, [180, 255, 255, 255]);
-        cv.inRange(roi, lowScalar, highScalar, mask);
+        const lowScalar = new cv.Scalar(30, 30, 0);
+        const highScalar = new cv.Scalar(180, 180, 180);
+        const low = new cv.Mat(roi.rows, roi.cols, roi.type(), lowScalar);
+        const high = new cv.Mat(roi.rows, roi.cols, roi.type(), highScalar);
+        cv.inRange(roi, low, high, mask);
 
         // Calculate histogram
         const hist = new cv.Mat();
@@ -51,6 +65,9 @@ export default function useCamShiftTracking() {
         hsv.delete();
         roi.delete();
         mask.delete();
+        rawRoi.delete();
+        low.delete();
+        high.delete();
     }
 
     function processFrames(canvas: HTMLCanvasElement, scaleFactor: number) {
@@ -117,6 +134,6 @@ export default function useCamShiftTracking() {
 
     return {
         processFrames,
-        startTracking
+        init
     };
 }

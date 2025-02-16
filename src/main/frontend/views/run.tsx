@@ -17,7 +17,6 @@ import createEmptyValueProxy from "Frontend/components/owner/createEmptyValuePro
 import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
 import ownerGridColumn from "Frontend/model/owner/ownerGridColumn";
 import sampleGridColumn from "Frontend/model/sample/sampleGridColumn";
-import DistanceMeasureCam from "Frontend/components/webcam/DistanceMeasureCam";
 
 createEmptyValueProxy(TestResultModel);
 
@@ -55,7 +54,7 @@ export default function RunView() {
                 service={TestResultService}
                 model={TestResultModel}
                 gridProps={{
-                    visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results', 'images'],
+                    visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results', 'images', 'tracking'],
                     columnOptions: {
                         owner: ownerGridColumn,
                         testParameter: {
@@ -65,7 +64,8 @@ export default function RunView() {
                     },
                     customColumns: [
                         <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>,
-                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>View</Link>} header="Bilder" autoWidth/>
+                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>View</Link>} header="Bilder" autoWidth/>,
+                        <GridColumn key="tracking" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/tracking`}>GoTo</Link>} header="Tracking" autoWidth/>
                     ]
                 }}
                 formProps={{
@@ -97,7 +97,6 @@ export default function RunView() {
                 }}
             />
             <LiveTestResult testResult={testResultData} reset={() => setTestResultData(undefined)}/>
-            <DistanceMeasureCam/>
         </VerticalLayout>
     );
 }
