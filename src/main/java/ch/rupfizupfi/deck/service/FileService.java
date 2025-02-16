@@ -59,6 +59,8 @@ public class FileService {
         Files.copy(file.getInputStream(), targetLocation);
         savedMetadata.setFilePath(targetLocation.getFileName().toString());
 
+        fileMetadataRepository.save(savedMetadata);
+
         return savedMetadata;
     }
 
