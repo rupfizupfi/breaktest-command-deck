@@ -1,0 +1,70 @@
+[
+  {
+    "route": "",
+    "flowLayout": false,
+    "params": {},
+    "title": "Main Layout",
+    "children": [
+      {
+        "route": "",
+        "menu": {
+          "order": 0,
+          "icon": "line-awesome/svg/globe-solid.svg"
+        },
+        "title": "Deck",
+        "loginRequired": true,
+        "flowLayout": false,
+        "params": {}
+      },
+      {
+        "route": "control",
+        "menu": {
+          "order": 10,
+          "icon": "line-awesome/svg/cogs-solid.svg",
+          "exclude": true
+        },
+        "title": "Control board",
+        "loginRequired": true,
+        "flowLayout": false,
+        "params": {}
+      },
+      {
+        "route": "result",
+        "params": {},
+        "children": [
+          {
+            "route": ":resultId",
+            "params": {
+              ":resultId": "req"
+            },
+            "children": [
+              {
+                "route": "tracking",
+                "menu": {
+                  "order": 2,
+                  "icon": "line-awesome/svg/file.svg",
+                  "exclude": true
+                },
+                "title": "Cam object tracking",
+                "loginRequired": true,
+                "flowLayout": false,
+                "params": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "route": "run",
+        "menu": {
+          "order": 10,
+          "icon": "line-awesome/svg/play-circle-solid.svg"
+        },
+        "title": "Execute test",
+        "loginRequired": true,
+        "flowLayout": false,
+        "params": {}
+      }
+    ]
+  }
+]

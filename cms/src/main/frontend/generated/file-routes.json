@@ -1,0 +1,227 @@
+[
+  {
+    "route": "",
+    "flowLayout": false,
+    "params": {},
+    "title": "Main Layout",
+    "children": [
+      {
+        "route": "",
+        "menu": {
+          "order": 0,
+          "icon": "line-awesome/svg/globe-solid.svg"
+        },
+        "title": "Deck",
+        "loginRequired": true,
+        "flowLayout": false,
+        "params": {}
+      },
+      {
+        "route": "admin",
+        "params": {},
+        "children": [
+          {
+            "route": "user",
+            "menu": {
+              "order": 1,
+              "icon": "line-awesome/svg/user.svg",
+              "exclude": true
+            },
+            "title": "User",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          }
+        ]
+      },
+      {
+        "route": "customer",
+        "menu": {
+          "order": 1,
+          "icon": "line-awesome/svg/file.svg"
+        },
+        "title": "Customer",
+        "loginRequired": true,
+        "flowLayout": false,
+        "params": {}
+      },
+      {
+        "route": "login",
+        "menu": {
+          "exclude": true
+        },
+        "flowLayout": false,
+        "params": {},
+        "title": "Login"
+      },
+      {
+        "route": "project",
+        "params": {},
+        "children": [
+          {
+            "route": "",
+            "menu": {
+              "order": 2,
+              "icon": "line-awesome/svg/file.svg"
+            },
+            "title": "Projects",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          },
+          {
+            "route": ":projectId",
+            "params": {
+              ":projectId": "req"
+            },
+            "children": [
+              {
+                "route": "sample",
+                "menu": {
+                  "order": 2,
+                  "icon": "line-awesome/svg/file.svg",
+                  "exclude": true
+                },
+                "title": "Sample",
+                "loginRequired": true,
+                "flowLayout": false,
+                "params": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "route": "result",
+        "params": {},
+        "children": [
+          {
+            "route": ":resultId",
+            "params": {
+              ":resultId": "req"
+            },
+            "children": [
+              {
+                "route": "image",
+                "menu": {
+                  "order": 2,
+                  "icon": "line-awesome/svg/file.svg",
+                  "exclude": true
+                },
+                "title": "Image Upload",
+                "loginRequired": true,
+                "flowLayout": false,
+                "params": {}
+              },
+              {
+                "route": "result",
+                "menu": {
+                  "order": 2,
+                  "icon": "line-awesome/svg/file.svg",
+                  "exclude": true
+                },
+                "title": "Result",
+                "loginRequired": true,
+                "flowLayout": false,
+                "params": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "route": "sample",
+        "menu": {
+          "order": 3,
+          "icon": "line-awesome/svg/folder-open.svg"
+        },
+        "title": "Sample",
+        "loginRequired": true,
+        "flowLayout": false,
+        "params": {}
+      },
+      {
+        "route": "system",
+        "params": {},
+        "children": [
+          {
+            "route": "",
+            "menu": {
+              "order": 1,
+              "icon": "line-awesome/svg/suitcase-rolling-solid.svg"
+            },
+            "title": "System",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          },
+          {
+            "route": "setting",
+            "menu": {
+              "order": 1,
+              "icon": "line-awesome/svg/suitcase-rolling-solid.svg",
+              "exclude": true
+            },
+            "title": "Setting",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          }
+        ]
+      },
+      {
+        "route": "test",
+        "params": {},
+        "children": [
+          {
+            "route": "",
+            "menu": {
+              "order": 4,
+              "icon": "line-awesome/svg/suitcase-rolling-solid.svg"
+            },
+            "title": "Test",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          },
+          {
+            "route": "cyclic",
+            "menu": {
+              "order": 1,
+              "icon": "line-awesome/svg/test-tube.svg",
+              "exclude": true
+            },
+            "title": "Cyclic Test",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          },
+          {
+            "route": "destructive",
+            "menu": {
+              "order": 1,
+              "icon": "line-awesome/svg/test-tube.svg",
+              "exclude": true
+            },
+            "title": "Destructive Test",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          },
+          {
+            "route": "timeCyclic",
+            "menu": {
+              "order": 1,
+              "icon": "line-awesome/svg/test-tube.svg",
+              "exclude": true
+            },
+            "title": "Time Cyclic Test",
+            "loginRequired": true,
+            "flowLayout": false,
+            "params": {}
+          }
+        ]
+      }
+    ]
+  }
+]

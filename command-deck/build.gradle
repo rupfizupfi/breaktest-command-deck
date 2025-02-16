@@ -1,0 +1,20 @@
+dependencies {
+    implementation project(':cms')
+    implementation fileTree(dir: "${rootProject.projectDir}/lib", include: ['*.jar'])
+}
+
+repositories {
+    flatDir { dirs("${rootProject.projectDir}/lib") }
+}
+
+bootJar {
+    // Specific configuration for Command Deck application JAR
+    archiveBaseName = 'command-deck-application'
+    enabled = true
+}
+
+jar {
+    // Library JAR configuration for shared components
+    archiveBaseName = 'command-deck-library'
+    enabled = true
+}
