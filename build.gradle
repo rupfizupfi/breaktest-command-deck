@@ -6,65 +6,63 @@ buildscript {
 	}
 }
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '3.3.2'
-	id 'io.spring.dependency-management' version '1.1.0'
-	id 'com.vaadin' version "$vaadinVersion"
-    id 'org.jetbrains.kotlin.jvm'
+	id 'org.springframework.boot' version "${springBootVersion}" apply false
+	id 'io.spring.dependency-management' version '1.1.0' apply false
+	id 'com.vaadin' version "$vaadinVersion" apply false
+	id 'org.jetbrains.kotlin.jvm' version '2.0.0' apply false
 }
 
-repositories {
-	mavenCentral()
-	maven { setUrl("https://maven.vaadin.com/vaadin-prereleases") }
-	maven { setUrl("https://repo.spring.io/milestone") }
-	maven {
-		setUrl("https://maven.vaadin.com/vaadin-addons")
+subprojects {
+	apply plugin: 'java'
+	apply plugin: 'org.springframework.boot'
+	apply plugin: 'io.spring.dependency-management'
+	apply plugin: 'com.vaadin'
+
+	repositories {
+		mavenCentral()
+		maven { url "https://maven.vaadin.com/vaadin-prereleases" }
+		maven { url "https://repo.spring.io/milestone" }
+		maven { url "https://maven.vaadin.com/vaadin-addons" }
 	}
-	flatDir {
-		dirs("lib")
+
+	dependencies {
+		implementation 'com.vaadin:vaadin'
+		runtimeOnly 'com.h2database:h2'
+		runtimeOnly "org.postgresql:postgresql"
+		implementation 'com.vaadin:vaadin-spring-boot-starter'
+		implementation 'org.springframework.boot:spring-boot-starter-security'
+		implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+		implementation 'org.springframework.boot:spring-boot-starter-validation'
+		implementation 'org.springframework.boot:spring-boot-starter-websocket'
+		implementation 'org.springframework.boot:spring-boot-starter-aop'
+		implementation 'org.parttio:line-awesome:2.0.0'
+		implementation 'org.apache.poi:poi:5.3.0'
+		implementation 'org.apache.poi:poi-ooxml:5.3.0'
+		implementation 'com.fazecast:jSerialComm:2.11.0'
+		developmentOnly 'org.springframework.boot:spring-boot-devtools'
+		testImplementation 'org.springframework.boot:spring-boot-starter-test'
+		implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+		implementation fileTree(dir: 'lib', include: ['*.jar'])
+		implementation 'org.slf4j:slf4j-api:2.0.9'
+		implementation 'ch.qos.logback:logback-classic:1.4.11'
 	}
-}
 
-dependencies {
-	implementation 'com.vaadin:vaadin'
-	runtimeOnly 'com.h2database:h2'
-	runtimeOnly "org.postgresql:postgresql"
-	implementation 'com.vaadin:vaadin-spring-boot-starter'
-	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.springframework.boot:spring-boot-starter-websocket'
-	implementation 'org.springframework.boot:spring-boot-starter-aop'
-	implementation 'org.parttio:line-awesome:2.0.0'
-	implementation 'org.apache.poi:poi:5.3.0'
-	implementation 'org.apache.poi:poi-ooxml:5.3.0'
-	implementation 'com.fazecast:jSerialComm:2.11.0'
-	developmentOnly 'org.springframework.boot:spring-boot-devtools'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-	implementation fileTree(dir: 'lib', include: ['*.jar'])
-	implementation 'org.slf4j:slf4j-api:2.0.9'
-	implementation 'ch.qos.logback:logback-classic:1.4.11'
-}
-
-dependencyManagement {
-	imports {
-		mavenBom "com.vaadin:vaadin-bom:$vaadinVersion"
+	dependencyManagement {
+		imports {
+			mavenBom "com.vaadin:vaadin-bom:${vaadinVersion}"
+		}
 	}
-}
-kotlin {
-    jvmToolchain(23)
-}
 
-java {
-	sourceCompatibility = JavaVersion.VERSION_23
-	targetCompatibility = JavaVersion.VERSION_23
-	toolchain {
-		languageVersion.set(JavaLanguageVersion.of(23))
+	java {
+		sourceCompatibility = JavaVersion.VERSION_23
+		targetCompatibility = JavaVersion.VERSION_23
+		toolchain {
+			languageVersion.set(JavaLanguageVersion.of(23))
+		}
 	}
-}
 
-vaadin {
-	productionMode = false
-	optimizeBundle = false
+	vaadin {
+		productionMode = false
+		optimizeBundle = false
+	}
 }
