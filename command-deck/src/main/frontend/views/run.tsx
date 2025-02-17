@@ -16,7 +16,7 @@ import createEmptyValueProxy from "Frontend/components/owner/createEmptyValuePro
 import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
 import ownerGridColumn from "Frontend/model/owner/ownerGridColumn";
 import sampleGridColumn from "Frontend/model/sample/sampleGridColumn";
-import {TestParameterService} from "cms-frontend/generated/endpoints";
+import {TestParameterService, SampleService, TestResultService} from "Frontend/generated/endpoints";
 
 createEmptyValueProxy(TestResultModel);
 

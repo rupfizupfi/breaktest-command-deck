@@ -1,5 +1,5 @@
 import { configureAuth } from '@vaadin/hilla-react-auth';
-import { UserEndpoint } from 'Frontend/generated/endpoints';
+import { UserEndpoint } from 'cms/generated/endpoints';
 
 const auth = configureAuth(UserEndpoint.getAuthenticatedUser);
 

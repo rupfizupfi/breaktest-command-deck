@@ -1,5 +1,5 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
-import {SettingService} from 'Frontend/generated/endpoints.js';
+import {SettingService} from 'cms/generated/endpoints.js';
 import {Button, TextField, VerticalLayout} from "@vaadin/react-components";
 import SettingModel from "Frontend/generated/ch/rupfizupfi/deck/data/SettingModel";
 import React, {useState} from "react";

@@ -3,7 +3,7 @@ import { effect, signal } from '@vaadin/hilla-react-signals';
 import { AppLayout, DrawerToggle, Icon, SideNav, SideNavItem } from '@vaadin/react-components';
 import { Avatar } from '@vaadin/react-components/Avatar.js';
 import { Button } from '@vaadin/react-components/Button.js';
-import { useAuth } from 'Frontend/util/auth.js';
+import { useAuth } from 'cms/util/auth.js';
 import { Suspense, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 

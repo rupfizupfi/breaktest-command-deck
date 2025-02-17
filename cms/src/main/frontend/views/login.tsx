@@ -1,7 +1,7 @@
 import { ViewConfig } from '@vaadin/hilla-file-router/types.js';
 import { useSignal } from '@vaadin/hilla-react-signals';
 import { LoginI18n, LoginOverlay, LoginOverlayElement } from '@vaadin/react-components/LoginOverlay.js';
-import { useAuth } from 'Frontend/util/auth.js';
+import { useAuth } from 'cms/util/auth.js';
 
 export const config: ViewConfig = {
   menu: { exclude: true },
