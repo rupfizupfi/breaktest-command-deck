@@ -24,7 +24,7 @@
     "useDefineForClassFields": false,
     "baseUrl": "src/main/frontend",
     "paths": {
-      "cms-frontend/*": ["../cms/src/main/frontend/*"],
+      "cms/*": ["../../../../cms/src/main/frontend/*"],
       "@vaadin/flow-frontend": ["generated/jar-resources"],
       "@vaadin/flow-frontend/*": ["generated/jar-resources/*"],
       "Frontend/*": ["*"]

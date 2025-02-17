@@ -6,7 +6,7 @@ import {AutoForm, type AutoFormProps, AutoGrid, type AutoGridProps, AutoGridRef,
 import {AutoCrudDialog} from "Frontend/components/autocrud/AutoCrudDialog";
 import {useMediaQuery} from "Frontend/components/autocrud/mediaQuery";
 import {ComponentStyleProps} from "Frontend/components/autocrud/util";
-import 'Frontend/components/autocrud/autoCrud.css';
+import 'cms/components/autocrud/autoCrud.css';
 // @ts-ignore
 import {AutoFormFieldProps} from "@vaadin/hilla-react-crud/autoform-field";
 
@@ -109,8 +109,8 @@ function defaultCopyItem<TItem>(item: TItem): TItem {
  * Example usage:
  * ```tsx
  * import { AutoCrud } from '@hilla/react-crud';
- * import PersonService from 'Frontend/generated/endpoints';
- * import PersonModel from 'Frontend/generated/com/example/application/Person';
+ * import PersonService from 'cms/generated/endpoints';
+ * import PersonModel from 'cms/generated/com/example/application/Person';
  *
  * <AutoCrud service={PersonService} model={PersonModel} />
  * ```

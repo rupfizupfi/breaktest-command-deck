@@ -29,6 +29,12 @@
         "params": {}
       },
       {
+        "route": "login",
+        "flowLayout": false,
+        "params": {},
+        "title": "Login2"
+      },
+      {
         "route": "result",
         "params": {},
         "children": [
