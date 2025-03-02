@@ -27,12 +27,21 @@ Before you begin, ensure you have the following installed:
 
 ## Project Structure
 
-This is a simple mono module project with the following structure:
+This is a multi-module project with the following structure:
 
-- `src/main/java` - Java source files
-- `src/main/frontend` - Frontend source files
+- `cms` - CMS application module (All about managing the content)
+  - `src/main/java` - Java source files
+  - `src/main/resources` - Resources like static files, templates, and the application properties
+  - `src/main/frontend` - Frontend source files
     - `src/main/frontend/generated` - Generated frontend files (api, models...)
-- `src/main/resources` - Resources like static files, templates, and the application properties
+- `command-deck` - Command Deck application module (includes the connection to the scale and frequency converter)
+  - `src/main/java` - Java source files
+  - `src/main/resources` - Resources like static files, templates, and the application properties
+  - `src/main/frontend` - Frontend source files
+    - `src/main/frontend/generated` - Generated frontend files (api, models...)
+- `lib` - Directory containing external JAR dependencies
+- `build.gradle` - Root Gradle build file
+- `settings.gradle` - Gradle settings file
 
 ## Contributing
 
@@ -47,15 +56,33 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## Deploying using Docker
 
-To build the Dockerized version of the project, run
+## Deploying using Docker
 
-```
-mvn clean package -Pproduction
-docker build . -t breaktest-command-deck:latest
-```
+To build the Dockerized version of the project, follow these steps:
 
-Once the Docker image is correctly built, you can test it locally using
+1. Navigate to the `docker` directory:
+    ```sh
+    cd docker
+    ```
 
-```
-docker run -p 8080:8080 breaktest-command-deck:latest
-```
+2. Build the Docker images using `docker-compose`:
+    ```sh
+    docker-compose build
+    ```
+
+3. Start the services using `docker-compose`:
+    ```sh
+    docker-compose up
+    ```
+
+4. To run the services in the background, use the `-d` flag:
+    ```sh
+    docker-compose up -d
+    ```
+
+5. To stop the services, use:
+    ```sh
+    docker-compose down
+    ```
+
+The `docker-compose.yaml` file defines the services, including the CMS application and the PostgreSQL database. The CMS application is built from the `cms` module and uses the `cms/Dockerfile` for its configuration. The database service uses the official PostgreSQL image and is configured to use a secret for the database password.
