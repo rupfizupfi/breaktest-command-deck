@@ -4,10 +4,10 @@ import {useParams} from "react-router-dom";
 import {useEffect, useState} from "react";
 import Project from "Frontend/generated/ch/rupfizupfi/deck/data/Project";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
-import {constraintServiceToFilter} from "Frontend/util/service";
+import {constraintServiceToFilter} from "cms/util/service";
 import {VerticalLayout} from "@vaadin/react-components";
-import Placeholder from "Frontend/components/placeholder/Placeholder";
-import {buildAutoCrud} from "Frontend/components/autocrud/sample";
+import Placeholder from "cms/components/placeholder/Placeholder";
+import {buildAutoCrud} from "cms/components/autocrud/sample";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg', exclude: true}, title: 'Sample', loginRequired: true};
 

@@ -1,7 +1,7 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {TestParameterService} from "Frontend/generated/endpoints";
-import {buildAutoCrud} from "Frontend/components/autocrud/test";
-import {constraintServiceToFilter} from "Frontend/util/service";
+import {buildAutoCrud} from "cms/components/autocrud/test";
+import {constraintServiceToFilter} from "cms/util/service";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
 

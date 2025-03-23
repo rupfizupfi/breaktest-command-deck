@@ -1,5 +1,5 @@
 import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResultModel";
-import {makeObjectEmptyValueCreatorIgnoreRelation} from "Frontend/util/model";
+import {makeObjectEmptyValueCreatorIgnoreRelation} from "cms/util/model";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
 import SampleModel from "Frontend/generated/ch/rupfizupfi/deck/data/SampleModel";
 

@@ -1,4 +1,4 @@
-import { router } from 'cms/generated/routes.js';
+import { router } from 'Frontend/generated/routes.js';
 import { AuthProvider } from 'cms/util/auth';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';

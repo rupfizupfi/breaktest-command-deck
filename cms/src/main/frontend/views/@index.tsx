@@ -2,7 +2,7 @@ import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {useSignal} from '@vaadin/hilla-react-signals';
 import {Button} from '@vaadin/react-components/Button.js';
 import {Notification} from '@vaadin/react-components/Notification.js';
-import {getService} from "Frontend/service/StatusService";
+import {getService} from "cms/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
 
 export const config: ViewConfig = {

@@ -1,10 +1,10 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
-import {SettingService} from 'cms/generated/endpoints.js';
+import {SettingService} from 'Frontend/generated/endpoints.js';
 import {Button, TextField, VerticalLayout} from "@vaadin/react-components";
 import SettingModel from "Frontend/generated/ch/rupfizupfi/deck/data/SettingModel";
 import React, {useState} from "react";
-import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
-import {getDynamicField} from "Frontend/components/control/dynamicField";
+import {AutoCrud} from "cms/components/autocrud/AutoCrud";
+import {getDynamicField} from "cms/components/control/dynamicField";
 import Setting from "Frontend/generated/ch/rupfizupfi/deck/data/Setting";
 import {EndpointRequestInit} from "@vaadin/hilla-frontend/Connect.js";
 

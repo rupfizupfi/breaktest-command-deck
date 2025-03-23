@@ -3,10 +3,10 @@ import {TestResultService} from "Frontend/generated/endpoints";
 import {useParams} from "react-router-dom";
 import {useEffect, useState} from "react";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
-import {constraintServiceToFilter} from "Frontend/util/service";
-import Placeholder from "Frontend/components/placeholder/Placeholder";
+import {constraintServiceToFilter} from "cms/util/service";
+import Placeholder from "cms/components/placeholder/Placeholder";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
-import ResultViewer from "Frontend/components/dashboard/ResultViewer";
+import ResultViewer from "cms/components/dashboard/ResultViewer";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg', exclude: true}, title: 'Result', loginRequired: true};
 
