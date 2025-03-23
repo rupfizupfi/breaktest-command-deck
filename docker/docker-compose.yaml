@@ -8,7 +8,7 @@ services:
     secrets:
       - db-password
     ports:
-      - 8080:8080
+      - 8043:443
     volumes:
       - ./rupfizupfi:/home/appuser/rupfizupfi
       - ./keystore:/home/appuser/keystore
