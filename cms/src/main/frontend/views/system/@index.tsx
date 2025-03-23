@@ -1,5 +1,5 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
-import {GearStandardService, GearTypeService, MaterialService} from 'cms/generated/endpoints.js';
+import {GearStandardService, GearTypeService, MaterialService} from 'Frontend/generated/endpoints.js';
 import {VerticalLayout} from "@vaadin/react-components";
 import MaterialModel from "Frontend/generated/ch/rupfizupfi/deck/data/MaterialModel";
 import GearTypeModel from "Frontend/generated/ch/rupfizupfi/deck/data/GearTypeModel";

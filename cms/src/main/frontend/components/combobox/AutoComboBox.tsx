@@ -1,7 +1,7 @@
 import {ComboBox, ComboBoxElement, ComboBoxProps} from "@vaadin/react-components";
 import React, {useEffect} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
-import {AutoComboService} from "Frontend/components/combobox/service";
+import {AutoComboService} from "cms/components/combobox/service";
 
 type AutoComboBoxProps<T> = ComboBoxProps<T> & {
     service: AutoComboService<T>;

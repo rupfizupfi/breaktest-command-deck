@@ -3,7 +3,7 @@ import {AutoCrud} from "@vaadin/hilla-react-crud";
 import UserModel from "Frontend/generated/ch/rupfizupfi/deck/data/UserModel";
 import {UserService} from "Frontend/generated/endpoints";
 import {MultiSelectComboBox, PasswordField, TextField} from "@vaadin/react-components";
-import AvatarField from "Frontend/components/control/AvatarField";
+import AvatarField from "cms/components/control/AvatarField";
 
 export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/user.svg', exclude: true}, title: 'User', loginRequired: true};
 

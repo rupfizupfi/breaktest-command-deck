@@ -2,9 +2,9 @@ import type {DetachedModelConstructor, Value} from "@vaadin/hilla-lit-form";
 import type {JSX} from "react";
 import {AutoCrud, CrudService} from "@vaadin/hilla-react-crud";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
-import OwnerSelector from "Frontend/components/owner/OnwerSelector";
-import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
-import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
+import OwnerSelector from "cms/components/owner/OnwerSelector";
+import {OwnerGridView} from "cms/components/owner/OwnerGridView";
+import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
 
 createEmptyValueProxy(TestParameterModel);
 

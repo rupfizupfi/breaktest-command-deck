@@ -3,9 +3,9 @@ import { Button } from '@vaadin/react-components/Button.js';
 import { SplitLayout } from '@vaadin/react-components/SplitLayout.js';
 import { type JSX, useId, useRef, useState } from 'react';
 import {AutoForm, type AutoFormProps, AutoGrid, type AutoGridProps, AutoGridRef, CrudService, emptyItem} from "@vaadin/hilla-react-crud";
-import {AutoCrudDialog} from "Frontend/components/autocrud/AutoCrudDialog";
-import {useMediaQuery} from "Frontend/components/autocrud/mediaQuery";
-import {ComponentStyleProps} from "Frontend/components/autocrud/util";
+import {AutoCrudDialog} from "cms/components/autocrud/AutoCrudDialog";
+import {useMediaQuery} from "cms/components/autocrud/mediaQuery";
+import {ComponentStyleProps} from "cms/components/autocrud/util";
 import 'cms/components/autocrud/autoCrud.css';
 // @ts-ignore
 import {AutoFormFieldProps} from "@vaadin/hilla-react-crud/autoform-field";
@@ -109,8 +109,8 @@ function defaultCopyItem<TItem>(item: TItem): TItem {
  * Example usage:
  * ```tsx
  * import { AutoCrud } from '@hilla/react-crud';
- * import PersonService from 'cms/generated/endpoints';
- * import PersonModel from 'cms/generated/com/example/application/Person';
+ * import PersonService from 'Frontend/generated/endpoints';
+ * import PersonModel from 'Frontend/generated/com/example/application/Person';
  *
  * <AutoCrud service={PersonService} model={PersonModel} />
  * ```

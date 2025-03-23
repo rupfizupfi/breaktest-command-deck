@@ -1,15 +1,15 @@
 import {AutoCrud, CrudService} from "@vaadin/hilla-react-crud";
 import SampleModel from "Frontend/generated/ch/rupfizupfi/deck/data/SampleModel";
-import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
-import AutMultiSelectComboBox from "Frontend/components/combobox/MultiSelectComboBox";
-import {createAutoComboBoxService} from "Frontend/components/combobox/service";
+import AutoComboBox from "cms/components/combobox/AutoComboBox";
+import AutMultiSelectComboBox from "cms/components/combobox/MultiSelectComboBox";
+import {createAutoComboBoxService} from "cms/components/combobox/service";
 import type {Value} from "@vaadin/hilla-lit-form";
 import type {JSX} from "react";
 import {GearStandardService, GearTypeService, MaterialService, ProjectService} from "Frontend/generated/endpoints";
 import Sample from "Frontend/generated/ch/rupfizupfi/deck/data/Sample";
-import {OwnerGridView} from "Frontend/components/owner/OwnerGridView";
-import OwnerSelector from "Frontend/components/owner/OnwerSelector";
-import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
+import {OwnerGridView} from "cms/components/owner/OwnerGridView";
+import OwnerSelector from "cms/components/owner/OnwerSelector";
+import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
 
 createEmptyValueProxy(SampleModel);
 

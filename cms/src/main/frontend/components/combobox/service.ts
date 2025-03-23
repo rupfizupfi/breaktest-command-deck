@@ -1,4 +1,4 @@
-import {ListEndpointService} from "Frontend/util/service";
+import {ListEndpointService} from "cms/util/service";
 import type Pageable from "Frontend/generated/com/vaadin/hilla/mappedtypes/Pageable";
 import Filter from "Frontend/generated/com/vaadin/hilla/crud/filter/Filter";
 
