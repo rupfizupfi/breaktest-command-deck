@@ -31,11 +31,11 @@
     }
   },
   "include": [
-    "../cms/src/main/frontend/**/*",
     "src/main/frontend/**/*",
     "types.d.ts"
   ],
   "exclude": [
-    "src/main/frontend/generated/jar-resources/**"
+    "src/main/frontend/generated/jar-resources/**",
+    "../cms/node_modules/**"
   ]
 }

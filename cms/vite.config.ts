@@ -6,7 +6,7 @@ const customConfig: UserConfigFn = (env) => ({
         alias: {
             'cms': __dirname + '/src/main/frontend',
         }
-    },
+    }
 });
 
 export default overrideVaadinConfig(customConfig);
