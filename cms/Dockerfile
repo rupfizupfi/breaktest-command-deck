@@ -20,7 +20,12 @@ RUN adduser \
 EXPOSE 8080
 COPY --chown=appuser:appuser --from=build-image /home/gradle/src/cms/build/libs/*.jar /app/cms.jar
 
+COPY --chown=appuser:appuser cms/src/docker/bin/startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/startup.sh
+
 USER appuser
-ENTRYPOINT ["java", "-jar", "app/cms.jar"]
+
+ENTRYPOINT ["/usr/local/bin/startup.sh"]
+CMD ["java", "-jar", "/app/cms.jar"]
 
 # ENTRYPOINT ["java", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseCGroupMemoryLimitForHeap", "-Djava.security.egd=file:/dev/./urandom","-jar","/app/cms.jar"]
