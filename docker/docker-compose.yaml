@@ -14,7 +14,8 @@ services:
       - ./keystore:/home/appuser/keystore
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - KEY_STORE_PATH=/home/appuser/keystore/rupfizupfi.p12
+      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
+      - DB_PASSWORD_FILE=/run/secrets/db-password
     depends_on:
       db:
         condition: service_healthy
