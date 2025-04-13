@@ -18,7 +18,3 @@ jar {
     archiveBaseName = 'command-deck-library'
     enabled = true
 }
-
-hilla {
-    exposedPackagesToParser = ["ch.rupfizupfi.deck.api"]
-}
