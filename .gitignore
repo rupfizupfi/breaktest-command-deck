@@ -29,3 +29,5 @@ frontend/themes/hilla-react-app/theme-editor.css
 lib/usbmodbus.jar
 script/.data
 scrtip/app.log
+
+/.secrets
