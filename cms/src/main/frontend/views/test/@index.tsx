@@ -1,6 +1,6 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {Button, VerticalLayout} from "@vaadin/react-components";
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
 
 export const config: ViewConfig = {
     menu: {order: 4, icon: 'line-awesome/svg/suitcase-rolling-solid.svg'},

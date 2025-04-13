@@ -1,6 +1,6 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {TestResultService} from "Frontend/generated/endpoints";
-import {useParams} from "react-router-dom";
+import {useParams} from "react-router";
 import {useEffect, useState} from "react";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
 import {constraintServiceToFilter} from "cms/util/service";
