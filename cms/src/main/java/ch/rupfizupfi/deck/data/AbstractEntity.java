@@ -1,7 +1,7 @@
 package ch.rupfizupfi.deck.data;
 
-import com.vaadin.hilla.Nullable;
 import jakarta.persistence.*;
+import org.springframework.lang.Nullable;
 
 @MappedSuperclass
 public abstract class AbstractEntity {

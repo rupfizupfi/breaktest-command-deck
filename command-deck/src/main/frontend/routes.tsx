@@ -5,7 +5,7 @@ import Flow from "Frontend/generated/flow/Flow";
 
 export const { router, routes } = new RouterConfigurationBuilder()
     .withFileRoutes(cmsFileRoutes)
-    //.withFileRoutes(fileRoutes) // (1)
+    .withFileRoutes(fileRoutes) // (1)
     // To define routes manually or adding an individual route, use the
     // following code and remove (1):
     // .withReactRoutes(
