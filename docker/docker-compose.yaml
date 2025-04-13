@@ -10,7 +10,7 @@ services:
     ports:
       - 8043:443
     volumes:
-      - ./rupfizupfi:/home/appuser/rupfizupfi
+      - ./breaktester:/home/appuser/breaktester
       - ./keystore:/home/appuser/keystore
     environment:
       - SPRING_PROFILES_ACTIVE=docker
