@@ -1,6 +1,6 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {ProjectService, SampleService} from "Frontend/generated/endpoints";
-import {useParams} from "react-router-dom";
+import {useParams} from "react-router";
 import {useEffect, useState} from "react";
 import Project from "Frontend/generated/ch/rupfizupfi/deck/data/Project";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
