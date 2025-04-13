@@ -1,7 +1,7 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResultModel";
-import {createAutoComboBoxService} from "Frontend/components/combobox/service";
-import AutoComboBox from "Frontend/components/combobox/AutoComboBox";
+import {createAutoComboBoxService} from "cms/components/combobox/service";
+import AutoComboBox from "cms/components/combobox/AutoComboBox";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
 import {GridColumn, Icon, TextArea, VerticalLayout} from "@vaadin/react-components";
 import React, {useState} from "react";
@@ -10,12 +10,12 @@ import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
 import LiveTestResult from "Frontend/components/dashboard/LiveTestResult";
 import {Link} from "react-router-dom";
-import OwnerSelector from "Frontend/components/owner/OnwerSelector";
+import OwnerSelector from "cms/components/owner/OnwerSelector";
 import {Button} from "@vaadin/react-components/Button.js";
-import createEmptyValueProxy from "Frontend/components/owner/createEmptyValueProxy";
-import {AutoCrud} from "Frontend/components/autocrud/AutoCrud";
-import ownerGridColumn from "Frontend/model/owner/ownerGridColumn";
-import sampleGridColumn from "Frontend/model/sample/sampleGridColumn";
+import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
+import {AutoCrud} from "cms/components/autocrud/AutoCrud";
+import ownerGridColumn from "cms/model/owner/ownerGridColumn";
+import sampleGridColumn from "cms/model/sample/sampleGridColumn";
 import {TestParameterService, SampleService, TestResultService} from "Frontend/generated/endpoints";
 
 createEmptyValueProxy(TestResultModel);

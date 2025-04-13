@@ -14,7 +14,7 @@ class UserModel<T extends User_1 = User_1> extends AbstractEntityModel_1<T> {
         return this[_getPropertyModel_1]("name", (parent, key) => new StringModel_1(parent, key, false, { meta: { javaType: "java.lang.String" } }));
     }
     get newPassword(): StringModel_1 {
-        return this[_getPropertyModel_1]("newPassword", (parent, key) => new StringModel_1(parent, key, false, { meta: { javaType: "java.lang.String" } }));
+        return this[_getPropertyModel_1]("newPassword", (parent, key) => new StringModel_1(parent, key, true, { meta: { javaType: "java.lang.String" } }));
     }
     get roles(): ArrayModel_1<RoleModel_1> {
         return this[_getPropertyModel_1]("roles", (parent, key) => new ArrayModel_1(parent, key, false, (parent, key) => new RoleModel_1(parent, key, false), { meta: { javaType: "java.util.Set" } }));

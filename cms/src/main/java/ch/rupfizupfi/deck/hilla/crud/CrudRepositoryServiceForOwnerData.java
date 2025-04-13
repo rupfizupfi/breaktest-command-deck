@@ -2,10 +2,9 @@ package ch.rupfizupfi.deck.hilla.crud;
 
 import ch.rupfizupfi.deck.security.DataWithOwner;
 import ch.rupfizupfi.deck.security.UserUtils;
-import com.vaadin.hilla.Nonnull;
-import com.vaadin.hilla.Nullable;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import com.vaadin.hilla.crud.filter.Filter;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -19,9 +18,8 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
     @Autowired
     private OwnerDataHelper ownerDataHelper;
 
-    @NotNull
     @Override
-    public Optional<T> get(@NotNull Long id) {
+    public Optional<T> get(@NonNull Long id) {
         if (UserUtils.isAdmin()) {
             return super.get(id);
         }
@@ -29,8 +27,8 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
     }
 
     @Override
-    @Nonnull
-    public List<@Nonnull T> list(@NotNull Pageable pageable, @Nullable Filter filter) {
+    @NonNull
+    public List<T> list(@NonNull Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
             return super.list(pageable, filter);
         }
@@ -40,7 +38,7 @@ public class CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R extend
     }
 
     @Override
-    public void delete(@NotNull Long id) {
+    public void delete(@NonNull Long id) {
         Optional<T> entity = this.get(id);
         if (entity.isPresent()) {
             super.delete(id);

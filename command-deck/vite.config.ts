@@ -3,7 +3,7 @@ import { overrideVaadinConfig } from './vite.generated';
 
 const customConfig: UserConfigFn = (env) => ({
     resolve: {
-        dedupe: ['react', 'react-dom', '@vaadin', '@stomp', '@polymer', 'polymer', 'lit', 'preact', 'react-is']
+        dedupe: ['react', 'react-dom', '@vaadin', '@stomp', '@polymer', 'polymer', 'lit', 'preact', 'react-is'],
         alias: {
             'cms': __dirname + '/../cms/src/main/frontend',
         }

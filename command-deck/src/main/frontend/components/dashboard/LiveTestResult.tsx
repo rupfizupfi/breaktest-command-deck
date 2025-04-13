@@ -9,7 +9,7 @@ import {TestRunnerService} from "Frontend/generated/endpoints";
 import {CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, TimeScale, TimeSeriesScale, Title, Tooltip} from 'chart.js';
 import {Button} from "@vaadin/react-components/Button.js";
 import {HorizontalLayout, VerticalLayout} from "@vaadin/react-components";
-import LogComponent from "Frontend/components/dashboard/LogComponent";
+import LogComponent from "cms/components/dashboard/LogComponent";
 
 ChartJS.register(
     CategoryScale,

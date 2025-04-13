@@ -3,8 +3,8 @@ package ch.rupfizupfi.deck.api.services;
 import ch.rupfizupfi.deck.data.Setting;
 import ch.rupfizupfi.deck.data.SettingRepository;
 import com.vaadin.hilla.BrowserCallable;
-import com.vaadin.hilla.Nonnull;
-import com.vaadin.hilla.Nullable;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import com.vaadin.hilla.crud.CrudService;
 import com.vaadin.hilla.crud.filter.Filter;
 import jakarta.annotation.security.PermitAll;
@@ -26,7 +26,7 @@ public class SettingService implements CrudService<Setting<?>, String> {
         return repository.getSetting(key);
     }
 
-    public @Nonnull List<@Nonnull Setting<?>> sync() {
+    public @NonNull List<Setting<?>> sync() {
         return repository.syncAndGetSettings();
     }
 
@@ -50,7 +50,7 @@ public class SettingService implements CrudService<Setting<?>, String> {
     }
 
     @Override
-    public @Nonnull List<@Nonnull Setting<?>> list(Pageable pageable, @Nullable Filter filter) {
+    public @NonNull List<Setting<?>> list(Pageable pageable, @Nullable Filter filter) {
         return repository.getAllSettings();
     }
 }

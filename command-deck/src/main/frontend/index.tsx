@@ -6,11 +6,8 @@ import { RouterProvider } from 'react-router-dom';
 import 'cms/model/init';
 
 function App() {
-  return (
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>
-  );
+    // @ts-expect-error
+    return (<AuthProvider><RouterProvider router={router} /></AuthProvider>);
 }
 
 createRoot(document.getElementById('outlet')!).render(createElement(App));

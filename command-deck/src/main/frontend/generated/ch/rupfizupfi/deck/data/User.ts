@@ -4,7 +4,7 @@ interface User extends AbstractEntity_1 {
     id?: number;
     username: string;
     name: string;
-    newPassword: string;
+    newPassword?: string;
     roles: Array<Role_1>;
 }
 export default User;

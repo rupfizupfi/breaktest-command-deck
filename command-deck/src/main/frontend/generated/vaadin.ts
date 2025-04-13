@@ -61,7 +61,7 @@ import './theme-breaktest-command-deck.global.generated.js';
 import { applyTheme } from './theme.js';
 applyTheme(document);
 
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 (window as any).Vaadin ??= {};
 (window as any).Vaadin.copilot ??= {};
 (window as any).Vaadin.copilot._ref ??= {};

@@ -9,7 +9,7 @@ import ch.rupfizupfi.deck.hilla.crud.OwnerDataHelper;
 import ch.rupfizupfi.deck.security.UserUtils;
 import ch.rupfizupfi.deck.service.FileService;
 import com.vaadin.hilla.BrowserCallable;
-import com.vaadin.hilla.Nullable;
+import org.springframework.lang.Nullable;
 import com.vaadin.hilla.crud.filter.Filter;
 import jakarta.annotation.security.PermitAll;
 import jakarta.persistence.criteria.Root;
