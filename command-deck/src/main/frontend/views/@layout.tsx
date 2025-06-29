@@ -4,7 +4,7 @@ import { AppLayout, DrawerToggle, Icon, SideNav, SideNavItem } from '@vaadin/rea
 import { Button } from '@vaadin/react-components/Button.js';
 import { useAuth } from 'cms/util/auth.js';
 import { Suspense, useEffect } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import InfoBoard from "Frontend/components/dashboard/InfoBoard";
 
 const defaultTitle = document.title;

@@ -9,7 +9,7 @@ import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
 import LiveTestResult from "Frontend/components/dashboard/LiveTestResult";
-import {Link} from "react-router-dom";
+import {Link} from "react-router";
 import OwnerSelector from "cms/components/owner/OnwerSelector";
 import {Button} from "@vaadin/react-components/Button.js";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
