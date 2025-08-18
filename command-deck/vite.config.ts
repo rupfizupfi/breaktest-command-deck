@@ -1,11 +1,12 @@
 import {UserConfigFn} from 'vite';
 import {overrideVaadinConfig} from './vite.generated';
+import customFileSystemRouterPlugin from "./customFileSystemRouterPlugin";
 
 function forceMainNodeModules() {
     return {
         name: 'force-main-node-modules',
-        enforce: 'pre',
-        async resolveId(source:string, importer:string, options) {
+        enforce: 'pre' as const, // Fixed type issue by using 'as const'
+        async resolveId(source: string, importer: string, options) {
             if (importer && importer.includes('/cms/src')) {
                 const resolved = await this.resolve(source, importer, {
                     ...options,
@@ -35,7 +36,10 @@ const customConfig: UserConfigFn = (env) => ({
         }
     },
 
-    plugins: [forceMainNodeModules()],
+    plugins: [
+        forceMainNodeModules(),
+        customFileSystemRouterPlugin(env.mode === 'development')
+    ],
 });
 
 export default overrideVaadinConfig(customConfig);
