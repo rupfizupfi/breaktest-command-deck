@@ -22,6 +22,27 @@ services:
     profiles:
       - cms
 
+  server-deck:
+    build:
+      context: ..
+      dockerfile: command-deck/Dockerfile
+    secrets:
+      - db-password
+    ports:
+      - 8043:443
+    volumes:
+      - ./breaktester:/home/appuser/breaktester
+      - ./keystore:/home/appuser/keystore
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
+      - DB_PASSWORD_FILE=/run/secrets/db-password
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - deck
+
   db:
     image: postgres
     restart: always
