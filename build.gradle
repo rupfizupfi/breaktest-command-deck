@@ -20,9 +20,9 @@ subprojects {
 
 	repositories {
 		mavenCentral()
-		maven { url "https://maven.vaadin.com/vaadin-prereleases" }
-		maven { url "https://repo.spring.io/milestone" }
-		maven { url "https://maven.vaadin.com/vaadin-addons" }
+		maven { url = "https://maven.vaadin.com/vaadin-prereleases" }
+		maven { url = "https://repo.spring.io/milestone" }
+		maven { url = "https://maven.vaadin.com/vaadin-addons" }
 	}
 
 	dependencies {
