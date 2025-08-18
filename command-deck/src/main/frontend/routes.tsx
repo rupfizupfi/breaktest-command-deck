@@ -1,17 +1,12 @@
-import {createRoute, RouterConfigurationBuilder} from "@vaadin/hilla-file-router/runtime.js";
-import fileRoutes from "Frontend/generated/file-routes";
+import { createRoute, RouterConfigurationBuilder } from '@vaadin/hilla-file-router/runtime.js';
+import Flow from 'Frontend/generated/flow/Flow';
+import fileRoutes from 'Frontend/generated/file-routes';
 import cmsFileRoutes from "cms/generated/file-routes";
-import Flow from "Frontend/generated/flow/Flow";
 
-// const mergedFileRoutes = [
-//     createRoute("", fileRoutes[0].module, [
-//         ...cmsFileRoutes[0].children, ...fileRoutes[0].children
-//     ])
-// ];
-
-export const { router, routes } = new RouterConfigurationBuilder()
+export const {router, routes} = new RouterConfigurationBuilder()
     .withFileRoutes(cmsFileRoutes)
-    .withFileRoutes(fileRoutes) // (1)
+    .withFileRoutes(fileRoutes)
+
     // To define routes manually or adding an individual route, use the
     // following code and remove (1):
     // .withReactRoutes(

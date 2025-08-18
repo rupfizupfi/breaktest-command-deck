@@ -10,3 +10,4 @@ function App() {
 }
 
 createRoot(document.getElementById('outlet')!).render(createElement(App));
+
