@@ -26,7 +26,7 @@ subprojects {
 	}
 
 	dependencies {
-		implementation 'com.vaadin:vaadin'
+		implementation 'com.vaadin:vaadin-core'
 		runtimeOnly 'com.h2database:h2'
 		runtimeOnly "org.postgresql:postgresql"
 		implementation 'com.vaadin:vaadin-spring-boot-starter'
