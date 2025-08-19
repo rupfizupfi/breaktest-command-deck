@@ -1,8 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import Webcam from "react-webcam";
-import cv from "@techstark/opencv-js";
-import useCamShiftTracking from "Frontend/components/webcam/tracking/CamShiftTracking";
-import useCVTracker from "Frontend/components/webcam/tracking/CVTracker";
+import cvReady, {CV} from "@techstark/opencv-js";
+import creatCamshiftTracking from "Frontend/components/webcam/tracking/CamShiftTracking";
 
 interface CalibrationPoint {
     x: number;
@@ -15,11 +14,11 @@ const FACING_MODE_ENVIRONMENT = "environment";
 export default function DistanceMeasureCam() {
     const webcamRef = useRef<Webcam>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const algoRef = useRef<ReturnType<typeof creatCamshiftTracking>>(null);
     const [isCalibrating, setIsCalibrating] = useState(false);
     const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
     const [scaleFactor, setScaleFactor] = useState(1);
     const [facingMode, setFacingMode] = useState(FACING_MODE_USER);
-    const comShiftTracking = useCVTracker();
 
     const videoConstraints: MediaTrackConstraints = {
         facingMode: facingMode,
@@ -29,15 +28,18 @@ export default function DistanceMeasureCam() {
 
     useEffect(() => {
         // Wait for OpenCV to be ready
-        cv['onRuntimeInitialized'] = () => {
+        cvReady.then((cv:CV) => {
+            const camShiftTracking = creatCamshiftTracking(cv);
+
             function update() {
                 captureFrame();
                 requestAnimationFrame(update);
             }
 
             update();
-            comShiftTracking.init(canvasRef.current!);
-        };
+            camShiftTracking.init(canvasRef.current!);
+            algoRef.current = camShiftTracking;
+        });
     }, []);
 
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -75,7 +77,7 @@ export default function DistanceMeasureCam() {
                     const canvas = canvasRef.current!;
                     const ctx = canvas.getContext("2d")!;
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    comShiftTracking.processFrames(canvas, scaleFactor);
+                    algoRef.current!.processFrames(canvas, scaleFactor);
                 };
             }
         }

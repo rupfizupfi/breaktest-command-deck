@@ -1,10 +1,10 @@
-import cv from "@techstark/opencv-js";
+import cvReady, {Tracker} from "@techstark/opencv-js";
 import {useRef} from "react";
 import useAreaSelector, {SelectedArea} from "Frontend/components/webcam/tracking/AreaSelector";
 
 export interface TrackedObject {
     roi: SelectedArea;
-    tracker: cv.Tracker;
+    tracker: Tracker;
 }
 
 export default function useCVTracker() {

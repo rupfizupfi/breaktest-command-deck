@@ -5,8 +5,17 @@ export interface SelectedArea {
     height: number;
 }
 
+function clampRect(r: SelectedArea, w: number, h: number): SelectedArea {
+    const x = Math.max(0, Math.min(r.x, w - 1));
+    const y = Math.max(0, Math.min(r.y, h - 1));
+    const maxW = w - x, maxH = h - y;
+    const width = Math.max(1, Math.min(r.width, maxW));
+    const height = Math.max(1, Math.min(r.height, maxH));
+    return {x,y, width, height};
+}
+
 export default function useAreaSelector(canvas: HTMLCanvasElement, callback: (selection: SelectedArea) => void) {
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', {willReadFrequently:true, alpha:false, colorSpace: 'srgb', colorType: 'unorm8', desynchronized: true}) as CanvasRenderingContext2D;
     const selection = { x: 0, y: 0, width: 0, height: 0 };
     let isSelecting = false;
 
@@ -31,7 +40,8 @@ export default function useAreaSelector(canvas: HTMLCanvasElement, callback: (se
 
     function handleMouseUp() {
         isSelecting = false;
-        callback(selection);
+        const result = clampRect(selection, canvas.width, canvas.height);
+        callback(result);
     }
 
     function drawSelection() {

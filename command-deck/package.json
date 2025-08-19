@@ -6,7 +6,7 @@
     "@fontsource/barlow-condensed": "^4.5.0",
     "@polymer/polymer": "3.5.2",
     "@stomp/rx-stomp": "^2.0.0",
-    "@techstark/opencv-js": "^4.10.0-release.1",
+    "@techstark/opencv-js": "^4.11.0-release.1",
     "@vaadin/bundles": "24.8.4",
     "@vaadin/common-frontend": "0.0.19",
     "@vaadin/hilla-file-router": "24.8.3",
@@ -237,6 +237,6 @@
       "workbox-core": "7.3.0",
       "workbox-precaching": "7.3.0"
     },
-    "hash": "c90b4ce7314aff463fc4ab30303f7d60f3434fa4901b48e95eb2f80c1720d93f"
+    "hash": "14d20ab1b63c8e51ee0291c87a7a05ac6c3ab97ba0cd9db0108b3136a9a34abb"
   }
 }
