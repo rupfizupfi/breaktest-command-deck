@@ -1,29 +1,29 @@
-import 'construct-style-sheets-polyfill';
 import { injectGlobalCss } from 'Frontend/generated/jar-resources/theme-util.js';
 import { webcomponentGlobalCssInjector } from 'Frontend/generated/jar-resources/theme-util.js';
 import './theme-breaktest-command-deck.components.generated.js';
 let needsReloadOnChanges = false;
-import { typography } from '@vaadin/vaadin-lumo-styles/typography.js';
-import { color } from '@vaadin/vaadin-lumo-styles/color.js';
-import { spacing } from '@vaadin/vaadin-lumo-styles/spacing.js';
-import { badge } from '@vaadin/vaadin-lumo-styles/badge.js';
-import { utility } from '@vaadin/vaadin-lumo-styles/utility.js';
 import stylesCss from 'themes/breaktest-command-deck/styles.css?inline';
 
   let themeRemovers = new WeakMap();
   let targets = [];
+  const fontFaceRegex = /(@font-face\s*{[\s\S]*?})/g;
 
   export const applyTheme = (target) => {
     const removers = [];
     if (target !== document) {
-      removers.push(injectGlobalCss(typography.cssText, '', target, true));
-removers.push(injectGlobalCss(color.cssText, '', target, true));
-removers.push(injectGlobalCss(spacing.cssText, '', target, true));
-removers.push(injectGlobalCss(badge.cssText, '', target, true));
-removers.push(injectGlobalCss(utility.cssText, '', target, true));
-removers.push(injectGlobalCss(stylesCss.toString(), '', target));
+      removers.push(injectGlobalCss(stylesCss.toString(), '', target));
     
       
+        webcomponentGlobalCssInjector((css) => {
+          removers.push(injectGlobalCss(css, '', target));
+          if(fontFaceRegex.test(css)) {
+            const fontFaces = Array.from(css.match(fontFaceRegex));
+            fontFaces.forEach(fontFace => {
+              removers.push(injectGlobalCss(fontFace, '', document));
+            });
+          }
+        });
+        
     }
     
     

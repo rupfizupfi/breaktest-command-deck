@@ -3,6 +3,10 @@
 // This is needed for TypeScript compiler to declare and export as a TypeScript module.
 // It is recommended to commit this file to the VCS.
 // You might want to change the configurations to fit your preferences
+// Side-effect CSS imports (e.g. `import './foo.css'`) need an explicit module
+// declaration; TypeScript reports TS2882 without it.
+declare module '*.css';
+
 declare module '*.css?inline' {
   import type { CSSResultGroup } from 'lit';
   const content: CSSResultGroup;

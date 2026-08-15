@@ -31,7 +31,7 @@ const createLinkReferences = (css, target) => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = match[2] || match[4];
-    const media = match[1] || match[5];
+    const media = (match[1] || match[5] || '').trim();
     if (media) {
       link.media = media;
     }
@@ -79,8 +79,8 @@ const addStyleTag = (cssText, referenceComment) => {
 
   let beforeThis = undefined;
   if (referenceComment) {
-    const comments = Array.from(document.head.childNodes).filter(elem => elem.nodeType === Node.COMMENT_NODE);
-    const container = comments.find(comment => comment.data.trim() === referenceComment);
+    const comments = Array.from(document.head.childNodes).filter((elem) => elem.nodeType === Node.COMMENT_NODE);
+    const container = comments.find((comment) => comment.data.trim() === referenceComment);
     if (container) {
       beforeThis = container;
     }
@@ -121,7 +121,7 @@ const webcomponentGlobalCss = {
 
 export const injectGlobalWebcomponentCss = (css) => {
   webcomponentGlobalCss.css.push(css);
-  webcomponentGlobalCss.importers.forEach(registrar => {
+  webcomponentGlobalCss.importers.forEach((registrar) => {
     registrar(css);
   });
 };
