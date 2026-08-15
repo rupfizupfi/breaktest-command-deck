@@ -1,7 +1,8 @@
 package ch.rupfizupfi.deck.data;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -129,7 +130,8 @@ public class SettingRepository {
         try {
             return objectMapper.readValue(file, new TypeReference<List<Setting<?>>>() {
             });
-        } catch (IOException e) {
+        } catch (JacksonException e) {
+            // Jackson 3 reports read failures as unchecked JacksonException rather than IOException.
             log.throwing(SettingRepository.class.getName(), "loadSettingsFromJson", e);
             return defaultSettings;
         }

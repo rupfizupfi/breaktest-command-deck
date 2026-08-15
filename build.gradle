@@ -7,9 +7,8 @@ buildscript {
 }
 plugins {
 	id 'org.springframework.boot' version "${springBootVersion}" apply false
-	id 'io.spring.dependency-management' version '1.1.0' apply false
+	id 'io.spring.dependency-management' version '1.1.7' apply false
 	id 'com.vaadin' version "$vaadinVersion" apply false
-	id 'org.jetbrains.kotlin.jvm' version '2.0.0' apply false
 }
 
 subprojects {
@@ -30,21 +29,26 @@ subprojects {
 		runtimeOnly 'com.h2database:h2'
 		runtimeOnly "org.postgresql:postgresql"
 		implementation 'com.vaadin:vaadin-spring-boot-starter'
+		// Vaadin 25 no longer bundles Hilla in vaadin-spring-boot-starter; React views need this explicitly.
+		implementation 'com.vaadin:hilla-spring-boot-starter'
 		implementation 'org.springframework.boot:spring-boot-starter-security'
 		implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 		implementation 'org.springframework.boot:spring-boot-starter-validation'
 		implementation 'org.springframework.boot:spring-boot-starter-websocket'
-		implementation 'org.springframework.boot:spring-boot-starter-aop'
-		implementation 'org.parttio:line-awesome:2.0.0'
-		implementation 'org.apache.poi:poi:5.3.0'
-		implementation 'org.apache.poi:poi-ooxml:5.3.0'
-		implementation 'com.fazecast:jSerialComm:2.11.0'
+		// Renamed from spring-boot-starter-aop in Spring Boot 4.
+		implementation 'org.springframework.boot:spring-boot-starter-aspectj'
+		implementation 'org.parttio:line-awesome:2.1.0'
+		implementation 'org.apache.poi:poi:5.5.1'
+		implementation 'org.apache.poi:poi-ooxml:5.5.1'
+		implementation 'com.fazecast:jSerialComm:2.11.4'
+		// vaadin-dev is optional as of Vaadin 25 and must be requested explicitly.
 		developmentOnly 'org.springframework.boot:spring-boot-devtools'
+		developmentOnly 'com.vaadin:vaadin-dev'
 		testImplementation 'org.springframework.boot:spring-boot-starter-test'
-		implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
 		implementation fileTree(dir: 'lib', include: ['*.jar'])
-		implementation 'org.slf4j:slf4j-api:2.0.9'
-		implementation 'ch.qos.logback:logback-classic:1.5.18'
+		// slf4j-api and logback-classic versions are managed by the Spring Boot BOM.
+		implementation 'org.slf4j:slf4j-api'
+		implementation 'ch.qos.logback:logback-classic'
 	}
 
 	dependencyManagement {
@@ -54,10 +58,8 @@ subprojects {
 	}
 
 	java {
-		sourceCompatibility = JavaVersion.VERSION_23
-		targetCompatibility = JavaVersion.VERSION_23
 		toolchain {
-			languageVersion.set(JavaLanguageVersion.of(23))
+			languageVersion.set(JavaLanguageVersion.of(26))
 		}
 	}
 

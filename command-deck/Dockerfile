@@ -1,10 +1,10 @@
-FROM gradle:8.12.1-jdk23-corretto AS build-image
+FROM gradle:9.7.0-jdk26-corretto AS build-image
 COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
 
 RUN gradle clean :command-deck:bootJar --no-daemon -Pvaadin.productionMode=true
 
-FROM eclipse-temurin:23-jre AS app-image
+FROM eclipse-temurin:26-jre AS app-image
 
 ARG UID=10001
 RUN adduser \

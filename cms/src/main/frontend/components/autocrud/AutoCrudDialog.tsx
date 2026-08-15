@@ -17,17 +17,18 @@ interface AutoCrudDialogProps {
 export function AutoCrudDialog(props: AutoCrudDialogProps): JSX.Element {
     const { header, children, opened, onClose } = props;
     return (
+        // Vaadin 25 removed `overlayClass` and takes header content via the `header` prop
+        // (`headerRenderer` is now a ComponentType rather than a render callback).
         <Dialog
-            overlayClass="auto-crud-dialog"
             opened={opened}
-            headerRenderer={() => (
+            header={
                 <div className="auto-crud-dialog-header">
                     {header}
                     <Button theme="tertiary" onClick={onClose} aria-label="Close">
                         <Icon icon="lumo:cross" style={{ height: 'var(--lumo-icon-size-l)', width: 'var(--lumo-icon-size-l)' }} />
                     </Button>
                 </div>
-            )}
+            }
         >
             {children}
         </Dialog>

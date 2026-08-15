@@ -15,7 +15,8 @@ const AutoComboBox = React.forwardRef<ComboBoxElement<any>, AutoComboBoxProps<an
     const service = props.service;
     const items = useSignal<any[]>([]);
 
-    function onInput(event: Event) {
+    // React 19 types onInput as InputEventHandler (a synthetic event), not a DOM Event.
+    function onInput(event: React.InputEvent<ComboBoxElement<any>>) {
         input.value = (event.target as HTMLInputElement).value;
     }
 

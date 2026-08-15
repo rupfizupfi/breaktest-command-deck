@@ -2,7 +2,7 @@ package ch.rupfizupfi.deck.data;
 
 import ch.rupfizupfi.deck.data.serializer.OwnerSerializer;
 import ch.rupfizupfi.deck.security.DataWithOwner;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.annotation.JsonSerialize;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
