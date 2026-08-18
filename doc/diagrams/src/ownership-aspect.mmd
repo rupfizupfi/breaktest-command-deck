@@ -1,0 +1,35 @@
+%% Ownership check via @CheckUserCanOnlyAccessOwnData AOP aspect
+%% Branch: dev-split @ 2026-04-25
+sequenceDiagram
+    autonumber
+    participant Browser as Browser (Hilla TS client)
+    participant Hilla as Vaadin Hilla dispatcher
+    participant Aspect as CheckUserCanOnlyAccessOwnDataAspect
+    participant Auth as AuthenticatedUser
+    participant Repo as CrudRepository (entity)
+    participant Service as @BrowserCallable Service<br/>(e.g. SampleService)
+
+    Browser->>Hilla: POST /connect/SampleService/get<br/>body: { id: 42 }
+    Hilla->>Service: invoke get(42)
+    Note over Aspect: @Before pointcut matches<br/>annotated class/method + first arg
+    Service->>Aspect: joinPoint with arg=Long 42
+
+    Aspect->>Aspect: isAdmin()? (ROLE_ADMIN)
+    alt admin
+        Aspect-->>Service: pass-through (no check)
+    else non-admin
+        Aspect->>Repo: findById(42)
+        Repo-->>Aspect: Sample (DataWithOwner)
+        Aspect->>Auth: get() current User
+        Auth-->>Aspect: User
+        alt entity.owner == null<br/>or owner.id == user.id
+            Aspect-->>Service: allow (returns; method runs)
+        else mismatch
+            Aspect--xBrowser: throw SecurityException<br/>"User can only access their own data"
+        end
+    end
+
+    Service->>Repo: actual data access
+    Repo-->>Service: result
+    Service-->>Hilla: return value
+    Hilla-->>Browser: JSON response

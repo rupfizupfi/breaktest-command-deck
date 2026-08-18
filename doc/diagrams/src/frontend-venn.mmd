@@ -1,0 +1,29 @@
+%% Venn-style comparison of authored frontend code in :cms vs :command-deck.
+%% dev-split, 2026-04-25.
+%% Mermaid does not have a true Venn diagram; render as a 3-column flowchart.
+
+flowchart LR
+    subgraph CMS["cms/src/main/frontend (authored)"]
+        cms_views[views: admin/user, customer, login,<br/>project/**, sample, system/**, test/**, result/{resultId}/{image,result}]
+        cms_components[components/: autocrud, combobox, control,<br/>dashboard/{LogComponent, ResultViewer},<br/>owner, placeholder]
+        cms_util[util/: auth.ts, model.ts, service.ts]
+        cms_model[model/: init.ts, owner/, sample/]
+        cms_themes[themes/]
+    end
+
+    subgraph SHARED["Shared via alias 'cms' -> ../cms/src/main/frontend"]
+        shared[Used by command-deck:<br/>cms/util/auth, cms/components/owner/*,<br/>cms/components/autocrud/AutoCrud,<br/>cms/components/combobox/*,<br/>cms/model/{owner,sample}/*,<br/>cms/components/dashboard/LogComponent]
+    end
+
+    subgraph DECK["command-deck/src/main/frontend (authored)"]
+        deck_views[views: @index, control,<br/>result/{resultId}/tracking, run]
+        deck_components[components/dashboard: InfoBoard, LiveTestResult<br/>components/webcam: DistanceMeasureCam,<br/>tracking/{AreaSelector, CamShiftTracking}]
+        deck_service[service/StatusService.ts<br/>(STOMP singleton — unique to deck)]
+    end
+
+    CMS -.alias 'cms'.-> SHARED
+    SHARED -.imported via alias.-> DECK
+
+    note["@layout.tsx is duplicated nearly verbatim<br/>(deck adds &lt;InfoBoard/&gt;) — candidate for extraction"]
+    deck_views -.see.-> note
+    cms_views -.see.-> note

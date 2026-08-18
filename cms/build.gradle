@@ -1,0 +1,11 @@
+bootJar {
+    // Specific configuration for CMS application JAR
+    archiveBaseName = 'cms-application'
+    enabled = true
+}
+
+jar {
+    // Library JAR configuration
+    archiveBaseName = 'cms-library'
+    enabled = true
+}

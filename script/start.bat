@@ -6,13 +6,13 @@ cd %~dp0 && cd ..
 echo Current directory: %CD%
 
 REM Start the Java application and redirect output to app.log
-start "breaktest-command-deck" /high /B cmd /c "java -jar build/libs/breaktest-command-deck.jar > script/app.log"
+start "command-deck-application" /high /B cmd /c "java -jar command-deck/build/libs/command-deck-application.jar > script/app.log"
 
 REM Wait for a short period to ensure the Java process starts
 timeout /t 5 /nobreak > nul
 
 REM Find the PID of the running Java process using wmic and command line
-for /f "skip=1 tokens=1" %%i in ('wmic process where "CommandLine like 'java%%' and CommandLine like '%%breaktest-command-deck.jar%%'" get ProcessId') do (
+for /f "skip=1 tokens=1" %%i in ('wmic process where "CommandLine like 'java%%' and CommandLine like '%%command-deck-application.jar%%'" get ProcessId') do (
     set "APP_PID=%%i"
     goto :found_pid
 )
@@ -31,7 +31,7 @@ if "%APP_PID%"=="" (
 
 REM Open the application in the default web browser
 timeout /t 10 /nobreak > nul
-start http://localhost:8080
+start http://localhost
 echo Application started. Java PID: %APP_PID%
 
 REM Wait until the user closes the script window

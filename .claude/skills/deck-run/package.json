@@ -1,0 +1,9 @@
+{
+  "name": "deck-run-driver",
+  "private": true,
+  "type": "module",
+  "description": "Headless browser driver for the deck-run skill (puppeteer-core against system Chrome/Edge, no browser download)",
+  "dependencies": {
+    "puppeteer-core": "24.23.0"
+  }
+}

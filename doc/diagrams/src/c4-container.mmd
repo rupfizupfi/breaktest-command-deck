@@ -1,0 +1,40 @@
+%% C4 Container diagram for Breaktest Command Deck
+%% Branch: dev-split @ 2026-04-25
+%% Sources: settings.gradle, docker/docker-compose.yaml, application*.properties,
+%%          command-deck/build.gradle (depends on :cms), lib/dscusb.jar
+flowchart LR
+    BR["Browser<br/>React 19 + TypeScript<br/>@stomp/rx-stomp"]:::container
+
+    subgraph Apps["Spring Boot apps (Java 26, Vaadin/Hilla 25.2.6)"]
+        DECK["command-deck app<br/>command-deck-application.jar<br/>(superset of cms)<br/>hardware control + tests"]:::container
+        CMS["cms app<br/>cms-application.jar<br/>projects/samples/results CRUD<br/>REST under /api/**"]:::container
+    end
+
+    subgraph DB["Database"]
+        H2[("H2 file<br/>./.data/deck<br/>profile: dev")]:::store
+        PG[("PostgreSQL 'db'<br/>:5432 db rupfizupfi<br/>profile: docker")]:::store
+    end
+
+    subgraph HW["Hardware (USB / RS232)"]
+        LC["DSCUSB load cell<br/>(dscusb.jar)"]:::hw
+        CFW["WEG CFW11 freq converter<br/>(usbmodbus.jar)"]:::hw
+        REL["4-way relay CH9102<br/>(jSerialComm)"]:::hw
+    end
+
+    BR -- "HTTPS Hilla RPC<br/>(generated TS clients)" --> DECK
+    BR -- "HTTPS Hilla RPC" --> CMS
+    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-converter-info<br/>/topic/status, /topic/logs" .-> DECK
+
+    DECK -- "implementation project(':cms')<br/>shared package ch.rupfizupfi.deck" --> CMS
+    DECK -- "JDBC" --> H2
+    DECK -- "JDBC" --> PG
+    CMS -- "JDBC + data.sql seed" --> H2
+    CMS -- "JDBC" --> PG
+
+    DECK -- "USB" --> LC
+    DECK -- "USB Modbus" --> CFW
+    DECK -- "RS232 115200 8N1" --> REL
+
+    classDef container fill:#cfe2ff,stroke:#0a58ca
+    classDef store fill:#d1e7dd,stroke:#0f5132
+    classDef hw fill:#fff3cd,stroke:#664d03

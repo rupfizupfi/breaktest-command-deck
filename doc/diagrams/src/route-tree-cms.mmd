@@ -1,0 +1,25 @@
+%% Route tree for the standalone :cms app.
+%% Generated 2026-04-25 from cms/src/main/frontend/generated/file-routes.json.
+
+flowchart TD
+    root["/ (MainLayout — cms/views/@layout.tsx)"]
+    root --> idx["'' Deck (@index.tsx)"]
+    root --> admin["admin/user.tsx<br/>menu excluded"]
+    root --> customer["customer.tsx<br/>order 1"]
+    root --> login["login.tsx<br/>public — config.menu.exclude"]
+    root --> project["project/"]
+    project --> projIdx["'' Projects @index.tsx<br/>order 2"]
+    project --> projId[":projectId/"]
+    projId --> sampleNested["sample.tsx (nested)"]
+    root --> result["result/:resultId/"]
+    result --> image["image.tsx"]
+    result --> resultLeaf["result.tsx"]
+    root --> sample["sample.tsx<br/>order 3"]
+    root --> system["system/"]
+    system --> sysIdx["'' System @index.tsx<br/>order 1"]
+    system --> setting["setting.tsx"]
+    root --> test["test/"]
+    test --> testIdx["'' Test @index.tsx<br/>order 4"]
+    test --> cyclic["cyclic.tsx"]
+    test --> destructive["destructive.tsx"]
+    test --> timeCyclic["timeCyclic.tsx"]

@@ -1,0 +1,44 @@
+%% docker-compose deployment topology (one file, two profiles, two hosts)
+%% docker/docker-compose.yaml
+%% Branch: dev-split @ 2026-08-16
+flowchart TB
+    subgraph Cloud["Cloud host — profile: cms"]
+        SC["server-cms<br/>cms/Dockerfile<br/>SPRING_PROFILES_ACTIVE=docker<br/>internal :443 (HTTPS), host 8043"]
+        DB[("db<br/>postgres :5432<br/>rupfizupfi/rupfizupfi<br/>healthcheck pg_isready")]
+        DBV[(db-data volume)]
+        SC -- "JDBC :5432" --> DB
+        DB --- DBV
+    end
+
+    subgraph Shop["Tester host, shop floor — profile: deck"]
+        SD["server-deck<br/>command-deck/Dockerfile<br/>SPRING_PROFILES_ACTIVE=docker<br/>internal :443 (HTTPS), host 8043"]
+        HW["USB / serial devices<br/>load cell · CFW11 · relay board"]
+        SD --- HW
+    end
+
+    subgraph HostFS["Per-host filesystem (bind mounts)"]
+        BT["docker/breaktester/<br/>config + media + CSV results"]
+        KS["docker/keystore/<br/>rupfizupfi.p12 (PKCS12, self-signed by startup.sh)"]
+        SEC[".secrets/db-password.txt"]
+        ENV["docker/.env<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
+    end
+
+    SD -- "JDBC :5432 — intended (OQ-61);<br/>today points at a local db service" --> DB
+
+    BT --> SD
+    BT --> SC
+    KS --> SD
+    KS --> SC
+
+    SEC -. "secret: db-password<br/>mounted at /run/secrets/db-password" .-> SD
+    SEC -. "secret: db-password" .-> SC
+    SEC -. "POSTGRES_PASSWORD_FILE" .-> DB
+
+    ENV -. "compose env interpolation" .-> HostFS
+
+    classDef secret fill:#fee,stroke:#900
+    classDef volume fill:#eef,stroke:#039
+    classDef pending stroke-dasharray: 5 5
+    class SEC secret
+    class BT,KS,DBV volume
+    class HW pending
