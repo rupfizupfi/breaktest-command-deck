@@ -6,6 +6,7 @@ import { useAuth } from 'cms/util/auth.js';
 import { Suspense, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import InfoBoard from "Frontend/components/dashboard/InfoBoard";
+import SimulatedModeBanner from "Frontend/components/SimulatedModeBanner";
 
 const defaultTitle = document.title;
 const documentTitleSignal = signal('');
@@ -66,6 +67,8 @@ export default function MainLayout() {
       <h1 slot="navbar" className="text-l m-0">
         {documentTitleSignal}
       </h1>
+
+      <SimulatedModeBanner />
 
       <Suspense>
         <Outlet />
