@@ -1,0 +1,22 @@
+%% C4 Context diagram for Breaktest Command Deck
+%% Branch: dev-split @ 2026-04-25
+%% Sources: CLAUDE.md, cms/src/main/java/.../api/services/, command-deck/src/main/java/.../device/
+flowchart TB
+    OP["Test Operator<br/>(bench computer user)"]:::actor
+    AD["Lab Admin<br/>(USER+ADMIN role)"]:::actor
+
+    subgraph SUT["Breaktest Command Deck (system)"]
+        SYS["Web app + hardware controller<br/>two Spring Boot deployments<br/>shared schema, shared DB"]
+    end
+
+    HW["Test bench<br/>(electric motor + load cell<br/>+ frequency converter + relays)"]:::external
+    BR["Browser<br/>(React UI over HTTPS/WSS)"]:::external
+
+    OP -->|operates test, watches live charts| BR
+    AD -->|manages projects/samples/users| BR
+    BR -->|Hilla RPC + STOMP WebSocket| SYS
+    SYS -->|USB / RS232| HW
+    HW -->|force readings, motor info| SYS
+
+    classDef actor fill:#e8f1ff,stroke:#1a4480
+    classDef external fill:#f6f6f6,stroke:#555

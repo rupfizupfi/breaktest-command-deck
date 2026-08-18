@@ -1,0 +1,32 @@
+%% Module dependency graph for breaktest-command-deck (branch: dev-split, 2026-04-25)
+%% Source of truth: settings.gradle, build.gradle, cms/build.gradle, command-deck/build.gradle
+graph LR
+    subgraph repo["breaktest-command-deck (Gradle root)"]
+        cd[":command-deck<br/>command-deck-application.jar"]
+        cms[":cms<br/>cms-application.jar"]
+    end
+
+    cd -->|implementation project(':cms')| cms
+    cd -->|fileTree rootProject/lib/*.jar| dscusb["lib/dscusb.jar<br/>(usbmodbus.jar gitignored)"]
+
+    subgraph external["Inherited via root build.gradle subprojects { }"]
+        vaadin["Vaadin Hilla 25.2.6<br/>(vaadin-spring-boot-starter +<br/>hilla-spring-boot-starter)"]
+        sb["Spring Boot 4.1.0<br/>(security, data-jpa, websocket,<br/>validation, aspectj, devtools)"]
+        db["DB drivers<br/>H2 + PostgreSQL"]
+        misc["jSerialComm 2.11.0<br/>POI 5.3.0<br/>Line Awesome 2.0.0<br/>Logback 1.5.18"]
+        kotlin["kotlin-stdlib-jdk8<br/>(unused, no .kt sources)"]
+    end
+
+    cms --> vaadin
+    cms --> sb
+    cms --> db
+    cms --> misc
+    cms -.-> kotlin
+    cd --> vaadin
+    cd --> sb
+    cd --> db
+    cd --> misc
+    cd -.-> kotlin
+
+    classDef inflight stroke-dasharray: 5 5
+    class kotlin inflight

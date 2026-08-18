@@ -1,0 +1,36 @@
+%% Package overlap map for shared root ch.rupfizupfi.deck
+%% Source: cms/src/main/java/ch/rupfizupfi/deck/** and command-deck/src/main/java/ch/rupfizupfi/deck/**
+%% Branch: dev-split, 2026-04-25
+graph TD
+    root["ch.rupfizupfi.deck<br/>(both modules host classes here)"]
+
+    subgraph cms_pkgs["Defined in :cms"]
+        cms_root["ch.rupfizupfi.deck<br/>Application.java"]
+        cms_data["ch.rupfizupfi.deck.data<br/>+ data.jsonViews<br/>+ data.serializer"]
+        cms_api["ch.rupfizupfi.deck.api.rest<br/>ch.rupfizupfi.deck.api.services"]
+        cms_security["ch.rupfizupfi.deck.security"]
+        cms_filesystem["ch.rupfizupfi.deck.filesystem"]
+        cms_messaging["ch.rupfizupfi.deck.messaging<br/>+ messaging.dto"]
+        cms_hilla["ch.rupfizupfi.deck.hilla.crud"]
+        cms_service["ch.rupfizupfi.deck.service"]
+    end
+
+    subgraph deck_pkgs["Defined in :command-deck"]
+        deck_root["ch.rupfizupfi.deck<br/>Application.java<br/>(SAME PACKAGE as cms)"]
+        deck_api["ch.rupfizupfi.deck.api.services<br/>(SAME PACKAGE as cms)"]
+        deck_device["ch.rupfizupfi.deck.device<br/>+ device.loadcell<br/>+ device.frequencyconverter<br/>+ device.relayswitch"]
+        deck_test["ch.rupfizupfi.deck.testrunner<br/>+ testrunner.cyclic<br/>+ testrunner.startup.check"]
+        deck_hilla["ch.rupfizupfi.deck.hilla<br/>(empty placeholder)"]
+    end
+
+    deck_api -.->|imports| cms_data
+    deck_api -.->|imports| deck_test
+    deck_api -.->|imports| deck_device
+    deck_test -.->|imports| cms_data
+    deck_test -.->|imports| cms_filesystem
+    deck_test -.->|imports| deck_device
+    deck_device -.->|imports| cms_data
+    deck_root -.->|imports| cms_data
+
+    classDef shared fill:#fff3b0,stroke:#333,stroke-width:2px
+    class cms_root,deck_root,cms_api,deck_api shared

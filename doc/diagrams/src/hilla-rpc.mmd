@@ -1,0 +1,31 @@
+%% Round-trip of a single Hilla @BrowserCallable method invocation.
+%% Walked example: TestRunnerService.start(testId) on dev-split.
+
+sequenceDiagram
+    autonumber
+    participant View as RunView<br/>(views/run.tsx)
+    participant Generated as Frontend/generated/<br/>TestRunnerService.ts
+    participant Client as connect-client.default.ts<br/>(ConnectClient)
+    participant Net as fetch (browser)
+    participant Spring as Spring DispatcherServlet
+    participant Hilla as com.vaadin.hilla<br/>EndpointController
+    participant Sec as Spring Security<br/>+ @PermitAll / @RolesAllowed
+    participant Bean as TestRunnerService.java<br/>(@BrowserCallable)
+
+    View->>Generated: TestRunnerService.start(id)
+    Generated->>Client: client.call("TestRunnerService","start",{testId})
+    Client->>Net: POST /connect/TestRunnerService/start<br/>X-CSRF-Token + JSESSIONID
+    Net->>Spring: HTTP request
+    Spring->>Hilla: EndpointController.serveEndpoint(...)
+    Hilla->>Sec: check JSR-250 annotations
+    alt unauthenticated
+        Sec-->>Net: 401 (no body)
+        Note right of View: hilla-react-auth observes 401<br/>and the @layout / login.tsx redirect kicks in
+    else authorized
+        Sec->>Bean: invoke start(testId)
+        Bean-->>Hilla: void
+        Hilla-->>Net: 200 application/json "null"
+    end
+    Net-->>Client: Response
+    Client-->>Generated: parsed JSON / undefined
+    Generated-->>View: Promise<void>

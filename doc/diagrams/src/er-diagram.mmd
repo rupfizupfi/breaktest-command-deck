@@ -1,0 +1,112 @@
+%% ER diagram derived from JPA entities under cms/src/main/java/ch/rupfizupfi/deck/data/
+%% All entities live in :cms; :command-deck has none of its own.
+%% Branch: dev-split @ 2026-04-25
+erDiagram
+    USER ||--o{ PROJECT       : "owns (nullable)"
+    USER ||--o{ SAMPLE        : "owns (nullable)"
+    USER ||--o{ TEST_PARAMETER: "owns (nullable)"
+    USER ||--o{ TEST_RESULT   : "owns (nullable)"
+    USER ||--o{ USER_ROLES    : "@ElementCollection"
+
+    CUSTOMER ||--o{ PROJECT   : "has (required)"
+
+    PROJECT  ||--o{ SAMPLE    : "has (required)"
+
+    SAMPLE   }o--o{ GEAR_TYPE     : "sample_gear_type (M:N)"
+    SAMPLE   }o--o{ GEAR_STANDARD : "sample_gear_standard (M:N)"
+    SAMPLE   }o--o{ MATERIAL      : "sample_material (M:N)"
+
+    SAMPLE         ||--o{ TEST_RESULT : "tested by (required)"
+    TEST_PARAMETER ||--o{ TEST_RESULT : "uses (required)"
+    TEST_RESULT    ||--o{ FILE_METADATA : "files (cascade=ALL, orphanRemoval)"
+
+    USER {
+        Long    id PK
+        int     version
+        string  username
+        string  name
+        string  hashedPassword
+        bytes   profilePicture
+    }
+    USER_ROLES {
+        Long   user_id FK
+        string roles "enum USER|ADMIN"
+    }
+    CUSTOMER {
+        Long   id PK
+        int    version
+        string organization
+        string firstname
+        string lastname
+        string email
+        string street
+        string code
+        string location
+        string country
+    }
+    PROJECT {
+        Long   id PK
+        int    version
+        Long   owner_id FK "nullable, DataWithOwner"
+        Long   customer_id FK
+        string name
+        text   description
+    }
+    SAMPLE {
+        Long   id PK
+        int    version
+        Long   owner_id FK "nullable, DataWithOwner"
+        Long   project_id FK
+        string name
+        text   description
+        string model
+        string manufacturer
+        int    yearOfManufacture
+    }
+    GEAR_TYPE {
+        Long   id PK
+        int    version
+        string name
+    }
+    GEAR_STANDARD {
+        Long   id PK
+        int    version
+        string name
+        text   description
+    }
+    MATERIAL {
+        Long   id PK
+        int    version
+        string name
+        text   description
+    }
+    TEST_PARAMETER {
+        Long   id PK
+        int    version
+        Long   owner_id FK "nullable, DataWithOwner"
+        string type "destructive|cyclic|timeCyclic"
+        int    speed
+        double upperShutOffThreshold
+        double lowerShutOffThreshold
+        double upperTurnForce
+        double lowerTurnForce
+        int    cycleCount
+        double startRampSeconds
+        double stopRampSeconds
+    }
+    TEST_RESULT {
+        Long   id PK
+        int    version
+        Long   owner_id FK "nullable, DataWithOwner"
+        Long   sample_id FK
+        Long   testParameter_id FK
+        text   description
+        text   resultText
+    }
+    FILE_METADATA {
+        Long   id PK
+        int    version
+        Long   testResult_id FK
+        string fileName
+        string filePath
+    }
