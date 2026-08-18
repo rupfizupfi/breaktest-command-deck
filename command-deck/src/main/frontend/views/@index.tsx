@@ -5,6 +5,7 @@ import {Notification} from '@vaadin/react-components/Notification.js';
 import { DeviceInfoService } from "Frontend/generated/endpoints";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
+import {useEffect} from "react";
 
 export const config: ViewConfig = {
     menu: {order: 0, icon: 'line-awesome/svg/globe-solid.svg'},
@@ -15,7 +16,10 @@ export const config: ViewConfig = {
 export default function DeckView() {
     const status = useSignal('');
     const service = getService();
-    service.loadCellObservable.subscribe((value: IMessage) => status.value = value.body);
+    useEffect(() => {
+        const subscription = service.loadCellObservable.subscribe((value: IMessage) => status.value = value.body);
+        return () => subscription.unsubscribe();
+    }, [service]);
 
     return (
         <>
