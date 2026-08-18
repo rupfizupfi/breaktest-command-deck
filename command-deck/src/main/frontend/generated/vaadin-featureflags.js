@@ -2,6 +2,9 @@
 window.Vaadin = window.Vaadin || {};
 window.Vaadin.featureFlags = window.Vaadin.featureFlags || {};
 if (Object.keys(window.Vaadin.featureFlags).length === 0) {
+window.Vaadin.featureFlags.aiComponents = false;
+window.Vaadin.featureFlags.accessibleDisabledMenuItems = false;
+window.Vaadin.featureFlags.breadcrumbsComponent = false;
 window.Vaadin.featureFlags.collaborationEngineBackend = false;
 window.Vaadin.featureFlags.accessibleDisabledButtons = false;
 window.Vaadin.featureFlags.themeComponentStyles = false;
@@ -9,6 +12,7 @@ window.Vaadin.featureFlags.tailwindCss = false;
 window.Vaadin.featureFlags.fullstackSignals = false;
 window.Vaadin.featureFlags.layoutComponentImprovements = false;
 window.Vaadin.featureFlags.defaultAutoResponsiveFormLayout = false;
+window.Vaadin.featureFlags.copilotExperimentalFeatures = false;
 };
 if (window.Vaadin.featureFlagsUpdaters) { 
 const activator = (id) => window.Vaadin.featureFlags[id] = true;

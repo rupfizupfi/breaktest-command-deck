@@ -15,7 +15,6 @@ import '@vaadin/app-layout/src/vaadin-drawer-toggle.js';
 import '@vaadin/avatar/src/vaadin-avatar.js';
 import '@vaadin/avatar-group/src/vaadin-avatar-group.js';
 import '@vaadin/badge/src/vaadin-badge.js';
-import '@vaadin/breadcrumbs/src/vaadin-breadcrumbs.js';
 import '@vaadin/breadcrumbs/src/vaadin-breadcrumbs-item.js';
 import '@vaadin/card/src/vaadin-card.js';
 import '@vaadin/checkbox/src/vaadin-checkbox.js';
@@ -115,6 +114,7 @@ import '@vaadin/upload/vaadin-upload-manager.js';
 import '@vaadin/virtual-list/src/vaadin-virtual-list.js';
 import 'Frontend/generated/jar-resources/virtualListConnector.js';
 import '@vaadin/vaadin-lumo-styles/vaadin-iconset.js';
+import 'Frontend/generated/jar-resources/copilot-version.js';
 
 injectGlobalWebcomponentCss($cssFromFile_0.toString());
 const loadOnDemand = (key) => { return Promise.resolve(0); }
