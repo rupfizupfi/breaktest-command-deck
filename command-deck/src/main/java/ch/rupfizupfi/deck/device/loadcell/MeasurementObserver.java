@@ -1,6 +1,6 @@
 package ch.rupfizupfi.deck.device.loadcell;
 
-import ch.rupfizupfi.dscusb.Measurement;
+import ch.rupfizupfi.deck.device.api.Measurement;
 
 import java.util.List;
 

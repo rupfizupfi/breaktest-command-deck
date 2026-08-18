@@ -9,8 +9,8 @@ public class CyclicTest extends AbstractTest {
     protected double targetLowerLimit;
     protected double targetUpperLimit;
 
-    public CyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
-        super(testResult, testLogger, testRunnerFactory, deviceService);
+    public CyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService, MotorSafetyController motorSafety) {
+        super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
     }
 
     void setup() {
@@ -27,20 +27,27 @@ public class CyclicTest extends AbstractTest {
         log("CycleCount " + testContext.getCycleCount());
         log("cyclic test start");
 
-        deviceService.getFrequencyConverter().connect();
-        cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
-        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
-        cfw11.setSpeedReferenceValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
-        cfw11.setDirection(true);
-        cfw11.setGeneralEnable(true);
-        cfw11.setStart(true);
+        awaitLoadCellOrFail();
+        log("load cell delivering measurements");
 
+        connectFrequencyConverter();
+        int speedRpm = (int) Math.round(testResult.testParameter.speed / 0.375);
         double startRampSeconds = testResult.testParameter.startRampSeconds;
         double stopRampSeconds = testResult.testParameter.stopRampSeconds;
-        if (startRampSeconds > 0 && stopRampSeconds > 0) {
-            cfw11.setUseSecondRamp(true);
-            cfw11.setSecondSpeedRampTime((int) (startRampSeconds * 10), (int) (stopRampSeconds * 10));
-        }
+        // one block so the whole energize sequence is atomic against the polling thread,
+        // and energize() so a safe stop already requested by the load cell thread wins
+        motorSafety.energize(drive -> {
+            drive.setActionInCaseOfCommunicationError(2); // disable via general enable
+            drive.setSpeedReferenceValueAsRpm(speedRpm);
+            drive.setDirection(true);
+            drive.setGeneralEnable(true);
+            drive.setStart(true);
+
+            if (startRampSeconds > 0 && stopRampSeconds > 0) {
+                drive.setUseSecondRamp(true);
+                drive.setSecondSpeedRampTime((int) (startRampSeconds * 10), (int) (stopRampSeconds * 10));
+            }
+        });
     }
 
     void initContext() {
@@ -95,6 +102,11 @@ public class CyclicTest extends AbstractTest {
     @Override
     void cleanup() {
         super.cleanup();
-        cfw11.setUseSecondRamp(false);
+        try {
+            motorSafety.withDrive(drive -> drive.setUseSecondRamp(false));
+        } catch (RuntimeException e) {
+            // the safe stop may have closed the handle; ramp state is cosmetic at this point
+            log("could not reset second ramp: " + e.getMessage());
+        }
     }
 }
