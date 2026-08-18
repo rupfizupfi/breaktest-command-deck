@@ -9,7 +9,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @BrowserCallable
-@RolesAllowed("ROLE_ADMIN")
+// Spring prepends the ROLE_ prefix itself, so this must be the bare role name.
+@RolesAllowed("ADMIN")
 public class UserService extends CrudRepositoryService<User, UserRepository> {
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
