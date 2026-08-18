@@ -18,8 +18,8 @@ public class TimeCyclicTest extends CyclicTest {
     private final AnalyseData[] analysedData = new AnalyseData[2];
     private TimeProcessor timeProcessor;
 
-    public TimeCyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
-        super(testResult, testLogger, testRunnerFactory, deviceService);
+    public TimeCyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService, MotorSafetyController motorSafety) {
+        super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
     }
 
     public void setup() {
@@ -39,12 +39,18 @@ public class TimeCyclicTest extends CyclicTest {
         log("CycleCount " + testContext.getCycleCount());
         log("time cyclic test start");
 
-        deviceService.getFrequencyConverter().connect();
-        cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
-        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
-        cfw11.setSpeedReferenceValueAsRpm((int) Math.round(INITIAL_SPEED / (double) SPEED_DIVISOR));
-        cfw11.setSecondSpeedRampTime(INITIAL_RAMP_TIME, INITIAL_RAMP_TIME); // 300ms each
-        cfw11.setControlParameters(true, true, true, null, true);
+        awaitLoadCellOrFail();
+        log("load cell delivering measurements");
+
+        connectFrequencyConverter();
+        // one block so the whole energize sequence is atomic against the polling thread,
+        // and energize() so a safe stop already requested by the load cell thread wins
+        motorSafety.energize(drive -> {
+            drive.setActionInCaseOfCommunicationError(2); // disable via general enable
+            drive.setSpeedReferenceValueAsRpm((int) Math.round(INITIAL_SPEED / (double) SPEED_DIVISOR));
+            drive.setSecondSpeedRampTime(INITIAL_RAMP_TIME, INITIAL_RAMP_TIME); // 300ms each
+            drive.setControlParameters(true, true, true, null, true);
+        });
     }
 
     @Override
@@ -53,14 +59,17 @@ public class TimeCyclicTest extends CyclicTest {
             this.analyseRun = false;
             double startRampSeconds = testResult.testParameter.startRampSeconds;
             double stopRampSeconds = testResult.testParameter.stopRampSeconds;
+            int speedRpm = (int) Math.round(testResult.testParameter.speed / (double) SPEED_DIVISOR);
 
-            if (startRampSeconds > 0 && stopRampSeconds > 0) {
-                cfw11.setSecondSpeedRampTime((int) (startRampSeconds * RAMP_TIME_MULTIPLIER), (int) (stopRampSeconds * RAMP_TIME_MULTIPLIER));
-            } else {
-                cfw11.setUseSecondRamp(false);
-            }
+            motorSafety.withDrive(drive -> {
+                if (startRampSeconds > 0 && stopRampSeconds > 0) {
+                    drive.setSecondSpeedRampTime((int) (startRampSeconds * RAMP_TIME_MULTIPLIER), (int) (stopRampSeconds * RAMP_TIME_MULTIPLIER));
+                } else {
+                    drive.setUseSecondRamp(false);
+                }
 
-            cfw11.setSpeedReferenceValueAsRpm((int) Math.round(testResult.testParameter.speed / (double) SPEED_DIVISOR));
+                drive.setSpeedReferenceValueAsRpm(speedRpm);
+            });
         }
 
         if (this.analyseRun) {

@@ -5,8 +5,8 @@ import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
 
 public class DestructiveTest extends AbstractTest {
-    public DestructiveTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService) {
-        super(testResult, testLogger, testRunnerFactory, deviceService);
+    public DestructiveTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService, MotorSafetyController motorSafety) {
+        super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
     }
 
     void setup() {
@@ -19,13 +19,22 @@ public class DestructiveTest extends AbstractTest {
         log("lowerShutOffThreshold " + testContext.getLowerLimit() + " Newton");
         log("Destructive test start");
 
-        deviceService.getFrequencyConverter().connect();
-        cfw11 = deviceService.getFrequencyConverter().getHardwareComponent();
-        cfw11.setActionInCaseOfCommunicationError(2); // disable via general enable
-        cfw11.setSpeedReferenceValueAsRpm((int) Math.round(testResult.testParameter.speed / 0.375));
-        cfw11Pull();
-        cfw11.setGeneralEnable(true);
-        cfw11.setStart(true);
+        awaitLoadCellOrFail();
+        log("load cell delivering measurements");
+
+        connectFrequencyConverter();
+        int speedRpm = (int) Math.round(testResult.testParameter.speed / 0.375);
+        // one block so the whole energize sequence is atomic against the polling thread,
+        // and energize() so a safe stop already requested by the load cell thread wins
+        motorSafety.energize(drive -> {
+            drive.setActionInCaseOfCommunicationError(2); // disable via general enable
+            drive.setSpeedReferenceValueAsRpm(speedRpm);
+            drive.setDirection(false); // pull
+            // a previous cyclic run may have left the second ramp enabled in the drive
+            drive.setUseSecondRamp(false);
+            drive.setGeneralEnable(true);
+            drive.setStart(true);
+        });
     }
 
     @Override
