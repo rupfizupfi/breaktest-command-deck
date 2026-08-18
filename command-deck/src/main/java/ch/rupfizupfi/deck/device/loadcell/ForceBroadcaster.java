@@ -1,6 +1,6 @@
 package ch.rupfizupfi.deck.device.loadcell;
 
-import ch.rupfizupfi.dscusb.Measurement;
+import ch.rupfizupfi.deck.device.api.Measurement;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.ArrayList;
@@ -17,7 +17,7 @@ public class ForceBroadcaster implements MeasurementObserver {
     @Override
     public void update(List<Measurement> measurements) {
         wsMeasurements.addAll(measurements);
-        if (System.currentTimeMillis() - wsMeasurements.getFirst().getTimestamp() > 60) {
+        if (System.currentTimeMillis() - wsMeasurements.getFirst().timestamp() > 60) {
             template.convertAndSend("/topic/load-cell", wsMeasurements);
             wsMeasurements.clear();
         }
