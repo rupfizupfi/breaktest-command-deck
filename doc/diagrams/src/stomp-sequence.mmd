@@ -1,0 +1,58 @@
+%% Sensor reading -> chart, end-to-end, in :command-deck.
+%% Branch dev-split, 2026-04-25.
+%% Files anchoring this diagram:
+%%   command-deck/src/main/frontend/views/run.tsx
+%%   command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx
+%%   command-deck/src/main/frontend/service/StatusService.ts
+%%   command-deck/src/main/java/ch/rupfizupfi/deck/api/services/TestRunnerService.java
+%%   command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/TestRunnerThread.java
+%%   command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/LoadCellThread.java
+%%   command-deck/src/main/java/ch/rupfizupfi/deck/device/loadcell/ForceBroadcaster.java
+%%   cms/src/main/java/ch/rupfizupfi/deck/messaging/WebSocketConfig.java
+
+sequenceDiagram
+    autonumber
+    actor User
+    participant ChartCmp as LiveTestResult.tsx<br/>(react-chartjs-2)
+    participant Status as StatusService.ts<br/>(@stomp/rx-stomp singleton)
+    participant Hilla as Hilla generated<br/>TestRunnerService.ts
+    participant Spring as Spring MVC /<br/>Hilla dispatcher
+    participant Runner as TestRunnerService.java<br/>@BrowserCallable
+    participant Thread as TestRunnerThread.java<br/>(java.lang.Thread)
+    participant LCThread as LoadCellThread.java
+    participant Device as LoadCellDevice<br/>(dscusb.jar serial)
+    participant Broadcast as ForceBroadcaster.java<br/>(MeasurementObserver)
+    participant Broker as Spring SimpleBroker<br/>/topic/load-cell
+
+    User->>ChartCmp: Click "Run test"
+    ChartCmp->>Hilla: TestRunnerService.start(testId)
+    Hilla->>Spring: POST /connect/TestRunnerService/start
+    Spring->>Runner: start(testId) [@PermitAll]
+    Runner->>Thread: testRunnerThread.startThread(testResult)
+    Thread-->>Runner: returns immediately (async)
+    Runner-->>Hilla: 200 OK (void)
+    Hilla-->>ChartCmp: Promise<void>
+
+    par WebSocket already connected
+        ChartCmp->>Status: connectComponent(this) +<br/>loadCellObservable.subscribe(...)
+        Status->>Broker: STOMP CONNECT<br/>(ws://host/status)
+        Status->>Broker: SUBSCRIBE /topic/load-cell
+    and Hardware loop
+        Thread->>LCThread: starts inside test setup()
+        loop continuous sampling
+            Device-->>LCThread: Measurement(timestamp, force)
+            LCThread->>Broadcast: update(measurements)
+            Broadcast->>Broker: convertAndSend("/topic/load-cell", buf)<br/>(every ~60 ms)
+        end
+    end
+
+    Broker-->>Status: STOMP MESSAGE frame
+    Status-->>ChartCmp: IMessage (rxjs Observable)
+    ChartCmp->>ChartCmp: setDataPoints([...prev, ...new])<br/>Chart.js re-renders
+
+    User->>ChartCmp: Click "Stop"
+    ChartCmp->>Hilla: TestRunnerService.stop()
+    Hilla->>Runner: stop()
+    Runner->>Thread: stopThread() / interrupt()
+    ChartCmp->>Status: disconnectComponent(this)
+    Status->>Broker: DISCONNECT (refcount==0)

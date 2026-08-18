@@ -1,0 +1,71 @@
+name: rupfizupfi
+
+services:
+  server-cms:
+    build:
+      context: ..
+      dockerfile: cms/Dockerfile
+    secrets:
+      - db-password
+    ports:
+      - 8043:443
+    volumes:
+      - ./breaktester:/home/appuser/breaktester
+      - ./keystore:/home/appuser/keystore
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
+      - DB_PASSWORD_FILE=/run/secrets/db-password
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - cms
+
+  server-deck:
+    build:
+      context: ..
+      dockerfile: command-deck/Dockerfile
+    secrets:
+      - db-password
+    ports:
+      - 8043:443
+    volumes:
+      - ./breaktester:/home/appuser/breaktester
+      - ./keystore:/home/appuser/keystore
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
+      - DB_PASSWORD_FILE=/run/secrets/db-password
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - deck
+
+  db:
+    image: postgres
+    restart: always
+    user: postgres
+    secrets:
+      - db-password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=rupfizupfi
+      - POSTGRES_USER=rupfizupfi
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db-password
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
+
+secrets:
+  db-password:
+    file: ../.secrets/db-password.txt

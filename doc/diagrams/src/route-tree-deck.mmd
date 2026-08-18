@@ -1,0 +1,25 @@
+%% Route tree for the :command-deck Hilla app.
+%% Generated 2026-04-25 from command-deck/src/main/frontend/generated/file-routes.json
+%% PLUS the merged tree from cms/src/main/frontend/generated/file-routes.json
+%% (merged at build time by command-deck/customFileSystemRouterPlugin.ts).
+%% NOTE: every "loginRequired" node is auth-gated by routes.tsx#protect().
+
+flowchart TD
+    root["/ (MainLayout @layout.tsx)"]
+    root --> deck["'' Deck (@index.tsx)<br/>menu order 0"]
+    root --> control["control (control.tsx)<br/>excluded from menu"]
+    root --> resultDeck["result/:resultId/tracking<br/>(views/result/{resultId}/tracking.tsx)"]
+    root --> run["run (run.tsx)<br/>menu order 10"]
+
+    %% --- merged in from :cms at build time ---
+    root -.merged from cms.-> admin["admin/user (cms)"]
+    root -.merged from cms.-> customer["customer (cms)"]
+    root -.merged from cms.-> login["login (cms — public)"]
+    root -.merged from cms.-> project["project/<br/>:projectId/sample (cms)"]
+    root -.merged from cms.-> resultCms["result/:resultId/{image,result} (cms)"]
+    root -.merged from cms.-> sample["sample (cms)"]
+    root -.merged from cms.-> system["system/setting (cms)"]
+    root -.merged from cms.-> test["test/{cyclic,destructive,timeCyclic} (cms)"]
+
+    classDef cms fill:#eef,stroke:#88a,stroke-dasharray:3 3;
+    class admin,customer,login,project,resultCms,sample,system,test cms;

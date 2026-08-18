@@ -1,0 +1,35 @@
+%% Build pipeline (Gradle -> Hilla -> Vite -> Spring Boot -> Docker)
+%% Branch: dev-split, 2026-04-25
+flowchart TD
+    src["Source<br/>(Java + frontend/)"]
+
+    subgraph gradle_phase["Gradle (per module: :cms, :command-deck)"]
+        compile["compileJava<br/>JDK 26 toolchain"]
+        hilla_gen["Hilla endpoint generation<br/>(com.vaadin Gradle plugin)<br/>scans @BrowserCallable<br/>writes generated/*.ts + endpoints.ts"]
+        vite["Vite 8 bundle<br/>(vaadin-prepareFrontend +<br/>vaadinBuildFrontend)<br/>uses module-local vite.config.ts"]
+        bootJar["bootJar<br/>cms-application.jar OR<br/>command-deck-application.jar"]
+        plainJar["jar (plain)<br/>cms-library-plain.jar OR<br/>command-deck-library-plain.jar"]
+    end
+
+    src --> compile
+    compile --> hilla_gen
+    hilla_gen --> vite
+    vite --> bootJar
+    compile --> plainJar
+
+    subgraph cd_extra["command-deck-only build step"]
+        merge["customFileSystemRouterPlugin<br/>merges cms file-routes.json<br/>into command-deck/generated/<br/>file-routes.json"]
+    end
+    vite -.->|in :command-deck| merge
+    merge -.-> bootJar
+
+    subgraph docker_phase["Docker (two-stage, profile-gated)"]
+        stage1["build-image<br/>gradle:9.7.0-jdk26-corretto<br/>RUN gradle :MODULE:bootJar<br/>-Pvaadin.productionMode=true"]
+        stage2["app-image<br/>eclipse-temurin:26-jre<br/>COPY *.jar /app/MODULE.jar<br/>+ cms/src/docker/bin/startup.sh"]
+    end
+
+    bootJar --> stage1
+    stage1 --> stage2
+
+    stage2 --> cms_img["server-cms<br/>compose profile=cms"]
+    stage2 --> deck_img["server-deck<br/>compose profile=deck"]
