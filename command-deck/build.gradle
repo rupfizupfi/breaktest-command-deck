@@ -1,10 +1,50 @@
 dependencies {
     implementation project(':cms')
-    implementation fileTree(dir: "${rootProject.projectDir}/lib", include: ['*.jar'])
 }
 
-repositories {
-    flatDir { dirs("${rootProject.projectDir}/lib") }
+// The two vendor driver jars are OPTIONAL for the main source set: nothing under src/main
+// references ch.rupfizupfi.usbmodbus or ch.rupfizupfi.dscusb, so a fresh clone compiles and runs
+// without either jar. The adapters that do reference them live in their own 'drivers' source set.
+//
+// Registered only when BOTH jars are present: every test type drives the motor and watches the
+// load cell, so real hardware operation needs both or neither. Split this if that ever changes.
+// See doc/06-feature-work/virtual-devices/driver-api-extraction.md
+def vendorJarFiles = [
+        file("${rootProject.projectDir}/lib/dscusb.jar"),
+        file("${rootProject.projectDir}/lib/usbmodbus.jar")
+]
+def vendorJarsPresent = vendorJarFiles.every { it.exists() }
+
+if (vendorJarsPresent) {
+    def vendorJars = files(vendorJarFiles)
+
+    sourceSets {
+        drivers {
+            java.srcDirs = ['src/drivers/java']
+            resources.srcDirs = []
+        }
+    }
+
+    sourceSets.drivers.compileClasspath =
+            sourceSets.main.output + sourceSets.main.compileClasspath + vendorJars
+    sourceSets.drivers.runtimeClasspath =
+            sourceSets.drivers.output + sourceSets.drivers.compileClasspath
+
+    // On 'assemble', never on 'classes': compileDriversJava consumes the main output, so hooking it
+    // into 'classes' makes classes -> driversClasses -> compileDriversJava -> classes.
+    // bootJar/bootRun need no hook - a buildable source-set output on their classpath is enough.
+    tasks.named('assemble') { dependsOn 'driversClasses' }
+
+    bootRun {
+        classpath += sourceSets.drivers.output + vendorJars
+    }
+
+    bootJar {
+        classpath sourceSets.drivers.output, vendorJars
+    }
+} else {
+    logger.lifecycle(":command-deck: vendor driver jars absent from lib/, building without the "
+            + "'drivers' source set - deck.hardware.mode=real will refuse to start")
 }
 
 bootJar {
