@@ -28,6 +28,7 @@ export default function DistanceMeasureCam() {
 
     useEffect(() => {
         // Wait for OpenCV to be ready
+        // @ts-ignore
         cvReady.then((cv:CV) => {
             const camShiftTracking = creatCamshiftTracking(cv);
 
@@ -38,6 +39,8 @@ export default function DistanceMeasureCam() {
 
             update();
             camShiftTracking.init(canvasRef.current!);
+
+            // @ts-ignore
             algoRef.current = camShiftTracking;
         });
     }, []);
