@@ -1,11 +1,14 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.device.DeviceService;
+import ch.rupfizupfi.deck.device.HardwareModeInfo;
 import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
 import ch.rupfizupfi.deck.filesystem.StorageLocationService;
 import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
 import ch.rupfizupfi.deck.testrunner.startup.check.FileSystemCheck;
+import ch.rupfizupfi.deck.testrunner.startup.check.LoadCellCheck;
 import org.springframework.context.ApplicationContext;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -21,7 +24,12 @@ public class TestRunnerFactory {
     }
 
     public TestRunnerThread createTestRunnerThread() {
-        return new TestRunnerThread(this);
+        return new TestRunnerThread(this, getMotorSafetyController(),
+                applicationContext.getBean(HardwareModeInfo.class));
+    }
+
+    public MotorSafetyController getMotorSafetyController() {
+        return applicationContext.getBean(MotorSafetyController.class);
     }
 
     @SuppressWarnings("unchecked")
@@ -59,7 +67,7 @@ public class TestRunnerFactory {
     }
 
     public LoadCellThread createLoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice) {
-        return new LoadCellThread(testContext, loadCellDevice, applicationContext.getBean(CSVStoreService.class));
+        return new LoadCellThread(testContext, loadCellDevice, applicationContext.getBean(CSVStoreService.class), getMotorSafetyController());
     }
 
     public TestLogger createLogger(TestResult testResult) {
@@ -68,7 +76,8 @@ public class TestRunnerFactory {
 
     public AbstractCheck[] getStartupChecks() {
         return new AbstractCheck[] {
-            new FileSystemCheck(applicationContext.getBean(StorageLocationService.class))
+            new FileSystemCheck(applicationContext.getBean(StorageLocationService.class)),
+            new LoadCellCheck(applicationContext.getBean(DeviceService.class))
         };
     }
 }
