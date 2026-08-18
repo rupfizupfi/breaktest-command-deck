@@ -10,6 +10,8 @@ import {CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, Point
 import {Button} from "@vaadin/react-components/Button.js";
 import {HorizontalLayout, VerticalLayout} from "@vaadin/react-components";
 import LogComponent from "cms/components/dashboard/LogComponent";
+import {useLiveStatus} from "Frontend/service/useLiveStatus";
+import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
 
 ChartJS.register(
     CategoryScale,
@@ -64,6 +66,7 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
     const [dataPoints, setDataPoints] = useState<[number[], number[]]>([[], []]);
     const [logs, setLogs] = useState<string[]>([]);
     const [stopped, setStopped] = useState<boolean>(false);
+    const {loadCell, connected} = useLiveStatus();
 
     useEffect(() => {
         const start = Date.now();
@@ -141,7 +144,9 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
     };
 
     const maxForce = yDataPoints.length ? Math.round(Math.max(...yDataPoints)) / 1000 : 0;
-    const currentValue = dataPoints.length ? Math.round(yDataPoints[yDataPoints.length - 1]) / 1000 : 0;
+    // yDataPoints, not dataPoints: the outer tuple is always length 2, so the old check was always
+    // true and rendered "Force: NaN kN" until the first measurement arrived.
+    const currentValue = yDataPoints.length ? Math.round(yDataPoints[yDataPoints.length - 1]) / 1000 : 0;
 
     return (
         <VerticalLayout className="w-full" theme="padding spacing-l stretch evenly" style={{alignItems: 'stretch'}}>
@@ -158,9 +163,21 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
                     }
                     reset();
                 }}>Close</Button>
-                <h3 style={{width: '8em'}}>Force: {currentValue} kN</h3>
-                <h3 style={{width: '8em'}}>Max: {maxForce} kN</h3>
+                <h3 style={{minWidth: '8em'}}>Force: <StaleValue status={loadCell} hasValue={yDataPoints.length > 0}>{currentValue} kN</StaleValue></h3>
+                <h3 style={{minWidth: '8em'}}>Max: {maxForce} kN</h3>
             </HorizontalLayout>
+
+            {!connected && (
+                <p className="feed-warning feed-warning--disconnected">
+                    no connection to the machine &mdash; this view is not live
+                </p>
+            )}
+            {connected && loadCell.stale && (
+                <p className="feed-warning">
+                    no force data for {formatAge(loadCell.staleForSeconds)} &mdash; the chart has stopped
+                    advancing and the force above is not live
+                </p>
+            )}
 
             <div className="w-full">
                 <Line data={data} options={options}/>

@@ -4,7 +4,7 @@ import {createAutoComboBoxService} from "cms/components/combobox/service";
 import AutoComboBox from "cms/components/combobox/AutoComboBox";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
 import {GridColumn, Icon, TextArea, VerticalLayout} from "@vaadin/react-components";
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
@@ -27,7 +27,10 @@ export default function RunView() {
     const service = getService();
     const [testResultData, setTestResultData] = useState<TestResult>();
     const [readyTestResultData, setReadyTestResultData] = useState<TestResult>();
-    service.loadCellObservable.subscribe((value: IMessage) => status.value = value.body);
+    useEffect(() => {
+        const subscription = service.loadCellObservable.subscribe((value: IMessage) => status.value = value.body);
+        return () => subscription.unsubscribe();
+    }, [service]);
 
     function startRun(){
         if(testResultData){
@@ -38,7 +41,9 @@ export default function RunView() {
     }
 
     function headerRenderer(editedItem: TestResult | null, disabled: boolean) {
-        setTimeout(setReadyTestResultData, 0, editedItem);
+        if(readyTestResultData !== editedItem){
+            setTimeout(setReadyTestResultData, 100, editedItem);
+        }
         const colorVar = disabled ? 'var(--lumo-disabled-text-color)' : 'var(--lumo-text-color)';
         // @ts-ignore
         return <h3 style={{ color: colorVar }}>{editedItem ? (editedItem.__copy?'Copy' :'Edit' ): 'New'} item</h3>;

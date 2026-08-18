@@ -1,0 +1,39 @@
+/* StaleValue.css - shared treatment for values that may not be live. */
+
+.stale-value--unknown {
+    color: #767676;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Amber rather than red: a stale reading is a warning about the display, not a machine fault. */
+.stale-value--stale {
+    color: #a35b00;
+}
+
+.stale-value__age {
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+/* Banner for a whole block of readings that stopped updating. */
+.feed-warning {
+    margin: 0.25rem 0;
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    background-color: #fff4e0;
+    border: 1px solid #e0b070;
+    color: #8a4b00;
+    font-size: 0.9em;
+}
+
+/* The socket is gone, which is a different problem from a quiet machine. */
+.feed-warning--disconnected {
+    background-color: #fdecea;
+    border-color: #e0908a;
+    color: #8a1f14;
+}
+
+/* Applied to a list whose values are all stale, so the block reads as one unit with its banner. */
+.feed-values--stale {
+    opacity: 0.55;
+}
