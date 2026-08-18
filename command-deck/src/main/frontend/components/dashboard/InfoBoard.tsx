@@ -5,6 +5,8 @@ import {IMessage} from "@stomp/rx-stomp";
 import {Checkbox} from "@vaadin/react-components";
 import './InfoBoard.css';
 import {Notification} from "@vaadin/react-components/Notification";
+import {useLiveStatus} from "Frontend/service/useLiveStatus";
+import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
 
 interface Info {
     id: number;
@@ -27,9 +29,11 @@ interface InfoBoardProps {
 export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
     const service = getService();
     const [info, setFCInfo] = useState<Info | null>(null);
-    const [force, setForce] = useState<number>(0);
+    // null rather than 0: an initial zero is indistinguishable from a genuine "no load" reading.
+    const [force, setForce] = useState<number | null>(null);
     const [enabled, setEnabled] = useState<boolean>(false);
     const [suckEnabled, setSuck] = useState<boolean>(false);
+    const {loadCell, frequencyConverter, connected} = useLiveStatus();
 
     useEffect(() => {
         if (!enabled) {
@@ -60,10 +64,19 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         };
     }, [enabled]);
 
+    // The backend only publishes converter info while broadcasting is enabled, so silence is only
+    // meaningful once we have asked for it.
+    const converterStale = enabled && info !== null && frequencyConverter.stale;
+
     const infoDom = info ? (
         <>
             <h3 className="lumo-typography">Status: {info.id}</h3>
-            <ul className="info-list">
+            {converterStale && (
+                <p className="feed-warning">
+                    no update for {formatAge(frequencyConverter.staleForSeconds)} &mdash; the values below are not live
+                </p>
+            )}
+            <ul className={converterStale ? "info-list feed-values--stale" : "info-list"}>
                 <li className="info-item"><span>Speed:</span> <span>{info.speed * .375} mm/min</span></li>
                 <li className="info-item"><span>Ramp:</span> <span>{info.useSecondRamp ? 'second' : 'first'}</span></li>
                 <li className="info-item"><span>Direction:</span> <span>{info.directionIsForward ? 'push' : 'pull'}</span></li>
@@ -77,8 +90,20 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
     return (
         <div className="info-board">
             <h2>Info:</h2>
+            {enabled && !connected && (
+                <p className="feed-warning feed-warning--disconnected">
+                    no connection to the machine &mdash; nothing on this panel is live
+                </p>
+            )}
             <ul className="info-list">
-                <li className="info-item"><span>Force:</span> <span>{(force / 1000).toFixed(3)} Kn</span></li>
+                <li className="info-item">
+                    <span>Force:</span>
+                    <span>
+                        <StaleValue status={loadCell} hasValue={force !== null}>
+                            {((force ?? 0) / 1000).toFixed(3)} Kn
+                        </StaleValue>
+                    </span>
+                </li>
             </ul>
             {infoDom}
             <label>
