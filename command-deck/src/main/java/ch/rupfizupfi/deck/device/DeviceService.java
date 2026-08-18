@@ -1,6 +1,8 @@
 package ch.rupfizupfi.deck.device;
 
 import ch.rupfizupfi.deck.data.SettingRepository;
+import ch.rupfizupfi.deck.device.api.DriveProvider;
+import ch.rupfizupfi.deck.device.api.LoadCellStreamProvider;
 import ch.rupfizupfi.deck.device.frequencyconverter.CFW11Device;
 import ch.rupfizupfi.deck.device.frequencyconverter.DeviceInfoBroadcaster;
 import ch.rupfizupfi.deck.device.loadcell.ForceBroadcaster;
@@ -17,10 +19,11 @@ public class DeviceService {
     private final DeviceInfoBroadcaster deviceInfoBroadcaster;
     private final SettingRepository settingRepository;
 
-    public DeviceService(SimpMessagingTemplate template, SettingRepository settingRepository) {
+    public DeviceService(SimpMessagingTemplate template, SettingRepository settingRepository,
+                         DriveProvider driveProvider, LoadCellStreamProvider loadCellStreamProvider) {
         this.settingRepository = settingRepository;
-        frequencyConverter = new CFW11Device();
-        loadCell = new LoadCellDevice();
+        frequencyConverter = new CFW11Device(driveProvider);
+        loadCell = new LoadCellDevice(loadCellStreamProvider);
         loadCell.registerObserver(new ForceBroadcaster(template));
         deviceInfoBroadcaster = new DeviceInfoBroadcaster(template);
     }
