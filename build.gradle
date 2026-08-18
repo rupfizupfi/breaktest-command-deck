@@ -45,7 +45,6 @@ subprojects {
 		developmentOnly 'org.springframework.boot:spring-boot-devtools'
 		developmentOnly 'com.vaadin:vaadin-dev'
 		testImplementation 'org.springframework.boot:spring-boot-starter-test'
-		implementation fileTree(dir: 'lib', include: ['*.jar'])
 		// slf4j-api and logback-classic versions are managed by the Spring Boot BOM.
 		implementation 'org.slf4j:slf4j-api'
 		implementation 'ch.qos.logback:logback-classic'
@@ -66,5 +65,9 @@ subprojects {
 	vaadin {
 		productionMode = false
 		optimizeBundle = false
+		// pnpm hard-links from a shared store, so cms and command-deck no longer
+		// keep two near-identical copies of the same dependency tree on disk.
+		// Vaadin fetches its own pinned pnpm, so useGlobalPnpm stays off.
+		pnpmEnable = true
 	}
 }
