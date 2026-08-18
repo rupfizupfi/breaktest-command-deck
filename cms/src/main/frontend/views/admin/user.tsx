@@ -4,7 +4,9 @@ import UserModel from "Frontend/generated/ch/rupfizupfi/deck/data/UserModel";
 import {UserService} from "Frontend/generated/endpoints";
 import {MultiSelectComboBox, PasswordField, TextField} from "@vaadin/react-components";
 
-export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/user.svg', exclude: true}, title: 'User', loginRequired: true};
+// rolesAllowed matches the Role enum names returned by UserEndpoint.getAuthenticatedUser
+// ("ADMIN"), not the Spring authority ("ROLE_ADMIN") used by @RolesAllowed on the endpoint.
+export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/user.svg', exclude: true}, title: 'User', loginRequired: true, rolesAllowed: ['ADMIN']};
 
 export default function UserView() {
     return (

@@ -39,6 +39,15 @@ public class SecurityConfiguration {
                 .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/api/**")).permitAll()
         );
 
+        // The STOMP handshake is neither a Vaadin route nor a Hilla endpoint, and
+        // VaadinSecurityConfigurer closes the chain with anyRequest().denyAll() — so without a
+        // rule of its own the live telemetry socket is refused with 403 for a logged-in operator.
+        // Authenticated, never permitAll: the topics carry one machine's telemetry, shared
+        // between its operators by decision, not published.
+        http.authorizeHttpRequests(authorize -> authorize
+                .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/status")).authenticated()
+        );
+
         return http
                 .with(VaadinSecurityConfigurer.vaadin(), vaadin -> vaadin.loginView("/login"))
                 .build();
