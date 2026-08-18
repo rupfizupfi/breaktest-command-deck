@@ -1,0 +1,46 @@
+%% Hardware layer: hardware -> provider -> device -> broadcaster -> WebSocket topic
+%% Branch: dev-split @ 2026-08-17
+flowchart LR
+    subgraph Hardware["Physical hardware (real mode only)"]
+        DSC["DSCUSB load-cell (USB)"]
+        CFW["WEG CFW11 frequency converter (USB Modbus)"]
+        REL["4-way relay CH9102 (Serial)"]
+    end
+
+    subgraph Providers["Providers - one pair per deck.hardware.mode"]
+        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>drivers source set, lib/*.jar"]
+        SIM["simulated: SimulatedDrive / SimulatedLoadCellStream<br/>shared SimulatedBench"]
+    end
+
+    subgraph DeviceLayer["device/ - singleton DeviceService"]
+        LCD["LoadCellDevice<br/>(extends Device)<br/>readData() loop, 20ms"]
+        CFD["CFW11Device<br/>(extends Device)<br/>readData() loop, 400ms"]
+        FRS["FourWayRelaySwitch<br/>(plain object)"]
+    end
+
+    subgraph Broadcasters
+        FB["ForceBroadcaster<br/>buffers ~60ms"]
+        DIB["DeviceInfoBroadcaster"]
+    end
+
+    subgraph Topics["STOMP topics"]
+        T1["/topic/load-cell"]
+        T2["/topic/frequency-converter-info"]
+    end
+
+    DSC --> VEND
+    CFW --> VEND
+    REL -->|"RS232 115200 8N1"| FRS
+    VEND --> LCD
+    VEND --> CFD
+    SIM -.-> LCD
+    SIM -.-> CFD
+
+    LCD -->|MeasurementObserver| FB --> T1
+    CFD -->|InfoObserver| DIB --> T2
+    LCD --> LCT["LoadCellThread<br/>(testrunner)"]
+    LCT -.->|signals| TC[TestContext]
+    LCT -.->|writes CSV| FS[(filesystem)]
+
+    classDef topic fill:#fff3cd,stroke:#664d03
+    class T1,T2 topic
