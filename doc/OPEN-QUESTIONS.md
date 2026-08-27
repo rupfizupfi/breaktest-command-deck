@@ -38,7 +38,7 @@ touching those files twice.
 | **Frontend realtime** | OQ-23 | Live frames reach the browser again, so the first-batch race is observable — and worth measuring before it is fixed blind |
 | **Load-cell recovery** | OQ-45, OQ-74 | OQ-74 raises the cost of a glitch to "run over", so resume stops being optional. Blocked on owner-owed resume policy — see the gate below |
 | **Safety-path restructure** | OQ-64, OQ-63, OQ-49, OQ-50 | OQ-63 is a live defect — **pull it out and fix it now**, independent of the undecided OQ-64. Redesign step 3 cannot be exercised until the seam and simulator exist |
-| **Driver repos** (`dscusb`, `usbmodbus`) | OQ-43 | Sibling repos, not this one. Both now build from a clean checkout and the jars in `lib/` are reproducible (OQ-75, OQ-76 closed), so a CFW11-side change is no longer gated on a build migration. Only procurement remains |
+| **Driver repos** (`dscusb`, `usbmodbus`) | OQ-43 | Sibling repos, not this one. Both now build from a clean checkout and both plugin jars are reproducible from their committed source (OQ-75, OQ-76 closed), so a CFW11-side change is no longer gated on a build migration. Only procurement remains |
 | **Ops and deployment** | OQ-61, OQ-4, OQ-14, OQ-34, OQ-56 | Independent of everything above |
 | **Security** | OQ-37, OQ-36 | Independent |
 | **Mechanical batch** | OQ-10, OQ-13, OQ-27, OQ-31, OQ-38, OQ-42 | One commit, no decisions left |

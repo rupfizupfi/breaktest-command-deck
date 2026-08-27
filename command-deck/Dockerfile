@@ -12,7 +12,10 @@ WORKDIR /home/gradle/src
 # /app/drivers empty; the container then refuses to start in real mode and names what is missing.
 # The licence-restricted usbmodbus.jar is never staged here at all - see below.
 ARG GITHUB_ACTOR=docker-build
-RUN --mount=type=secret,id=github-token,required=false \
+# uid=1000 is the gradle user in this image. A secret mount defaults to uid 0 / mode 0400, so if the
+# build stage is not root the read fails, `|| true` swallows it, and the build silently proceeds
+# tokenless. Root can still read a uid-1000 file, so this is correct either way.
+RUN --mount=type=secret,id=github-token,required=false,uid=1000 \
     export GITHUB_ACTOR="$GITHUB_ACTOR" \
     && export GITHUB_TOKEN="$(cat /run/secrets/github-token 2>/dev/null || true)" \
     && gradle clean :command-deck:bootJar :command-deck:stageDrivers \

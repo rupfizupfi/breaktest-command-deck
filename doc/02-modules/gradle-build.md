@@ -104,9 +104,9 @@ Three build-side pieces, and that is all:
 
 | Piece | Does what |
 |---|---|
-| `stageDrivers` (`Sync`) | Resolves the **public** driver `ch.rupfizupfi.dscusb:dscusb` into `build/drivers/` for the docker image to copy. `Sync` so a version bump deletes the jar it replaces; the version stays in the filename so `ls /app/drivers` identifies the driver build. Pin with `-PdscusbVersion=`. |
+| `stageDrivers` (custom `StageDriverPlugins`) | Resolves the **public** driver `ch.rupfizupfi.dscusb:dscusb` into `build/drivers/` for the docker image to copy, with sync semantics so a version bump deletes the jar it replaces. Not a plain `Sync` task: with nothing resolved that reports `NO-SOURCE` and is skipped, leaving no directory for the Dockerfile to `COPY` and no warning. Never up-to-date, so the warning prints every run. The version stays in the filename so `ls /app/drivers` identifies the driver build. Pin with `-PdscusbVersion=`. |
 | `-PdeckDrivers=local` | Bench escape hatch: puts `lib/*.jar` on **`bootRun`'s** classpath as `developmentOnly`, which the Spring Boot plugin excludes from `bootJar` — so even a jar built with this option on stays driver-free. Default is `off`; those are the only two values. |
-| A content-filtered GitHub Packages repository | Resolved **only** by `stageDrivers`, because GitHub Packages demands a token even for public reads. `build`, `bootRun` and `hillaGenerate` never touch it, so a fresh clone builds with no credentials. `mavenLocal` is consulted first so `publishToMavenLocal` in `../dscusb` can be exercised through the real `loader.path`; it is inert in the docker build, which has no `~/.m2`. |
+| A content-filtered GitHub Packages repository | Resolved **only** by `stageDrivers`, because GitHub Packages demands a token even for public reads. `build`, `bootRun` and `hillaGenerate` never touch it, so a fresh clone builds with no credentials. `mavenLocal` is listed ahead of it so `publishToMavenLocal` in `../dscusb` can be exercised through the real `loader.path`; it is inert in the docker build, which has no `~/.m2`. |
 
 Design rationale and history: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md); what fails at startup without the jars: [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode); how the container gets them: [`../05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
 
@@ -154,14 +154,15 @@ project.group=ch.rupfizupfi
 `hillaVersion` is set but **not referenced** by any build file in this checkout (`vaadinVersion` is used everywhere). Likely vestigial from older Hilla 2.x releases that pinned hilla independently of vaadin.
 
 ## Where to look in the code
-- `settings.gradle:1-17`
-- `build.gradle:1-68` (root)
+- `settings.gradle:1-21`
+- `build.gradle:1-73` (root)
 - `cms/build.gradle:1-11`
-- `command-deck/build.gradle:1-20`
+- `command-deck/build.gradle:1-164`
+- `device-api/settings.gradle:1-9` and `device-api/build.gradle:1-40` (the included build)
 - `gradle.properties:1-10`
-- `cms/Dockerfile:1-31` and `command-deck/Dockerfile:1-30`
+- `cms/Dockerfile:1-30` and `command-deck/Dockerfile:1-61`
 - `command-deck/vite.config.ts:1-53` and `command-deck/customFileSystemRouterPlugin.ts:1-144`
-- `lib/dscusb.jar` (tracked binary)
+- `lib/README.md` (the directory's only tracked file — see [Local JAR census](#local-jar-census-lib))
 
 To see the resolved dependency graph for either module, run
 `./gradlew :command-deck:dependencies --configuration runtimeClasspath`

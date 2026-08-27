@@ -36,7 +36,7 @@ beans — see
 | Provides | `ch.rupfizupfi.dscusb.dscusb.CellValueStream`; `Measurement` and `CommandExecutionException` one level up | `ch.rupfizupfi.usbmodbus.Cfw11` |
 | Deck plugin package | `ch.rupfizupfi.dscusb.deck` — `CellValueStreamAdapter`, `DeckLoadCellAutoConfiguration` | `ch.rupfizupfi.usbmodbus.deck` — `Cfw11Drive`, `DeckDriveAutoConfiguration` |
 | In git | no — `lib/*.jar` is gitignored | no — gitignored, licence-restricted |
-| Published | **yes**, `ch.rupfizupfi.dscusb:dscusb` on GitHub Packages | **never** — may not be redistributed |
+| Published | as `ch.rupfizupfi.dscusb:dscusb` on GitHub Packages — the mechanism is in place, the **first version lands when the driver PR merges** | **never** — may not be redistributed |
 | Reaches production via | `:command-deck:stageDrivers` → image at `/app/drivers` | host mount `docker/drivers-local/` → `/app/drivers-local` |
 | Sibling repo | `dscusb` | `usbmodbus` |
 | Buildable on this machine | yes, from a clean checkout | yes, from a clean checkout |
@@ -78,8 +78,11 @@ a restart, not a rebuild. For bench work, `lib/` plus
 
 ## `dscusb.jar` — load cell
 
-Published from the sibling repo as `ch.rupfizupfi.dscusb:dscusb`
-(`./gradlew publish` there, with `GITHUB_ACTOR` and a `write:packages` token).
+Published from the sibling repo as `ch.rupfizupfi.dscusb:dscusb` — by its CI on
+merge to `main` whenever `version` in its `gradle.properties` changes, or by
+hand with `./gradlew publish` there (needs `GITHUB_ACTOR` and a `write:packages`
+token). **Nothing is published yet**: until that first merge, `stageDrivers`
+warns and stages nothing unless the artifact is in the local `~/.m2`.
 `:command-deck:stageDrivers` resolves the pinned version into `build/drivers/`,
 and the deck image copies it to `/app/drivers`. Bump `-PdscusbVersion` here to
 move the deck onto a new driver build.
@@ -91,16 +94,17 @@ catches it.
 
 For bench work there is no need to publish: `./gradlew shadowJar` in the sibling
 repo and copy `build/libs/dscusb.jar` into `lib/`, or `publishToMavenLocal` there
-and let `stageDrivers` pick it up from `~/.m2` (it is consulted first, and is
+and let `stageDrivers` pick it up from `~/.m2` (listed ahead of GitHub Packages, and
 inert inside the docker build).
 
 **The package layout is split, and only part of it moved.** `CellValueStream`,
 `Connection`, `DSCUSB` and `DSCUSBDrv64` sit in `ch.rupfizupfi.dscusb.dscusb`,
 beside a `t24` sibling package for the wireless base station that the deck does not
 use. `Measurement` and `CommandExecutionException` are shared by both backends and
-stay one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in this
-repo's `deck` package) imports from both, which is the whole blast radius of that
-move — the deck owns its own `Measurement`, so nothing over there sees it.
+stay one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in the
+`dscusb` repo's own `ch.rupfizupfi.dscusb.deck` package) imports from both, which
+is the whole blast radius of that move — the deck owns its own `Measurement`, so
+nothing over there sees it.
 
 **Driver contract, and it decides run outcomes:**
 

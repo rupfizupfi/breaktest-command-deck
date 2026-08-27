@@ -39,9 +39,12 @@ if (deckDrivers == 'local') {
 // The PUBLIC driver plugin, staged into the docker image by stageDrivers below. Resolved only by
 // that task: `build`, `bootRun` and `hillaGenerate` never touch this repository, so a fresh clone
 // builds with no credentials — GitHub Packages demands a token even for public reads.
-// mavenLocal comes first on purpose: `publishToMavenLocal` in ../dscusb is how an unpublished
-// driver gets exercised through the real loader.path, and it is inert inside the docker build,
-// which has no ~/.m2. stageDrivers logs the file it staged so version skew stays visible.
+// mavenLocal is listed ahead of GitHub Packages on purpose: `publishToMavenLocal` in ../dscusb is
+// how an unpublished driver gets exercised through the real loader.path, and it is inert inside the
+// docker build, which has no ~/.m2. (Only ahead of *these two* - the root build.gradle's
+// subprojects repositories are declared first and are unfiltered, so they get asked first and 404.)
+// stageDrivers logs the filename it staged, which names the version but not which of the two
+// sources it came from.
 repositories {
     mavenLocal {
         content { includeGroup 'ch.rupfizupfi.dscusb' }
@@ -82,6 +85,10 @@ tasks.register('stageDrivers', StageDriverPlugins) {
     // reason to be unable to build the application. The task warns instead.
     plugins.from(configurations.deckDriver.incoming.artifactView { lenient = true }.files)
     stagingDir = layout.buildDirectory.dir('drivers')
+    // Never up-to-date: with nothing resolved both the inputs and the output directory are empty,
+    // which is a textbook UP-TO-DATE and would swallow the warning that a driver is missing. That
+    // warning is the only build-time signal there is, so it has to print every run.
+    outputs.upToDateWhen { false }
 }
 
 // The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a

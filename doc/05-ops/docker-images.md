@@ -46,7 +46,7 @@ Three details that surprise people:
 
 ### Where the deck image diverges: driver plugins
 
-`command-deck/Dockerfile` adds four lines the cms image has no use for, all
+`command-deck/Dockerfile` adds a handful of directives the cms image has no use for, all
 serving one rule — **the licence-restricted `usbmodbus.jar` is never in an
 image**, and `lib/` is excluded by `.dockerignore` so it never even reaches the
 build context:

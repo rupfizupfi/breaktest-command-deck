@@ -32,14 +32,12 @@ separate deployments:
 | `cms` | Cloud host | Content management: projects, samples, customers, materials, results. Reachable by users who are nowhere near the machine. |
 | `deck` | The physical tester, on the shop floor | Needs local USB/serial access to the load cell, CFW11 frequency converter and relay board. |
 
-> **The `deck` image cannot currently reach that hardware.** Both driver
-> plugins are Windows-only — the load cell needs a Win32 vendor DLL, the
-> CFW11 needs the Thesycon USBIO *kernel* driver — and this image runs on
-> `eclipse-temurin:26-jre`. Each driver now refuses to register off Windows
-> and says so, so the container fails at startup instead of mid-run. Running
-> `command-deck` natively on the Windows bench box is the only path that
-> drives hardware today. Researched and owner-owed as **OQ-79**;
-> [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md) owns the detail.
+> **The `deck` image cannot currently reach that hardware.** Both driver plugins
+> are Windows-only and this image is Linux, so each refuses to register and the
+> container fails at startup rather than mid-run. Running `command-deck`
+> natively on the Windows bench box is the only path that drives hardware today.
+> Owner-owed as **OQ-79**; detail in
+> [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
 
 The on-machine `deck` connects to the **cloud database**, so there is one
 authoritative dataset rather than a sync problem. That also means the
@@ -182,17 +180,17 @@ See [`db.md`](db.md) for the database angle.
   is nothing to rebuild. Owned by
   [`driver-jars.md`](../03-backend/driver-jars.md).
 * **Build secret `github-token`**, deck build only, taken from the
-  **`GITHUB_TOKEN` environment variable** (set it in `docker/.env`). A PAT with
+  **`GITHUB_TOKEN` environment variable**, which must be exported in the shell
+  that runs the build — **not** put in `docker/.env`, which is tracked in git.
+  A PAT with
   `read:packages`, mounted only into the build stage so it never lands in a
   layer. `stageDrivers` needs it because GitHub Packages demands a token even
   for public reads. **Optional** — unset, the build still succeeds, warns, and
   leaves `/app/drivers` empty; the container then refuses to start in real mode
-  naming the missing provider. A missing driver is a startup failure, never a
-  build failure.
-  Environment-backed rather than a `file:` secret precisely for that: compose
-  fails *before the build starts* if a declared secret file is missing, which
-  would have made the token mandatory. Verified both ways. The `cms` profile
-  neither uses nor needs it.
+  naming the missing provider. Environment-backed rather than a `file:` secret
+  precisely for that: compose aborts *before the build starts* if a declared
+  secret file is missing, which would have made the token mandatory. The `cms`
+  profile neither uses nor needs it.
 
 ### Required host preparation
 
@@ -207,13 +205,14 @@ Before `docker compose up -d`, an operator must:
    local network, so the auto-signed cert is intended, not a fallback.
 3. Set or accept `KEY_STORE_PASSWORD=changeit` in `docker/.env` (default
    matches the auto-generated keystore).
-4. **Tester only:** set `GITHUB_TOKEN` in `docker/.env` to a PAT with
-   `read:packages`, so the deck image build can resolve the published
-   `dscusb` driver plugin. Optionally set `GITHUB_ACTOR` too; it defaults to a
-   placeholder, which GitHub Packages accepts alongside a valid token. Skipping
-   this does not break the build — it produces an image whose `/app/drivers` is
-   empty, which fails at startup instead. Watch the build log for the
-   `no driver plugin could be staged` warning.
+4. **Tester only:** `export GITHUB_TOKEN=<PAT with read:packages>` in the shell
+   that runs the build, so it can resolve the published `dscusb` driver plugin.
+   **Do not put it in `docker/.env`** — that file is tracked in git. Optionally
+   export `GITHUB_ACTOR` too; it defaults to a placeholder, which GitHub
+   Packages accepts alongside a valid token. Skipping this does not break the
+   build — it produces an image whose `/app/drivers` is empty, which fails at
+   startup instead. Confirm with
+   `docker compose exec server-deck ls /app/drivers`.
 5. **Tester only:** copy `usbmodbus.jar` into `docker/drivers-local/`. Without
    it the container starts and then refuses, naming the missing `DriveProvider`
    — by design, it never falls back to a simulator.

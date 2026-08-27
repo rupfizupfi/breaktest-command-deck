@@ -35,7 +35,7 @@ flowchart LR
     end
 
     subgraph Providers["Providers - one pair per deck.hardware.mode"]
-        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>plugin jars in lib/, runtime-only"]
+        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>plugin jars on loader.path, Windows only"]
         SIM["simulated: SimulatedDrive / SimulatedLoadCellStream<br/>shared SimulatedBench"]
     end
 
