@@ -1,50 +1,46 @@
 dependencies {
     implementation project(':cms')
+    // Resolved by the device-api included build (root settings.gradle), never from a repository.
+    implementation 'ch.rupfizupfi.deck:device-api:1.0.0'
 }
 
-// The two vendor driver jars are OPTIONAL for the main source set: nothing under src/main
-// references ch.rupfizupfi.usbmodbus or ch.rupfizupfi.dscusb, so a fresh clone compiles and runs
-// without either jar. The adapters that do reference them live in their own 'drivers' source set.
+// The vendor driver jars are runtime-only plugins. Each implements ch.rupfizupfi.deck:device-api in
+// its own repo (../dscusb, ../usbmodbus — both composite-include device-api, so THEIR compile is the
+// contract-conformance check) and ships a Spring Boot auto-configuration that registers its provider
+// beans. Nothing in this module names a driver class; discovery is AutoConfiguration.imports at
+// startup, so a jar dropped into lib/ is active on the next build and gone when removed.
 //
-// Registered only when BOTH jars are present: every test type drives the motor and watches the
-// load cell, so real hardware operation needs both or neither. Split this if that ever changes.
-// See doc/06-feature-work/virtual-devices/driver-api-extraction.md
-def vendorJarFiles = [
-        file("${rootProject.projectDir}/lib/dscusb.jar"),
-        file("${rootProject.projectDir}/lib/usbmodbus.jar")
-]
-def vendorJarsPresent = vendorJarFiles.every { it.exists() }
+// deckDrivers=off exists to build a deliberately hardware-free jar. There is no 'on': a missing jar
+// must stay a *startup* failure named by HardwareModeCheck, never a build failure — a fresh clone
+// without the licence-restricted usbmodbus.jar has to build.
+def deckDrivers = providers.gradleProperty('deckDrivers').getOrElse('auto')
+if (!(deckDrivers in ['auto', 'off'])) {
+    throw new GradleException("deckDrivers=${deckDrivers} is not valid. Valid values: auto, off.")
+}
 
-if (vendorJarsPresent) {
-    def vendorJars = files(vendorJarFiles)
-
-    sourceSets {
-        drivers {
-            java.srcDirs = ['src/drivers/java']
-            resources.srcDirs = []
-        }
+if (deckDrivers == 'auto') {
+    def driverJars = fileTree("${rootProject.projectDir}/lib") { include '*.jar' }
+    dependencies {
+        runtimeOnly driverJars
     }
-
-    sourceSets.drivers.compileClasspath =
-            sourceSets.main.output + sourceSets.main.compileClasspath + vendorJars
-    sourceSets.drivers.runtimeClasspath =
-            sourceSets.drivers.output + sourceSets.drivers.compileClasspath
-
-    // On 'assemble', never on 'classes': compileDriversJava consumes the main output, so hooking it
-    // into 'classes' makes classes -> driversClasses -> compileDriversJava -> classes.
-    // bootJar/bootRun need no hook - a buildable source-set output on their classpath is enough.
-    tasks.named('assemble') { dependsOn 'driversClasses' }
-
-    bootRun {
-        classpath += sourceSets.drivers.output + vendorJars
-    }
-
-    bootJar {
-        classpath sourceSets.drivers.output, vendorJars
-    }
+    def names = driverJars.files.collect { it.name }.sort()
+    logger.lifecycle(":command-deck: driver plugins from lib/: "
+            + (names ? names.join(', ') : "none - deck.hardware.mode=real will refuse to start"))
 } else {
-    logger.lifecycle(":command-deck: vendor driver jars absent from lib/, building without the "
-            + "'drivers' source set - deck.hardware.mode=real will refuse to start")
+    logger.lifecycle(":command-deck: deckDrivers=off - no driver plugins; "
+            + "deck.hardware.mode=real will refuse to start")
+}
+
+// The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
+// task dependency on it — with device-api coming from an included build, a standalone
+// `hillaGenerate` (script/typecheck.ps1) then fails with "querying ... before task
+// ':device-api:jar' has completed is not supported". Compilation forces the jar as a side effect,
+// which is why `build` never sees this; the Vaadin/Hilla tasks need it stated.
+def deviceApiJar = gradle.includedBuild('device-api').task(':jar')
+tasks.matching {
+    it.name in ['hillaGenerate', 'hillaConfigure', 'vaadinPrepareFrontend', 'vaadinBuildFrontend']
+}.configureEach {
+    dependsOn deviceApiJar
 }
 
 bootJar {

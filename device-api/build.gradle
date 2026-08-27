@@ -1,0 +1,15 @@
+// The hardware contract and nothing else. Zero dependencies is load-bearing: every consumer
+// (the deck, dscusb, usbmodbus) substitutes ch.rupfizupfi.deck:device-api for this build, and a
+// dependency added here lands on all of their classpaths.
+plugins {
+    id 'java-library'
+}
+
+group = 'ch.rupfizupfi.deck'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(26))
+    }
+}

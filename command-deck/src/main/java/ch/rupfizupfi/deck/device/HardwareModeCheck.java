@@ -47,11 +47,12 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
             case REAL -> requireProviders(beanFactory, mode,
                     "DriveProvider (frequency converter) - lib/usbmodbus.jar",
                     "LoadCellStreamProvider (load cell) - lib/dscusb.jar",
-                    "The vendor driver jars are not on the classpath, so the optional 'drivers' "
-                            + "source set was not compiled. Put dscusb.jar AND usbmodbus.jar in "
-                            + "lib/ and rebuild. Provenance and build requirements for both jars: "
-                            + "doc/03-backend/driver-jars.md. This never falls back to a simulator "
-                            + "- a test bench that cannot reach its hardware must not run at all.");
+                    "No driver plugin registered the provider. Put dscusb.jar AND usbmodbus.jar in "
+                            + "lib/ and rebuild - every jar there joins the runtime classpath "
+                            + "unless the build ran with -PdeckDrivers=off. Provenance and build "
+                            + "requirements for both jars: doc/03-backend/driver-jars.md. This "
+                            + "never falls back to a simulator - a test bench that cannot reach "
+                            + "its hardware must not run at all.");
             case SIMULATED -> {
                 refuseSimulationInProduction(environment);
                 requireProviders(beanFactory, mode,
