@@ -44,10 +44,24 @@ Three details that surprise people:
   `:command-deck`, so one shared entrypoint matches the module relationship.
   Anyone moving or deleting that file must rebuild both images.
 
-Because the build stage copies the whole repo and compiles from source,
-`lib/usbmodbus.jar` must be present in the build context or the
-`:command-deck` image fails to compile — see
-[`../03-backend/hardware-integration.md`](../03-backend/hardware-integration.md).
+### Where the deck image diverges: driver plugins
+
+`command-deck/Dockerfile` adds four lines the cms image has no use for, all
+serving one rule — **the licence-restricted `usbmodbus.jar` is never in an
+image**, and `lib/` is excluded by `.dockerignore` so it never even reaches the
+build context:
+
+| Addition | Why |
+|---|---|
+| `--mount=type=secret,id=github-token` on the build `RUN`, plus `:command-deck:stageDrivers` in the same command | Resolves the **public** `dscusb` driver plugin from GitHub Packages, which demands a token even for public reads. A secret mount keeps it out of every layer. Needs BuildKit — the default in current Docker, but not in engines old enough to lack it. |
+| `COPY --from=build-image .../build/drivers/ /app/drivers/` | The staged public plugin. Filenames keep their version, so `ls /app/drivers` in a running container identifies the driver build. |
+| `RUN mkdir -p /app/drivers-local` | Mount point for the restricted plugin, supplied by the tester as a read-only bind mount. Empty is valid; the app then refuses to start in real mode and names what is missing. |
+| `ENV LOADER_PATH=/app/drivers,/app/drivers-local` | `PropertiesLauncher` extends the classpath with these at launch. Earlier entries win on collisions. |
+
+Consequence worth knowing: a driver is swapped by replacing a file and
+restarting the container — no rebuild. Owned by
+[`../03-backend/driver-jars.md`](../03-backend/driver-jars.md); build side in
+[`../02-modules/gradle-build.md`](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath).
 
 ## `startup.sh` — runtime fixups
 

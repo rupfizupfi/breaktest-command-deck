@@ -18,7 +18,7 @@ graph LR
     end
 
     cd -->|implementation project(':cms')| cms
-    cd -->|optional 'drivers' source set| dscusb["lib/dscusb.jar<br/>lib/usbmodbus.jar"]
+    cd -->|runtime plugins via loader.path| dscusb["dscusb.jar<br/>usbmodbus.jar"]
 
     cms --> vaadin["Vaadin Hilla 25.2.6"]
     cms --> sb["Spring Boot 4.1.0<br/>(security, data-jpa, websocket,<br/>validation, aspectj, devtools)"]

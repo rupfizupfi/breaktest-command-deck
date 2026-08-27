@@ -1,12 +1,15 @@
 > Branch: `dev-split` — API extraction implemented 2026-08-17.
 > Branch: `feat/simulated-bench` — drivers-as-plugins step implemented 2026-08-18.
+> Branch: `feat/driver-plugins` — runtime loading + published driver, 2026-08-27.
 
 # Hardware API extraction — drivers as runtime plugins
 
 command-deck owns the hardware contract; the driver repos implement it and ship
 self-registering plugin jars. The deck compiles with **zero** knowledge of any
-driver class and sees drivers only at runtime; a fresh clone builds with no
-vendor jar at all — the practical half of **OQ-43**, whose remaining half
+driver class, and **no build of it packs a driver**: the boot jar runs through
+`PropertiesLauncher` and loads plugins from the `loader.path` directories at
+launch. A fresh clone builds with no vendor jar, and no image contains the
+licence-restricted one — the practical half of **OQ-43**, whose remaining half
 (procurement) is owner-owed.
 
 Running is separate from building: `deck.hardware.mode=real` needs both provider
@@ -18,6 +21,7 @@ Served as step 1 of [`README.md`](README.md#order-of-work) and of
 ## Contents
 
 - [The two steps, and the objections the second had to answer](#the-two-steps-and-the-objections-the-second-had-to-answer)
+- [Step 3 — off the classpath entirely](#step-3--off-the-classpath-entirely)
 - [Where the code lives](#where-the-code-lives)
 - [The API](#the-api)
 - [Conformance guarantee](#conformance-guarantee)
@@ -44,6 +48,27 @@ answered or knowingly accepted:
 | the `drivers` source set survives anyway — Spring needs the provider `@Component`s | it did not survive: each jar ships its own auto-configuration, so registration lives with the driver |
 
 Git history has the step-1 layout (`command-deck/src/drivers/`).
+
+## Step 3 — off the classpath entirely
+
+Step 2 left the jars entering through the build (`runtimeOnly fileTree('lib')`),
+which had two consequences it did not intend: the deck image built on the tester
+**baked in** the non-redistributable `usbmodbus.jar`, and updating a driver meant
+rebuilding the application. Step 3 moved loading to launch time.
+
+| Decision | Why |
+|---|---|
+| `PropertiesLauncher` + `LOADER_PATH`, not the classpath | present = loaded, absent = not, and absence stays the same named startup failure. Swapping a driver is now a file copy plus a restart |
+| `dscusb` published to GitHub Packages, staged by `stageDrivers` | makes "the prod image automatically carries the public driver" mechanical rather than a manual copy someone forgets. `mavenLocal` is consulted first so an unpublished build can still be exercised |
+| `usbmodbus.jar` supplied as a read-only host mount | the only way the restricted jar reaches a container without being redistributable in an image layer |
+| Both jars untracked (`lib/*.jar` gitignored) | `dscusb.jar` was tracked binary churn once a published artifact existed, and a stale tracked copy silently diverging is worse than none |
+| Build fails if the public driver cannot be staged | departs from "never a build failure", deliberately: that rule protects the *licence-restricted* jar, which is no longer staged at build time. An image silently missing its load-cell plugin would only reveal that on the bench |
+
+Verified on the built artifact: `Main-Class` is
+`org.springframework.boot.loader.launch.PropertiesLauncher`, `BOOT-INF/lib` holds
+`device-api-1.0.0.jar` and no driver, and starting the jar with only `dscusb` on
+`LOADER_PATH` in `real` mode fails naming **only** the missing `DriveProvider` —
+proving the plugin's `AutoConfiguration.imports` is discovered from `loader.path`.
 
 ## Where the code lives
 
@@ -153,13 +178,13 @@ and the build itself depends on the vendor jars — exactly what this work remov
 
 ## Gradle wiring
 
-[`gradle-build.md`](../../02-modules/gradle-build.md#driver-plugin-jars-lib) owns
+[`gradle-build.md`](../../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath) owns
 the detail. In short: root `settings.gradle` does `includeBuild 'device-api'`;
-`:command-deck` depends on `ch.rupfizupfi.deck:device-api` (`implementation`)
-and on every `lib/*.jar` (`runtimeOnly`, disabled by `-PdeckDrivers=off`).
-`bootJar` and `bootRun` need no manual classpath wiring — the built
-`command-deck-application.jar` was verified to carry `device-api-1.0.0.jar` and
-both driver jars in `BOOT-INF/lib`, and no adapter class in `BOOT-INF/classes`.
+`:command-deck` depends on `ch.rupfizupfi.deck:device-api` (`implementation`) and
+on no driver at all. The built `command-deck-application.jar` was verified to
+carry `device-api-1.0.0.jar` and **no** driver jar in `BOOT-INF/lib`, no adapter
+class in `BOOT-INF/classes`, and `PropertiesLauncher` as its `Main-Class`;
+drivers arrive at launch over `loader.path`.
 The Vaadin/Hilla tasks carry an explicit `dependsOn` onto the included build's
 `:jar` because the plugin queries the runtime classpath mid-execution without
 declaring it — a standalone `hillaGenerate` fails otherwise.
@@ -171,16 +196,16 @@ declaring it — a standalone `hillaGenerate` fails otherwise.
 | `Measurement`'s JSON keys must stay `force` / `timestamp` | `ForceBroadcaster.java:21` sends it to `/topic/load-cell`, consumed by an **untyped** `rxStomp.watch()` at `StatusService.ts:77` and read as `item.force` / `item.timestamp` at `control.tsx:22` and `LiveTestResult.tsx:81`. `typecheck.ps1` cannot see this |
 | `device-api` stays dependency-free | it lands on every consumer's classpath: the deck, both driver repos, and the boot jar |
 | Adapters stay pure delegation, now in the driver repos | they are the only code the simulated path never runs |
-| No `deckDrivers=on` build flag | a missing jar must stay a startup failure named by `HardwareModeCheck`, never a build failure — the licence-restricted `usbmodbus.jar` cannot be assumed present |
-| Driver builds need the deck as a sibling checkout | their compile against `device-api` *is* the conformance check |
-| Bench still needs both jars in `lib/`; the copy stays manual | `./gradlew shadowJar` in the sibling repo, copy over `lib/` — no publish/install task on either side |
+| No build ever packs a driver | a missing jar must stay a startup failure named by `HardwareModeCheck`, never a build failure — and the licence-restricted `usbmodbus.jar` must not be redistributable by accident. `-PdeckDrivers=local` is `developmentOnly`, so it reaches `bootRun` and never `bootJar` |
+| Driver builds need the deck as a sibling checkout | their compile against `device-api` *is* the conformance check. Publishing `dscusb` did **not** change this: a version published from a stale checkout compiles against a stale contract and nothing downstream catches it |
+| `usbmodbus.jar` is never published | licence. It reaches the tester as a host mount (`docker/drivers-local/`), which is also what keeps it out of the image |
 | `LoadCellCheck` and a future `Cfw11Check` probe through the API | with no vendor code loaded in dev, a simulated provider must declare its own distinguishable identity — this forces **OQ-44** rather than deferring it |
 
 ## Open questions
 
 | OQ | Effect |
 |---|---|
-| OQ-43 | build half **closed** — a fresh clone compiles. Provenance stays owner-owed |
-| OQ-75, OQ-76 | **closed** since: both sibling repos build from a clean checkout and the jars in `lib/` are reproducible |
+| OQ-43 | build half **closed** — a fresh clone compiles, and the jar is now absent from git *and* from every image. Exposure is one host directory; provenance stays owner-owed |
+| OQ-75, OQ-76 | **closed** since: both sibling repos build from a clean checkout and both jars are reproducible |
 | OQ-44 | forced by the startup contract |
 | OQ-50 | unchanged; `DriveProvider` preserves the fresh-handle path it turns on |

@@ -164,6 +164,20 @@ See [`db.md`](db.md) for the database angle.
 * **Secret `db-password`** (mapped to `../.secrets/db-password.txt`). Both
   Postgres (`POSTGRES_PASSWORD_FILE`) and the app server
   (`DB_PASSWORD_FILE`) read from `/run/secrets/db-password`.
+* **Bind mount `./drivers-local:/app/drivers-local:ro`, deck only.** The
+  licence-restricted `usbmodbus.jar`, which may not be redistributed and is
+  therefore never in the image. Second entry on the container's `LOADER_PATH`;
+  the public `dscusb.jar` is already at `/app/drivers` from the image build, and
+  must not be duplicated here — the earlier `loader.path` entry wins, so a
+  second copy is a silent version-skew trap. Drop the jar in and restart; there
+  is nothing to rebuild. Owned by
+  [`driver-jars.md`](../03-backend/driver-jars.md).
+* **Build secret `github-token`** (mapped to `../.secrets/github-token.txt`),
+  deck build only. A PAT with `read:packages`, mounted only into the build stage
+  so it never lands in a layer. `stageDrivers` needs it because GitHub Packages
+  demands a token even for public reads. Required: an image that silently
+  shipped without its load-cell plugin would reveal that on the bench. The
+  `cms` profile neither uses nor needs the file.
 
 ### Required host preparation
 
@@ -178,7 +192,14 @@ Before `docker compose up -d`, an operator must:
    local network, so the auto-signed cert is intended, not a fallback.
 3. Set or accept `KEY_STORE_PASSWORD=changeit` in `docker/.env` (default
    matches the auto-generated keystore).
-4. Run the profile that matches the host: `deck` on the tester, `cms` in
+4. **Tester only:** create `<repo>/.secrets/github-token.txt` holding a PAT with
+   `read:packages`, so the deck image build can resolve the published
+   `dscusb` driver plugin. Optionally set `GITHUB_ACTOR` too; it defaults to a
+   placeholder, which GitHub Packages accepts alongside a valid token.
+5. **Tester only:** copy `usbmodbus.jar` into `docker/drivers-local/`. Without
+   it the container starts and then refuses, naming the missing `DriveProvider`
+   — by design, it never falls back to a simulator.
+6. Run the profile that matches the host: `deck` on the tester, `cms` in
    the cloud.
 
 See [`runbook.md`](runbook.md) for failure modes when these preconditions

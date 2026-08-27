@@ -1,22 +1,24 @@
-> Branch: `feat/simulated-bench` — captured 2026-08-18.
+> Branch: `feat/driver-plugins` — captured 2026-08-27.
 
-# The two local driver JARs
+# The two driver plugin JARs
 
 ## Purpose
 
-`lib/dscusb.jar` and `lib/usbmodbus.jar` are built from sibling repos outside
-this one, so nothing here tracks their source. This page owns where each comes
-from, what its build needs, and the parts of its behaviour that decide run
-outcomes. The classpath wiring is
+`dscusb.jar` and `usbmodbus.jar` are built from sibling repos outside this one,
+so nothing here tracks their source. This page owns where each comes from, how
+it reaches a running deck, and the parts of its behaviour that decide run
+outcomes. The build wiring is
 [`gradle-build.md`](../02-modules/gradle-build.md); how the wrappers are used is
 [`hardware-integration.md`](hardware-integration.md).
 
-**Both are optional to build and mandatory to run.** Nothing in this repo
+**Both are absent from every build and mandatory to run.** Nothing in this repo
 imports either: each jar is a self-contained deck plugin that implements
 `ch.rupfizupfi.deck:device-api` (the `device-api/` composite build here) and
-registers its provider beans through its own Spring Boot auto-configuration, so
-the deck knows the drivers only at runtime. `deck.hardware.mode=real` refuses to
-start without both provider beans — see
+registers its provider beans through its own Spring Boot auto-configuration. The
+boot jar contains no driver at all — `PropertiesLauncher` loads them at launch
+from the `loader.path` directories, so a driver is swapped by replacing a file
+and restarting. `deck.hardware.mode=real` refuses to start without both provider
+beans — see
 [`driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md).
 
 ## Contents
@@ -32,13 +34,15 @@ start without both provider beans — see
 |---|---|---|
 | Provides | `ch.rupfizupfi.dscusb.dscusb.CellValueStream`; `Measurement` and `CommandExecutionException` one level up | `ch.rupfizupfi.usbmodbus.Cfw11` |
 | Deck plugin package | `ch.rupfizupfi.dscusb.deck` — `CellValueStreamAdapter`, `DeckLoadCellAutoConfiguration` | `ch.rupfizupfi.usbmodbus.deck` — `Cfw11Drive`, `DeckDriveAutoConfiguration` |
-| In git | **tracked** | **gitignored** (`.gitignore:36`), licence-restricted |
+| In git | no — `lib/*.jar` is gitignored | no — gitignored, licence-restricted |
+| Published | **yes**, `ch.rupfizupfi.dscusb:dscusb` on GitHub Packages | **never** — may not be redistributed |
+| Reaches production via | `:command-deck:stageDrivers` → image at `/app/drivers` | host mount `docker/drivers-local/` → `/app/drivers-local` |
 | Sibling repo | `dscusb` | `usbmodbus` |
 | Buildable on this machine | yes, from a clean checkout | yes, from a clean checkout |
 | Reaches hardware via | jnr-ffi → `DSCUSBDrv64.dll`, by serial number | bundled vendor libraries |
 
-Both repos build on Gradle 9.7 / Kotlin 2.4.10 / gradleup shadow / JVM target 26, and the
-jars in `lib/` are reproducible from their committed source. Both repos
+Both repos build on Gradle 9.7 / Kotlin 2.4.10 / gradleup shadow / JVM target 26, and both
+jars are reproducible from their committed source. Both repos
 `includeBuild("../breaktest-command-deck/device-api")` and implement the deck's
 contract in a `deck` package (`compileOnly` on the contract and on
 `spring-boot-autoconfigure`, so neither is bundled into the shadow jar — a copy
@@ -47,15 +51,30 @@ of the contract classes inside a driver jar would shadow the deck's own).
 `device.api` change surfaces as a compile error on the next driver build, and
 both repos therefore need the deck checkout as a sibling directory.
 
-The deck loads every jar in `lib/` runtime-only
-([gradle-build.md](../02-modules/gradle-build.md#driver-plugin-jars-lib)), so a
-missing jar is a *startup* failure, never a compile failure.
+The deck loads them at launch from the `loader.path` directories
+([gradle-build.md](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath)),
+so a missing jar is a *startup* failure, never a compile failure — and the fix is
+a restart, not a rebuild. For bench work, `lib/` plus
+`-PdeckDrivers=local` puts both on `bootRun`'s classpath instead; see
+[`lib/README.md`](../../lib/README.md).
 
 ## `dscusb.jar` — load cell
 
-`./gradlew shadowJar` in the sibling repo, then copy `build/libs/dscusb.jar` over
-`lib/dscusb.jar` here. There is no publish or install task on either side; the copy
-is manual.
+Published from the sibling repo as `ch.rupfizupfi.dscusb:dscusb`
+(`./gradlew publish` there, with `GITHUB_ACTOR` and a `write:packages` token).
+`:command-deck:stageDrivers` resolves the pinned version into `build/drivers/`,
+and the deck image copies it to `/app/drivers`. Bump `-PdscusbVersion` here to
+move the deck onto a new driver build.
+
+Publishing is the delivery path, **not** the conformance check — that is still
+the driver repo's own compile against the live contract. A version published
+from a stale checkout compiles against a stale contract, and nothing downstream
+catches it.
+
+For bench work there is no need to publish: `./gradlew shadowJar` in the sibling
+repo and copy `build/libs/dscusb.jar` into `lib/`, or `publishToMavenLocal` there
+and let `stageDrivers` pick it up from `~/.m2` (it is consulted first, and is
+inert inside the docker build).
 
 **The package layout is split, and only part of it moved.** `CellValueStream`,
 `Connection`, `DSCUSB` and `DSCUSBDrv64` sit in `ch.rupfizupfi.dscusb.dscusb`,
@@ -86,8 +105,12 @@ move — the deck owns its own `Measurement`, so nothing over there sees it.
 
 ## `usbmodbus.jar` — frequency converter
 
-Gitignored, and **must stay that way** — the licence does not permit
-redistribution. A fresh clone builds without it but cannot drive the machine.
+Never committed, never published, never baked into an image — the licence does
+not permit redistribution. It reaches the tester as a host-mounted volume:
+build it in the sibling repo and copy `build/libs/usbmodbus.jar` into
+`docker/drivers-local/`, which compose mounts read-only at `/app/drivers-local`
+(see [`drivers-local/README.md`](../../docker/drivers-local/README.md)). A fresh
+clone builds and a fresh image builds without it; neither can drive the machine.
 Vendor, licence holder and required version are recorded nowhere (OQ-43); only
 the project owner can close that.
 

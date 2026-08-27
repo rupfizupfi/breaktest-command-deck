@@ -127,14 +127,22 @@ environment.
 ### `:command-deck` refuses to start: "COMMAND DECK CANNOT START"
 The build succeeds without the driver jars; running does not. The message
 names the missing jar.
-- **Diagnostic:** `ls lib/` — both `dscusb.jar` and `usbmodbus.jar` must be
-  there. The `drivers` source set is skipped unless **both** are present, so
-  one missing jar disables *both* providers.
-- **Fix (`usbmodbus.jar`):** gitignored (`.gitignore:36`), licence-restricted.
-  Acquire it from the original author / private artefact store and drop it in
-  `lib/`, then rebuild.
-- **Fix (`dscusb.jar`):** **tracked** in git, so a fresh checkout has it. If
-  missing, `git checkout -- lib/dscusb.jar`.
+- **Diagnostic:** the error names each missing provider and its jar, and each
+  jar registers independently — one missing jar disables only its own provider.
+  In the container: `docker compose exec server-deck ls /app/drivers
+  /app/drivers-local`. On a dev bench: `ls lib/`, and check that `bootRun` ran
+  with `-PdeckDrivers=local`.
+- **Fix (container):** the public `dscusb` plugin comes from the image
+  (`/app/drivers`); if it is missing, the image was built without a valid
+  `read:packages` token — see
+  [`docker-and-profiles.md`](docker-and-profiles.md#required-host-preparation).
+  `usbmodbus.jar` is the host mount: drop it in `docker/drivers-local/` and
+  restart the container. **No rebuild** — drivers load from `LOADER_PATH` at
+  launch.
+- **Fix (dev bench):** put the jars in `lib/` and restart `bootRun` with
+  `-PdeckDrivers=local`, or run the boot jar with `LOADER_PATH=lib`. Neither jar
+  is in git; both are built from sibling repos
+  ([`driver-jars.md`](../03-backend/driver-jars.md)).
 - **Not a fix:** there is no simulated fallback, deliberately — absent
   hardware must never look like working hardware. `deck.hardware.mode=simulated`
   is refused too, until the simulator exists.

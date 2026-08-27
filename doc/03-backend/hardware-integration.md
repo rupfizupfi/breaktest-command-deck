@@ -129,9 +129,9 @@ USB sessions close.
 
 ### Load cell — `DSCUSB` over USB
 
-* Driver: `lib/dscusb.jar`, tracked in git, reached only through
-  `CellValueStreamAdapter` in the optional `drivers` source set. Absent, the
-  build still succeeds but startup fails (no `LoadCellStreamProvider` bean).
+* Driver: the `dscusb` plugin jar, published and loaded at runtime from
+  `loader.path`, reached only through its own `CellValueStreamAdapter`. Absent,
+  the build still succeeds but startup fails (no `LoadCellStreamProvider` bean).
   Its provenance, build requirements and the driver contract that decides run
   outcomes — a non-finite reading **ends the stream**, and a stopped stream can
   never be restarted — are in [`driver-jars.md`](driver-jars.md).
@@ -157,9 +157,9 @@ USB sessions close.
 
 ### Frequency converter — `CFW11` over USB Modbus
 
-* Driver: `lib/usbmodbus.jar`, reached only through `Cfw11Drive` in the same
-  optional source set. Not in the repo (licence), but rebuildable from its
-  sibling — see [`driver-jars.md`](driver-jars.md).
+* Driver: the `usbmodbus` plugin jar, reached only through its own `Cfw11Drive`.
+  Never committed or published (licence), supplied as a host mount, rebuildable
+  from its sibling repo — see [`driver-jars.md`](driver-jars.md).
 * Wrapper: `CFW11Device`
   (`command-deck/.../device/frequencyconverter/CFW11Device.java:9`). Polls
   motor data + control parameters every 400 ms while at least one observer
