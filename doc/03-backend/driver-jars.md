@@ -24,6 +24,7 @@ beans — see
 ## Contents
 
 - [At a glance](#at-a-glance)
+- [Both drivers are Windows-only, and that decides the deployment](#both-drivers-are-windows-only-and-that-decides-the-deployment)
 - [`dscusb.jar` — load cell](#dscusbjar--load-cell)
 - [`usbmodbus.jar` — frequency converter](#usbmodbusjar--frequency-converter)
 - [Open questions](#open-questions)
@@ -39,7 +40,24 @@ beans — see
 | Reaches production via | `:command-deck:stageDrivers` → image at `/app/drivers` | host mount `docker/drivers-local/` → `/app/drivers-local` |
 | Sibling repo | `dscusb` | `usbmodbus` |
 | Buildable on this machine | yes, from a clean checkout | yes, from a clean checkout |
-| Reaches hardware via | jnr-ffi → `DSCUSBDrv64.dll`, by serial number | bundled vendor libraries |
+| Reaches hardware via | jnr-ffi → `DSCUSBDrv64.dll`, by serial number | Thesycon `usbiojava_x64.dll` → USBIO kernel driver |
+| **Runs on** | **Windows x64 only** | **Windows x64 only** |
+
+## Both drivers are Windows-only, and that decides the deployment
+
+Neither native library has a Linux build, and neither is *in* either repo — both
+come from a machine-wide vendor install on the bench PC. `DSCUSBDrv64.dll` is a
+Win32 library on FTDI's Windows D2XX stack; `usbiojava_x64.dll` is a JNI shim
+over the Thesycon USBIO **kernel-mode** driver that finds devices by Windows
+device-interface GUID. So **the `docker` profile's Linux image cannot drive the
+bench** — see OQ-79 for the researched detail and the two ways out.
+
+Each driver's auto-configuration therefore refuses to register off Windows and
+logs why. That is deliberate: registering and failing later would let
+`HardwareModeCheck` pass and put the `UnsatisfiedLinkError` in the middle of a
+run. Instead the deck refuses at startup and names the jar — with the driver's
+own warning just above it explaining that the jar is present and the *platform*
+is wrong. On the Windows bench nothing changes.
 
 Both repos build on Gradle 9.7 / Kotlin 2.4.10 / gradleup shadow / JVM target 26, and both
 jars are reproducible from their committed source. Both repos
@@ -120,9 +138,9 @@ sibling repo's shadow build bundles — `CommunicationLib.jar` and
 Splitting them apart would let the project half be committed, which is worth
 raising when OQ-43 is answered.
 
-Note the asymmetry to raise alongside OQ-43: those vendor jars are themselves
-**committed** to the `usbmodbus` remote. If that remote is public, the
-"non-redistributable" position is already compromised upstream.
+Those vendor jars are themselves **committed** to the `usbmodbus` remote, which
+is **private** (verified 2026-08-27) — so the position holds, but only because
+that repo is private. Making it public would redistribute them.
 
 **Driver contract, and it decides run outcomes:**
 
@@ -168,3 +186,4 @@ Reasoning in
 |---|---|
 | OQ-43 | `usbmodbus.jar` provenance — owner-owed |
 | OQ-74 | One non-finite reading ends the stream, and therefore the run |
+| OQ-79 | Both drivers are Windows-only, so the Linux deck image cannot drive the bench — owner-owed |
