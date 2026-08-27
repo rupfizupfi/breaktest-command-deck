@@ -1,0 +1,5 @@
+# Hilla's tsgen reads this bookkeeping file back with LF-splitting. A CRLF working copy (what
+# autocrlf produces on `git checkout -- <generated files>`) makes every entry parse as "name\r",
+# match nothing tsgen just generated, and its stale-file sweep then deletes the ENTIRE generated
+# client on the next dev boot. Verified 2026-08-18; keep these LF on disk, always.
+*/src/main/frontend/generated/generated-file-list.txt text eol=lf
