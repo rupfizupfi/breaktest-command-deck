@@ -3,13 +3,38 @@
 // dependency added here lands on all of their classpaths.
 plugins {
     id 'java-library'
+    id 'maven-publish'
 }
 
 group = 'ch.rupfizupfi.deck'
+// Semver against the driver repos as providers — the bump rules live in the api package-info.
 version = '1.0.0'
 
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(26))
+    }
+}
+
+// The upgrade path for the day this contract gains consumers beyond sibling checkouts (CI, a
+// second machine): `./gradlew -p device-api publish` with GITHUB_ACTOR/GITHUB_TOKEN set. The
+// composite include stays the dev-time mechanism either way — published versions only pin what a
+// checkout-less consumer compiles against. See
+// doc/06-feature-work/virtual-devices/driver-api-extraction.md#contract-evolution.
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = uri('https://maven.pkg.github.com/rupfizupfi/breaktest-command-deck')
+            credentials {
+                username = System.getenv('GITHUB_ACTOR')
+                password = System.getenv('GITHUB_TOKEN')
+            }
+        }
     }
 }

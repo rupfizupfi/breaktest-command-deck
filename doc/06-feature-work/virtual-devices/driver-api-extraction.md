@@ -21,6 +21,7 @@ Served as step 1 of [`README.md`](README.md#order-of-work) and of
 - [Where the code lives](#where-the-code-lives)
 - [The API](#the-api)
 - [Conformance guarantee](#conformance-guarantee)
+- [Contract evolution](#contract-evolution)
 - [Runtime discovery](#runtime-discovery)
 - [Startup contract](#startup-contract)
 - [Gradle wiring](#gradle-wiring)
@@ -107,6 +108,24 @@ classes.
 The corollary of "this repo references no driver class": nothing *here* can
 compile-check a jar. A contract change is verified by rebuilding the drivers,
 which needs the sibling checkouts.
+
+## Contract evolution
+
+The policy travels with the contract — `device-api`'s `package-info.java` owns
+it. In short: the driver repos are *providers*, so an added interface method is
+breaking for them unless it is a `default` with a safe fallback (the post-Java-8
+JDBC approach); record components cannot be added compatibly at all; the build's
+version is semver **against providers** (default-method addition = minor,
+anything a provider must implement = major), bumped on contract change, never
+per app release.
+
+`device-api` also carries a ready-but-unused publish path (GitHub Packages,
+credentials from `GITHUB_ACTOR`/`GITHUB_TOKEN`) for the day a consumer without
+sibling checkouts appears — CI, a second machine. Only the API would ever be
+published; the licence-restricted driver never needs to be. The composite
+include stays the dev-time mechanism regardless: published versions pin what a
+checkout-less consumer compiles against, they do not replace the live-source
+conformance check.
 
 ## Runtime discovery
 
