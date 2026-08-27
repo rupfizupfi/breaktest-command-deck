@@ -1,3 +1,5 @@
+import javax.inject.Inject
+
 dependencies {
     implementation project(':cms')
     // Resolved by the device-api included build (root settings.gradle), never from a repository.
@@ -68,21 +70,18 @@ configurations {
 }
 
 dependencies {
-    driverPlugins "ch.rupfizupfi.dscusb:dscusb:${providers.gradleProperty('dscusbVersion').getOrElse('0.1.0')}"
+    driverPlugins "ch.rupfizupfi.dscusb:dscusb:${providers.gradleProperty('dscusbVersion').getOrElse('0.2.0')}"
 }
 
-tasks.register('stageDrivers', Sync) {
+tasks.register('stageDrivers', StageDriverPlugins) {
     group = 'distribution'
     description = 'Resolves the public driver plugins into build/drivers for the docker image.'
-    from configurations.deckDriver
-    into layout.buildDirectory.dir('drivers')
-    // Sync, not Copy: a version bump must remove the jar it replaces, or loader.path would
-    // offer both and the older one could win. The version stays in the filename so that
-    // `ls /app/drivers` in a running container answers "which driver build is this?".
-    doLast {
-        logger.lifecycle(":command-deck: staged driver plugins: "
-                + (source.files.collect { it.name }.sort().join(', ') ?: 'none'))
-    }
+    // lenient: a driver that cannot be resolved - no token, offline, version not published yet -
+    // must NOT fail the build. A missing driver is a *startup* failure named by HardwareModeCheck,
+    // and that rule holds for the image build too: an unreachable artifact repository is not a
+    // reason to be unable to build the application. The task warns instead.
+    plugins.from(configurations.deckDriver.incoming.artifactView { lenient = true }.files)
+    stagingDir = layout.buildDirectory.dir('drivers')
 }
 
 // The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
@@ -116,4 +115,46 @@ jar {
     // Library JAR configuration for shared components
     archiveBaseName = 'command-deck-library'
     enabled = true
+}
+
+/**
+ * Syncs the resolved driver plugins into the staging directory the docker image copies.
+ *
+ * A plain Sync task cannot do this job: with nothing resolved its source is empty, Gradle reports
+ * NO-SOURCE and skips it entirely — leaving no directory for the Dockerfile to COPY (which would
+ * fail the image build) and no warning that the driver is missing. This always runs, and its
+ * @OutputDirectory guarantees the directory exists even when empty.
+ *
+ * Sync semantics, not copy: a version bump must remove the jar it replaces, or loader.path would
+ * offer both and the older one could win.
+ */
+abstract class StageDriverPlugins extends DefaultTask {
+
+    @InputFiles
+    abstract ConfigurableFileCollection getPlugins()
+
+    @OutputDirectory
+    abstract DirectoryProperty getStagingDir()
+
+    @Inject
+    abstract FileSystemOperations getFs()
+
+    @TaskAction
+    void stage() {
+        fs.sync {
+            it.from(plugins)
+            it.into(stagingDir)
+        }
+
+        def names = (stagingDir.get().asFile.listFiles() ?: []).collect { it.name }.sort()
+        if (names) {
+            logger.lifecycle(":command-deck: staged driver plugins: " + names.join(', '))
+        } else {
+            logger.warn(":command-deck: WARNING - no driver plugin could be staged. The artifact is "
+                    + "unreachable (no GITHUB_TOKEN, offline, or the pinned version is not "
+                    + "published). This is deliberately not a build failure - the jar that comes "
+                    + "out is valid. But with deck.hardware.mode=real it will refuse to start and "
+                    + "name the missing provider. See doc/03-backend/driver-jars.md.")
+        }
+    }
 }

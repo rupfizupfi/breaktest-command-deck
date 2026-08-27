@@ -62,7 +62,7 @@ rebuilding the application. Step 3 moved loading to launch time.
 | `dscusb` published to GitHub Packages, staged by `stageDrivers` | makes "the prod image automatically carries the public driver" mechanical rather than a manual copy someone forgets. `mavenLocal` is consulted first so an unpublished build can still be exercised |
 | `usbmodbus.jar` supplied as a read-only host mount | the only way the restricted jar reaches a container without being redistributable in an image layer |
 | Both jars untracked (`lib/*.jar` gitignored) | `dscusb.jar` was tracked binary churn once a published artifact existed, and a stale tracked copy silently diverging is worse than none |
-| Build fails if the public driver cannot be staged | departs from "never a build failure", deliberately: that rule protects the *licence-restricted* jar, which is no longer staged at build time. An image silently missing its load-cell plugin would only reveal that on the bench |
+| An unstageable driver **warns**, it does not fail the build | "never a build failure" holds for the image build too — an unreachable artifact repository is not a reason to be unable to build the application. `stageDrivers` resolves leniently, warns, and leaves the staging directory empty; the container then refuses to start in real mode and names the missing provider. The build-time signal is the warning, the enforcement is `HardwareModeCheck` |
 
 Verified on the built artifact: `Main-Class` is
 `org.springframework.boot.loader.launch.PropertiesLauncher`, `BOOT-INF/lib` holds

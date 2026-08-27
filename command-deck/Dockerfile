@@ -4,13 +4,17 @@ WORKDIR /home/gradle/src
 
 # stageDrivers fetches the PUBLIC driver plugin (dscusb) from GitHub Packages, which demands a token
 # even for public reads. The token is a BuildKit secret so it never lands in a layer; the actor name
-# is not sensitive and rides in as a build arg. Required, not optional: this image exists to drive a
-# test bench, and one that silently shipped without its load-cell plugin would only reveal that on
-# the bench. The licence-restricted usbmodbus.jar is deliberately NOT staged here - see below.
+# is not sensitive and rides in as a build arg.
+#
+# Both are optional, and the build succeeds without them: a missing driver must stay a *startup*
+# failure named by HardwareModeCheck, never a build failure. An unreachable artifact repository is
+# not a reason to be unable to build the application. stageDrivers warns loudly and leaves
+# /app/drivers empty; the container then refuses to start in real mode and names what is missing.
+# The licence-restricted usbmodbus.jar is never staged here at all - see below.
 ARG GITHUB_ACTOR=docker-build
-RUN --mount=type=secret,id=github-token,required=true \
+RUN --mount=type=secret,id=github-token,required=false \
     export GITHUB_ACTOR="$GITHUB_ACTOR" \
-    && export GITHUB_TOKEN="$(cat /run/secrets/github-token)" \
+    && export GITHUB_TOKEN="$(cat /run/secrets/github-token 2>/dev/null || true)" \
     && gradle clean :command-deck:bootJar :command-deck:stageDrivers \
        --no-daemon -Pvaadin.productionMode=true
 

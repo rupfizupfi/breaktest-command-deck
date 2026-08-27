@@ -53,8 +53,8 @@ build context:
 
 | Addition | Why |
 |---|---|
-| `--mount=type=secret,id=github-token` on the build `RUN`, plus `:command-deck:stageDrivers` in the same command | Resolves the **public** `dscusb` driver plugin from GitHub Packages, which demands a token even for public reads. A secret mount keeps it out of every layer. Needs BuildKit — the default in current Docker, but not in engines old enough to lack it. |
-| `COPY --from=build-image .../build/drivers/ /app/drivers/` | The staged public plugin. Filenames keep their version, so `ls /app/drivers` in a running container identifies the driver build. |
+| `--mount=type=secret,id=github-token,required=false` on the build `RUN`, plus `:command-deck:stageDrivers` in the same command | Resolves the **public** `dscusb` driver plugin from GitHub Packages, which demands a token even for public reads. A secret mount keeps it out of every layer. Optional by design: no token means a warning and an empty `/app/drivers`, not a failed build. Needs BuildKit — the default in current Docker, but not in engines old enough to lack it. |
+| `COPY --from=build-image .../build/drivers/ /app/drivers/` | The staged public plugin. Filenames keep their version, so `ls /app/drivers` in a running container identifies the driver build. Verified that an **empty** staging directory copies fine and yields an empty `/app/drivers` — that is what keeps an unreachable driver from failing the image build. |
 | `RUN mkdir -p /app/drivers-local` | Mount point for the restricted plugin, supplied by the tester as a read-only bind mount. Empty is valid; the app then refuses to start in real mode and names what is missing. |
 | `ENV LOADER_PATH=/app/drivers,/app/drivers-local` | `PropertiesLauncher` extends the classpath with these at launch. Earlier entries win on collisions. |
 
