@@ -45,14 +45,20 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
 
         switch (mode) {
             case REAL -> requireProviders(beanFactory, mode,
-                    "DriveProvider (frequency converter) - lib/usbmodbus.jar",
-                    "LoadCellStreamProvider (load cell) - lib/dscusb.jar",
-                    "No driver plugin registered the provider. Put dscusb.jar AND usbmodbus.jar in "
-                            + "lib/ and rebuild - every jar there joins the runtime classpath "
-                            + "unless the build ran with -PdeckDrivers=off. Provenance and build "
-                            + "requirements for both jars: doc/03-backend/driver-jars.md. This "
-                            + "never falls back to a simulator - a test bench that cannot reach "
-                            + "its hardware must not run at all.");
+                    "DriveProvider (frequency converter) - usbmodbus.jar",
+                    "LoadCellStreamProvider (load cell) - dscusb.jar",
+                    "No driver plugin registered the provider. Drivers are loaded at launch from "
+                            + "the loader.path directories (LOADER_PATH env var, or "
+                            + "-Dloader.path), not from the build - so put the jar in place and "
+                            + "restart, there is nothing to rebuild. In the container: "
+                            + "/app/drivers carries dscusb.jar from the image, and "
+                            + "/app/drivers-local is the host mount for the licence-restricted "
+                            + "usbmodbus.jar (docker/drivers-local/ on the tester). On a dev bench: "
+                            + "run bootRun with -PdeckDrivers=local and the jars in lib/, or start "
+                            + "this jar with LOADER_PATH=lib. Provenance and build requirements "
+                            + "for both jars: doc/03-backend/driver-jars.md. This never falls back "
+                            + "to a simulator - a test bench that cannot reach its hardware must "
+                            + "not run at all.");
             case SIMULATED -> {
                 refuseSimulationInProduction(environment);
                 requireProviders(beanFactory, mode,
@@ -89,8 +95,11 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
     /**
      * True inside a context booted by the build rather than by an operator. {@code hillaGenerate}
      * starts a Spring AOT context purely to discover {@code @BrowserCallable} classes, and that
-     * context is not going to drive anything - refusing to start it would make the build itself
-     * depend on the vendor jars, which is exactly what the optional source set removes.
+     * context is not going to drive anything.
+     * <p>
+     * Load-bearing for every build, not just a driverless one: drivers now arrive at launch over
+     * loader.path, so a build context never has a provider bean and the default mode is real.
+     * Without this exemption the frontend client could not be generated without the vendor jars.
      */
     private static boolean isBuildTimeContext() {
         return org.springframework.aot.AotDetector.useGeneratedArtifacts()

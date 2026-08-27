@@ -4,31 +4,85 @@ dependencies {
     implementation 'ch.rupfizupfi.deck:device-api:1.0.0'
 }
 
-// The vendor driver jars are runtime-only plugins. Each implements ch.rupfizupfi.deck:device-api in
-// its own repo (../dscusb, ../usbmodbus — both composite-include device-api, so THEIR compile is the
-// contract-conformance check) and ships a Spring Boot auto-configuration that registers its provider
-// beans. Nothing in this module names a driver class; discovery is AutoConfiguration.imports at
-// startup, so a jar dropped into lib/ is active on the next build and gone when removed.
+// The vendor driver jars are runtime plugins, never build inputs. Each implements
+// ch.rupfizupfi.deck:device-api in its own repo (../dscusb, ../usbmodbus — both composite-include
+// device-api, so THEIR compile is the contract-conformance check) and ships a Spring Boot
+// auto-configuration that registers its provider beans. Nothing in this module names a driver class.
 //
-// deckDrivers=off exists to build a deliberately hardware-free jar. There is no 'on': a missing jar
-// must stay a *startup* failure named by HardwareModeCheck, never a build failure — a fresh clone
-// without the licence-restricted usbmodbus.jar has to build.
-def deckDrivers = providers.gradleProperty('deckDrivers').getOrElse('auto')
-if (!(deckDrivers in ['auto', 'off'])) {
-    throw new GradleException("deckDrivers=${deckDrivers} is not valid. Valid values: auto, off.")
+// The boot jar therefore contains NO driver, in any build: bootJar runs through PropertiesLauncher
+// (see the manifest below) and the drivers come from the loader.path directories at launch. A jar
+// present there is loaded, a jar absent is not, and absence stays a *startup* failure named by
+// HardwareModeCheck — put the jar in place and restart, no rebuild. That is also what keeps the
+// licence-restricted usbmodbus.jar out of the docker image: it is only ever a host mount.
+//
+// deckDrivers=local is the bench escape hatch for driving real hardware from `bootRun`, which runs
+// off the classpath rather than the jar. developmentOnly is deliberate — the Spring Boot plugin
+// excludes it from bootJar, so even a jar built with -PdeckDrivers=local stays driver-free.
+def deckDrivers = providers.gradleProperty('deckDrivers').getOrElse('off')
+if (!(deckDrivers in ['off', 'local'])) {
+    throw new GradleException("deckDrivers=${deckDrivers} is not valid. Valid values: off, local. "
+            + "('auto' is gone: drivers load at runtime from loader.path, not from the build.)")
 }
 
-if (deckDrivers == 'auto') {
+if (deckDrivers == 'local') {
     def driverJars = fileTree("${rootProject.projectDir}/lib") { include '*.jar' }
     dependencies {
-        runtimeOnly driverJars
+        developmentOnly driverJars
     }
     def names = driverJars.files.collect { it.name }.sort()
-    logger.lifecycle(":command-deck: driver plugins from lib/: "
+    logger.lifecycle(":command-deck: deckDrivers=local - bootRun loads driver plugins from lib/: "
             + (names ? names.join(', ') : "none - deck.hardware.mode=real will refuse to start"))
-} else {
-    logger.lifecycle(":command-deck: deckDrivers=off - no driver plugins; "
-            + "deck.hardware.mode=real will refuse to start")
+}
+
+// The PUBLIC driver plugin, staged into the docker image by stageDrivers below. Resolved only by
+// that task: `build`, `bootRun` and `hillaGenerate` never touch this repository, so a fresh clone
+// builds with no credentials — GitHub Packages demands a token even for public reads.
+// mavenLocal comes first on purpose: `publishToMavenLocal` in ../dscusb is how an unpublished
+// driver gets exercised through the real loader.path, and it is inert inside the docker build,
+// which has no ~/.m2. stageDrivers logs the file it staged so version skew stays visible.
+repositories {
+    mavenLocal {
+        content { includeGroup 'ch.rupfizupfi.dscusb' }
+    }
+    maven {
+        name = 'GitHubPackagesDscusb'
+        url = uri('https://maven.pkg.github.com/rupfizupfi/dscusb')
+        credentials {
+            username = providers.environmentVariable('GITHUB_ACTOR').getOrElse('')
+            password = providers.environmentVariable('GITHUB_TOKEN').getOrElse('')
+        }
+        content { includeGroup 'ch.rupfizupfi.dscusb' }
+    }
+}
+
+// Gradle 9 role-locked configurations: dependencies are declared against the dependencyScope and
+// resolved through the resolvable one. Declaring them on the resolvable configuration is an error.
+configurations {
+    dependencyScope('driverPlugins')
+    resolvable('deckDriver') {
+        extendsFrom driverPlugins
+        // Defensive: the published pom has no dependencies, and a driver plugin's own deps are
+        // already inside its shadow jar. Nothing else may ride along into the plugin directory.
+        transitive = false
+    }
+}
+
+dependencies {
+    driverPlugins "ch.rupfizupfi.dscusb:dscusb:${providers.gradleProperty('dscusbVersion').getOrElse('0.1.0')}"
+}
+
+tasks.register('stageDrivers', Sync) {
+    group = 'distribution'
+    description = 'Resolves the public driver plugins into build/drivers for the docker image.'
+    from configurations.deckDriver
+    into layout.buildDirectory.dir('drivers')
+    // Sync, not Copy: a version bump must remove the jar it replaces, or loader.path would
+    // offer both and the older one could win. The version stays in the filename so that
+    // `ls /app/drivers` in a running container answers "which driver build is this?".
+    doLast {
+        logger.lifecycle(":command-deck: staged driver plugins: "
+                + (source.files.collect { it.name }.sort().join(', ') ?: 'none'))
+    }
 }
 
 // The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
@@ -47,6 +101,15 @@ bootJar {
     // Specific configuration for Command Deck application JAR
     archiveBaseName = 'command-deck-application'
     enabled = true
+    manifest {
+        // PropertiesLauncher instead of the plugin's default JarLauncher: it extends the classpath
+        // with the directories named by loader.path (LOADER_PATH env / -Dloader.path), which is how
+        // the driver plugins get loaded at launch instead of being baked in. Start-Class and
+        // Spring-Boot-Classes/Lib are still written by the plugin, so BOOT-INF stays on the
+        // classpath and the app itself starts exactly as before. Boot 4 moved the launcher into
+        // org.springframework.boot.loader.launch — the pre-3.2 name would fail with CNFE.
+        attributes 'Main-Class': 'org.springframework.boot.loader.launch.PropertiesLauncher'
+    }
 }
 
 jar {

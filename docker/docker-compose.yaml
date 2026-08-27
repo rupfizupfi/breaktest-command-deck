@@ -26,6 +26,11 @@ services:
     build:
       context: ..
       dockerfile: command-deck/Dockerfile
+      args:
+        - GITHUB_ACTOR=${GITHUB_ACTOR:-docker-build}
+      # Read access to the published dscusb driver plugin. Needs read:packages only.
+      secrets:
+        - github-token
     secrets:
       - db-password
     ports:
@@ -33,6 +38,9 @@ services:
     volumes:
       - ./breaktester:/home/appuser/breaktester
       - ./keystore:/home/appuser/keystore
+      # The licence-restricted CFW11 driver plugin: host-provided, read-only, never in the image.
+      # Second entry on the container's LOADER_PATH; drop the jar in and restart, no rebuild.
+      - ./drivers-local:/app/drivers-local:ro
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
@@ -69,3 +77,7 @@ volumes:
 secrets:
   db-password:
     file: ../.secrets/db-password.txt
+  # Build-time only: a PAT with read:packages, used to resolve ch.rupfizupfi.dscusb:dscusb.
+  # Only the deck image needs it.
+  github-token:
+    file: ../.secrets/github-token.txt

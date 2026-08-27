@@ -33,7 +33,10 @@ frontend/themes/hilla-react-app/theme-editor.css
 
 .fleet/
 
-lib/usbmodbus.jar
+# Bench-local driver plugins. Neither belongs in git: dscusb is published to GitHub Packages and
+# staged into the image by :command-deck:stageDrivers, usbmodbus is licence-restricted and reaches
+# the tester as a host mount. lib/ is only what -PdeckDrivers=local puts on bootRun's classpath.
+lib/*.jar
 script/.data
 scrtip/app.log
 
@@ -41,6 +44,10 @@ scrtip/app.log
 # Local-only deployment secrets: PKCS12 keystore holds an SSL private key
 docker/keystore/
 docker/.secrets/
+# Host-provided driver plugins mounted into the deck container. The licence-restricted
+# usbmodbus.jar lives here and must never be committed or baked into an image. The directory's
+# README is tracked so a fresh clone still shows what belongs in it.
+docker/drivers-local/*.jar
 # Database dump taken from a live instance
 docker/backup.sql
 
