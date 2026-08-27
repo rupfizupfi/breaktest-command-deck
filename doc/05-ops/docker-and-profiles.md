@@ -181,14 +181,18 @@ See [`db.md`](db.md) for the database angle.
   second copy is a silent version-skew trap. Drop the jar in and restart; there
   is nothing to rebuild. Owned by
   [`driver-jars.md`](../03-backend/driver-jars.md).
-* **Build secret `github-token`** (mapped to `../.secrets/github-token.txt`),
-  deck build only. A PAT with `read:packages`, mounted only into the build stage
-  so it never lands in a layer. `stageDrivers` needs it because GitHub Packages
-  demands a token even for public reads. **Optional** — without it the build
-  still succeeds, warns, and leaves `/app/drivers` empty, and the container then
-  refuses to start in real mode naming the missing provider. A missing driver is
-  a startup failure, never a build failure. The `cms` profile neither uses nor
-  needs the file.
+* **Build secret `github-token`**, deck build only, taken from the
+  **`GITHUB_TOKEN` environment variable** (set it in `docker/.env`). A PAT with
+  `read:packages`, mounted only into the build stage so it never lands in a
+  layer. `stageDrivers` needs it because GitHub Packages demands a token even
+  for public reads. **Optional** — unset, the build still succeeds, warns, and
+  leaves `/app/drivers` empty; the container then refuses to start in real mode
+  naming the missing provider. A missing driver is a startup failure, never a
+  build failure.
+  Environment-backed rather than a `file:` secret precisely for that: compose
+  fails *before the build starts* if a declared secret file is missing, which
+  would have made the token mandatory. Verified both ways. The `cms` profile
+  neither uses nor needs it.
 
 ### Required host preparation
 
@@ -203,7 +207,7 @@ Before `docker compose up -d`, an operator must:
    local network, so the auto-signed cert is intended, not a fallback.
 3. Set or accept `KEY_STORE_PASSWORD=changeit` in `docker/.env` (default
    matches the auto-generated keystore).
-4. **Tester only:** create `<repo>/.secrets/github-token.txt` holding a PAT with
+4. **Tester only:** set `GITHUB_TOKEN` in `docker/.env` to a PAT with
    `read:packages`, so the deck image build can resolve the published
    `dscusb` driver plugin. Optionally set `GITHUB_ACTOR` too; it defaults to a
    placeholder, which GitHub Packages accepts alongside a valid token. Skipping

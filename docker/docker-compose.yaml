@@ -78,6 +78,12 @@ secrets:
   db-password:
     file: ../.secrets/db-password.txt
   # Build-time only: a PAT with read:packages, used to resolve ch.rupfizupfi.dscusb:dscusb.
-  # Only the deck image needs it.
+  # Only the deck image build reads it.
+  #
+  # Environment-backed rather than file-backed on purpose. A `file:` secret whose path does not
+  # exist makes compose fail *before* the build starts, which would make the token mandatory and
+  # break the rule that a missing driver is a startup failure and never a build failure. With
+  # `environment:`, an unset GITHUB_TOKEN yields an empty secret, the build proceeds, stageDrivers
+  # warns, and /app/drivers ships empty. Set it in docker/.env on the tester.
   github-token:
-    file: ../.secrets/github-token.txt
+    environment: GITHUB_TOKEN
