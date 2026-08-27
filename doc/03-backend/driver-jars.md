@@ -1,4 +1,4 @@
-> Branch: `dev-split` — captured 2026-08-17.
+> Branch: `feat/simulated-bench` — captured 2026-08-18.
 
 # The two local driver JARs
 
@@ -11,10 +11,12 @@ outcomes. The classpath wiring is
 [`gradle-build.md`](../02-modules/gradle-build.md); how the wrappers are used is
 [`hardware-integration.md`](hardware-integration.md).
 
-**Both are optional to build and mandatory to run.** Nothing in `src/main`
-imports either; only the adapters in the optional `drivers` source set do, so a
-clone without them compiles. `deck.hardware.mode=real` then refuses to start
-without both provider beans — see
+**Both are optional to build and mandatory to run.** Nothing in this repo
+imports either: each jar is a self-contained deck plugin that implements
+`ch.rupfizupfi.deck:device-api` (the `device-api/` composite build here) and
+registers its provider beans through its own Spring Boot auto-configuration, so
+the deck knows the drivers only at runtime. `deck.hardware.mode=real` refuses to
+start without both provider beans — see
 [`driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md).
 
 ## Contents
@@ -28,26 +30,40 @@ without both provider beans — see
 
 | | `dscusb.jar` | `usbmodbus.jar` |
 |---|---|---|
-| Provides | `ch.rupfizupfi.dscusb.CellValueStream`, `Measurement` | `ch.rupfizupfi.usbmodbus.Cfw11` |
+| Provides | `ch.rupfizupfi.dscusb.dscusb.CellValueStream`; `Measurement` and `CommandExecutionException` one level up | `ch.rupfizupfi.usbmodbus.Cfw11` |
+| Deck plugin package | `ch.rupfizupfi.dscusb.deck` — `CellValueStreamAdapter`, `DeckLoadCellAutoConfiguration` | `ch.rupfizupfi.usbmodbus.deck` — `Cfw11Drive`, `DeckDriveAutoConfiguration` |
 | In git | **tracked** | **gitignored** (`.gitignore:36`), licence-restricted |
 | Sibling repo | `dscusb` | `usbmodbus` |
-| Buildable on this machine | only from that repo's **uncommitted** tree (OQ-75) | **no** (OQ-76) |
+| Buildable on this machine | yes, from a clean checkout | yes, from a clean checkout |
 | Reaches hardware via | jnr-ffi → `DSCUSBDrv64.dll`, by serial number | bundled vendor libraries |
 
-The `drivers` source set is registered only when **both** are present, so a
+Both repos build on Gradle 9.7 / Kotlin 2.4.10 / gradleup shadow / JVM target 26, and the
+jars in `lib/` are reproducible from their committed source. Both repos
+`includeBuild("../breaktest-command-deck/device-api")` and implement the deck's
+contract in a `deck` package (`compileOnly` on the contract and on
+`spring-boot-autoconfigure`, so neither is bundled into the shadow jar — a copy
+of the contract classes inside a driver jar would shadow the deck's own).
+**Their compile against the live contract is the conformance guarantee**: a
+`device.api` change surfaces as a compile error on the next driver build, and
+both repos therefore need the deck checkout as a sibling directory.
+
+The deck loads every jar in `lib/` runtime-only
+([gradle-build.md](../02-modules/gradle-build.md#driver-plugin-jars-lib)), so a
 missing jar is a *startup* failure, never a compile failure.
 
 ## `dscusb.jar` — load cell
 
-Building it needs **Gradle 9.7, Kotlin 2.4.10, JVM target 26 and gradleup
-shadow**. The older johnrengelman-shadow-on-Gradle-8 setup cannot run on the JDK
-installed here — that is what blocked the rebuild until it was migrated.
+`./gradlew shadowJar` in the sibling repo, then copy `build/libs/dscusb.jar` over
+`lib/dscusb.jar` here. There is no publish or install task on either side; the copy
+is manual.
 
-**That migration is itself uncommitted** (OQ-75). `dscusb` HEAD still carries
-Kotlin 2.1.10, johnrengelman shadow 8.1.1, `jvmToolchain(23)` and no wrapper at
-all, so a clean checkout does not build here either — the same position
-`usbmodbus` is in. Only the local working tree does, and the shipped jar came
-from it, so the binary cannot be reproduced from that repo's history.
+**The package layout is split, and only part of it moved.** `CellValueStream`,
+`Connection`, `DSCUSB` and `DSCUSBDrv64` sit in `ch.rupfizupfi.dscusb.dscusb`,
+beside a `t24` sibling package for the wireless base station that the deck does not
+use. `Measurement` and `CommandExecutionException` are shared by both backends and
+stay one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in this
+repo's `deck` package) imports from both, which is the whole blast radius of that
+move — the deck owns its own `Measurement`, so nothing over there sees it.
 
 **Driver contract, and it decides run outcomes:**
 
@@ -81,17 +97,41 @@ sibling repo's shadow build bundles — `CommunicationLib.jar` and
 Splitting them apart would let the project half be committed, which is worth
 raising when OQ-43 is answered.
 
+Note the asymmetry to raise alongside OQ-43: those vendor jars are themselves
+**committed** to the `usbmodbus` remote. If that remote is public, the
+"non-redistributable" position is already compromised upstream.
+
+**Driver contract, and it decides run outcomes:**
+
+- `Cfw11` is `final` (Kotlin), so it cannot be subclassed — that is why `Drive` is
+  an interface with a delegating adapter rather than a subclass.
+- The no-arg constructor **opens the USB device**. There is no unopened instance, so
+  a fresh handle means a new object; this is what `DriveProvider` being a factory
+  buys, and what tier 2's `stopWithFreshHandle` relies on.
+- `close()` releases it, and only if that instance opened it. The second
+  constructor takes a caller-owned `ModbusUsbHelper` and closes nothing — the seam
+  for a virtual Modbus slave or a test double.
+- **Every comms failure arrives as a checked `NegativeConfirmationException`** —
+  `"Send Not OK"` (includes USB not connected), `"Read Not OK"`, `"Timeout"`,
+  `"Frame error"`. Reads and writes share one path, so a timed-out *write* throws
+  too; nothing here is fire-and-forget. Retries exist but are off
+  (`maximumRetries` defaults to 0), leaving one attempt at a 100 ms timeout.
+- **That exception is not a `RuntimeException`**, and Kotlin lets it cross into Java
+  undeclared. `CFW11Device#readData` catches only `DriveUnavailableException` and
+  `RuntimeException`, so a comms error **escapes the poll loop and kills the
+  info-polling thread**, leaving the dashboard on stale values. The safety paths are
+  fine — `MotorSafetyController#verifyStopped` and `commandStop` catch `Throwable`.
+  Traced and proposed for review in the `usbmodbus` repo's comms-failure-handling doc.
+- `Cfw11`'s `catch (NullPointerException)` returning `"0"` looks like it masks a dead
+  link as a real zero. It does not: no null is reachable along that chain, so the
+  catch never fires. Dead code, not a live defect.
+
 `CommunicationLib.jar` is also where `devicemanager.VirtualDeviceConnection`
 lives — an in-memory Modbus slave reporting vendor `WEG` / product `VDW-00`.
-The deck does **not** plan to use it: with the drivers optional, no vendor code
-loads in dev at all, so the simulated provider declares its own identity for
-`Cfw11Check` (OQ-44). It stays relevant only to the optional wire-level fidelity
-path, which would need `Cfw11` to accept an injected transport.
-
-That repo still carries the Gradle 8 / johnrengelman-shadow setup `dscusb` had
-to leave behind, so it **cannot be rebuilt here today** (OQ-76). Nothing needs
-it yet — but the `Drive` seam, tier 2's fresh-handle behaviour and OQ-50 all sit
-on that API.
+The deck does **not** use it: with the drivers optional, no vendor code loads in
+dev at all, so the simulated provider declares its own identity for `Cfw11Check`
+(OQ-44). The injecting constructor above is what an optional wire-level fidelity
+path would need; nothing consumes it yet.
 
 Its `commandbus.CommandChain` is present and deliberately unused: it serialises
 writes only, is fire-and-forget, and cannot carry a return value or an
@@ -105,5 +145,3 @@ Reasoning in
 |---|---|
 | OQ-43 | `usbmodbus.jar` provenance — owner-owed |
 | OQ-74 | One non-finite reading ends the stream, and therefore the run |
-| OQ-75 | The shipped `dscusb.jar`'s source is uncommitted |
-| OQ-76 | The `usbmodbus` repo cannot be built on the installed JDK |

@@ -129,7 +129,7 @@ last refreshed and have no entry here yet; their detail lives in
 ## Hardware
 
 Moved to [`TASKS-hardware.md`](TASKS-hardware.md) — OQ-45, OQ-46, OQ-44,
-OQ-50, OQ-43, OQ-74, OQ-75, OQ-76, including the two sibling driver repos.
+OQ-50, OQ-43, OQ-74.
 
 ---
 

@@ -35,7 +35,7 @@ flowchart LR
     end
 
     subgraph Providers["Providers - one pair per deck.hardware.mode"]
-        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>drivers source set, lib/*.jar"]
+        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>plugin jars in lib/, runtime-only"]
         SIM["simulated: SimulatedDrive / SimulatedLoadCellStream<br/>shared SimulatedBench"]
     end
 
@@ -158,8 +158,8 @@ USB sessions close.
 ### Frequency converter — `CFW11` over USB Modbus
 
 * Driver: `lib/usbmodbus.jar`, reached only through `Cfw11Drive` in the same
-  optional source set. Not in the repo, and its sibling build cannot currently
-  run here — see [`driver-jars.md`](driver-jars.md).
+  optional source set. Not in the repo (licence), but rebuildable from its
+  sibling — see [`driver-jars.md`](driver-jars.md).
 * Wrapper: `CFW11Device`
   (`command-deck/.../device/frequencyconverter/CFW11Device.java:9`). Polls
   motor data + control parameters every 400 ms while at least one observer
@@ -219,8 +219,8 @@ appliance and not horizontally scalable.
 
 | Concern | File |
 |---|---|
-| Vendor-free device API | `command-deck/src/main/java/ch/rupfizupfi/deck/device/api/` |
-| Vendor adapters (optional source set) | `command-deck/src/drivers/java/ch/rupfizupfi/deck/device/vendor/` |
+| Vendor-free device API | `device-api/src/main/java/ch/rupfizupfi/deck/device/api/` (included build) |
+| Vendor adapters (driver plugin jars) | sibling repos: `../dscusb` `ch.rupfizupfi.dscusb.deck`, `../usbmodbus` `ch.rupfizupfi.usbmodbus.deck` |
 | Simulated devices, plant model, fault switches | `command-deck/src/main/java/ch/rupfizupfi/deck/device/simulated/` |
 | Startup mode enforcement | `command-deck/src/main/java/ch/rupfizupfi/deck/device/HardwareModeCheck.java` |
 | Reference-counted base | `command-deck/src/main/java/ch/rupfizupfi/deck/device/Device.java:17` |
@@ -247,4 +247,4 @@ page names what it doesn't cover.
 | OQ-46 | `FourWayRelaySwitch.java:19` matches the `CH9102` literal — move it to configuration |
 | OQ-62 | The seam exists; the simulated providers do not, so no test can yet run without hardware. Decided: [simulated devices](../06-feature-work/virtual-devices/README.md), `dev` only |
 | OQ-70 | `DeviceInfoService.isEnabled` is process-global, not per-client |
-| OQ-43, OQ-75, OQ-76 | The two driver repos — see above |
+| OQ-43 | `usbmodbus.jar` provenance — see above |

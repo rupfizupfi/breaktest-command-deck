@@ -16,7 +16,7 @@ Document how the Gradle multi-project build wires `:cms` and `:command-deck`, wh
   - [Root `build.gradle`](#root-buildgradle)
   - [`:cms/build.gradle` (cms-specific)](#cmsbuildgradle-cms-specific)
   - [`:command-deck/build.gradle`](#command-deckbuildgradle)
-  - [The `drivers` source set](#the-drivers-source-set)
+  - [Driver plugin jars (`lib/`)](#driver-plugin-jars-lib)
   - [Vaadin Gradle plugin](#vaadin-gradle-plugin)
   - [Local JAR census (`lib/`)](#local-jar-census-lib)
   - [Build outputs](#build-outputs)
@@ -57,7 +57,7 @@ Two-line module declaration plus plugin pinning:
 
 - `settings.gradle:7` pins `id 'com.vaadin' version "${vaadinVersion}"` (25.2.6 from `gradle.properties:3`).
 - `settings.gradle` also applies `org.gradle.toolchains.foojay-resolver-convention` so the JDK 26 toolchain can be provisioned.
-- `settings.gradle` includes `cms` and `command-deck`. There is no third module, and [`shared-code-strategy.md`](shared-code-strategy.md) records the decision that there won't be.
+- `settings.gradle` includes `cms` and `command-deck`, and `includeBuild`s `device-api` — a **standalone composite build**, not a third subproject, so [`shared-code-strategy.md`](shared-code-strategy.md)'s no-third-module decision stands. It is standalone so the driver repos can composite-include the contract without configuring the deck's Spring Boot / Vaadin build; it substitutes `ch.rupfizupfi.deck:device-api` wherever that coordinate is depended on.
 - The Vaadin pre-release maven repo is added in `pluginManagement.repositories`.
 
 ### Root `build.gradle`
@@ -88,20 +88,19 @@ No extra dependencies, no extra repositories, no extra plugins.
 Two things on top of the root:
 
 1. `implementation project(':cms')` — pulls in the `cms-library-plain.jar` (the plain jar, **not** the Spring Boot fat jar — Spring Boot's Gradle plugin makes `project(':cms')` resolve to the regular jar artefact). This is the only declared cross-module link; everything else flows through Spring component scan at runtime.
-2. The conditional [`drivers` source set](#the-drivers-source-set). There is deliberately **no** `fileTree` and no `flatDir` repository: no `src/main` class references a vendor type, so the jars belong to that source set alone.
+2. `implementation 'ch.rupfizupfi.deck:device-api:1.0.0'` — resolved by the `device-api` included build, never from a repository.
+3. The [driver plugin jars](#driver-plugin-jars-lib) as `runtimeOnly` files — no compile-time edge to any driver class.
+4. An explicit `dependsOn` from the Vaadin/Hilla tasks onto the included build's `:jar`: the Vaadin plugin queries the runtime classpath mid-execution without declaring the dependency, so a standalone `hillaGenerate` (what `script/typecheck.ps1` runs) fails without it.
 
 Output JAR names follow the same pattern: `command-deck-application.jar` (boot) + `command-deck-library-plain.jar` (plain). The CMS Dockerfile assumes the `cms-application.jar` will be the only fat JAR copied; the command-deck Dockerfile makes the same assumption for its image.
 
-### The `drivers` source set
+### Driver plugin jars (`lib/`)
 
-Registered **only when both** `lib/dscusb.jar` and `lib/usbmodbus.jar` exist — real hardware needs both, so per-device gating buys nothing. Sources at `command-deck/src/drivers/java`; compile classpath is the main output plus the main compile classpath (the adapters are `@Component`s and need Spring) plus the two jars. `bootRun` and `bootJar` both get the drivers output **and** the jars, which is what puts the adapter classes in `BOOT-INF/classes` and the vendor jars in `BOOT-INF/lib`.
+Every jar in `lib/` joins `:command-deck`'s **runtime classpath only** (`runtimeOnly fileTree`), unless the build runs with `-PdeckDrivers=off` (which exists to build a deliberately hardware-free jar). There is no `on` value: a missing jar must stay a *startup* failure named by `HardwareModeCheck`, never a build failure — a fresh clone without the licence-restricted `usbmodbus.jar` has to build.
 
-Two constraints worth keeping:
+Each jar is a self-contained deck plugin, built in its own sibling repo: it implements `ch.rupfizupfi.deck:device-api` (composite-included from `device-api/` here, so **the driver repo's compile is the contract-conformance check**) and ships a Spring Boot auto-configuration registered via `META-INF/spring/...AutoConfiguration.imports` — required because the driver packages sit outside the deck's `ch.rupfizupfi.deck` component-scan root. On the classpath the provider beans appear; off it nothing does. Nothing in this repo names a driver class.
 
-- **Hook `driversClasses` onto `assemble`, never onto `classes`.** `compileDriversJava` consumes the main output, so `classes.dependsOn driversClasses` creates `classes → driversClasses → compileDriversJava → classes` and Gradle fails with a circular-dependency error. `bootJar` / `bootRun` need no hook at all: a buildable source-set output on their classpath already carries the task dependency.
-- **`.gitignore`'s browser-driver rule is anchored** to `/drivers/` (`.gitignore:25`). Unanchored, it matched `command-deck/src/drivers/` too and the adapters never appeared in `git status`.
-
-With the jars absent the block is skipped and a lifecycle line says so; `:command-deck:compileJava` still succeeds. What fails then is *startup* — see [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode). Design rationale: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md).
+`bootJar` packs the jars into `BOOT-INF/lib` automatically via the `runtimeOnly` edge; there are no adapter classes in `BOOT-INF/classes` any more. Design rationale and history: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md); what fails at startup without the jars: [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode).
 
 ### Vaadin Gradle plugin
 Applied to **both** subprojects (root `build.gradle:19`). Gives each module:
@@ -119,7 +118,7 @@ Crucially, **the plugin runs independently per module**. Each module's `bootJar`
   - a `rollupOptions.onwarn` filter that silences Rollup's `MIXED_EXPORTS` warning — likely arising from cross-module imports.
 
 ### Local JAR census (`lib/`)
-Sole tracked entry: `lib/dscusb.jar` (the USB load-cell driver). `lib/usbmodbus.jar` exists locally but is gitignored at `.gitignore:36`. Neither is on any module's `implementation` configuration; both reach only the [`drivers` source set](#the-drivers-source-set), so a missing jar is a **startup** failure, never a compile failure. Where each comes from and what its build needs: [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
+Sole tracked entry: `lib/dscusb.jar` (the USB load-cell driver plugin). `lib/usbmodbus.jar` exists locally but is gitignored at `.gitignore:36`. Neither is on any module's `implementation` configuration; both are [runtime-only plugins](#driver-plugin-jars-lib) of `:command-deck`, so a missing jar is a **startup** failure, never a compile failure. Where each comes from and what its build needs: [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
 
 The JARs are **not** available to `:cms`, which imports no driver code. Note for anyone tempted to add a `fileTree(dir: 'lib', ...)` to the root `subprojects` block: a *relative* directory there resolves per subproject, to `cms/lib/` and `command-deck/lib/`, neither of which exists — it would look like it grants both modules access and do nothing.
 

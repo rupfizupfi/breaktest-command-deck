@@ -126,7 +126,7 @@ Three properties of the check matter:
 
 - **It is a `BeanFactoryPostProcessor`, not an ordinary bean.** It therefore runs after the bean definitions are known but *before any singleton is instantiated*, which is what lets it report "`lib/usbmodbus.jar` is missing" instead of letting `DeviceService`'s constructor fail with a `NoSuchBeanDefinitionException` naming an interface. It also matches bean types with `allowEagerInit=false`, so the check itself never opens a USB device.
 - **It refuses `simulated` under the `docker` profile before the datasource is touched.** That profile is the on-machine deployment; simulated hardware must never reach the bench, and refusing at BFPP time means the refusal does not depend on a reachable Postgres.
-- **It stands down when `spring.aot.processing` is set.** `hillaGenerate` boots a Spring AOT context purely to discover `@BrowserCallable` classes; without the exemption that context refuses to start and the *build* starts depending on the vendor jars, defeating the optional [`drivers` source set](gradle-build.md#the-drivers-source-set).
+- **It stands down when `spring.aot.processing` is set.** `hillaGenerate` boots a Spring AOT context purely to discover `@BrowserCallable` classes; without the exemption that context refuses to start and the *build* starts depending on the vendor jars, defeating their [runtime-only plugin wiring](gradle-build.md#driver-plugin-jars-lib).
 
 There is no fallback in either direction. Rationale: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md#startup-contract).
 

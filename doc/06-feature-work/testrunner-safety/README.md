@@ -52,9 +52,8 @@ is fixed (`useEffect` + unsubscribe in `@index.tsx` and `run.tsx`, ex-OQ-24).
 The `dscusb` NaN rejection **landed** (2026-08-17): the driver was modernised to Gradle 9.7 /
 Kotlin 2.4.10 / JVM 26, rebuilt, and the jar committed as `ec47aa6`. `LoadCellDevice` and
 `LoadCellThread` consume its new `isReading()` / `getLastError()` to name the driver's own cause in
-a trip reason. Two consequences that are *not* closed: the driver source is still uncommitted in
-that repo (OQ-75), and a single non-finite reading now ends the run rather than poisoning a
-statistic (OQ-74).
+a trip reason. One consequence is *not* closed: a single non-finite reading now ends the run rather
+than poisoning a statistic (OQ-74).
 
 **Not verifiable end-to-end right now — the bench hardware is not attached** (`LoadCellCheck`
 refuses to start a run without a fresh measurement; the dev-side answer is OQ-62).
