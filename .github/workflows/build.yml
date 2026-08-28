@@ -65,13 +65,25 @@ jobs:
       - name: Build
         run: ./gradlew build -x test --no-daemon
 
+      # The Vaadin scaffolding the generated client imports - generated-flow-imports.js,
+      # app-shell-imports.js, vaadin-react.js - is NOT tracked. It exists on a developer machine
+      # only as leftover output of an earlier run, which is why typecheck.ps1 passes locally
+      # without this and failed here on the first CI run. A fresh clone has the same gap.
+      #
+      # The script deliberately does not run this itself: the task installs the frontend and can
+      # rewrite pnpm-lock.yaml, which is far too destructive for a gate meant to run on every
+      # change. In CI that cost is nil - the checkout is thrown away - so the gate gets what it
+      # needs here instead.
+      - name: Generate Vaadin frontend scaffolding
+        run: ./gradlew :cms:vaadinPrepareFrontend :command-deck:vaadinPrepareFrontend --no-daemon
+
       # The real gate, shelled out to rather than inlined. script/typecheck.ps1 carries knowledge
       # that a YAML copy would drift away from: hillaGenerate silently *deletes* the generated
       # client when its AOT endpoint scan comes back empty and still reports BUILD SUCCESSFUL, so
       # the retry has to be driven by inspecting the output rather than the exit code; the two
       # modules must be generated in separate invocations; and vaadinPrepareFrontend must never be
-      # added to it. Two copies of that, only one of them exercised locally, is how it rots.
-      # ubuntu-latest ships pwsh.
+      # added to it (hence the separate step above). Two copies of that, only one of them
+      # exercised locally, is how it rots. ubuntu-latest ships pwsh.
       - name: Typecheck (regenerate Hilla client, then tsc --noEmit)
         shell: pwsh
         run: ./script/typecheck.ps1

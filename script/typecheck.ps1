@@ -93,9 +93,15 @@ function Invoke-GenerateModule {
         scaffolding (vaadin.ts, vite-devmode.ts, jar-resources/), but it also performs
         a frontend install using *npm* despite `pnpmEnable = true` in build.gradle --
         it deletes pnpm-lock.yaml and writes package-lock.json. Far too destructive
-        for a gate meant to run on every change, and the scaffolding it produces is
-        already committed. Only hillaGenerate produces the Java-to-TypeScript contract
-        this gate exists to check.
+        for a gate meant to run on every change. Only hillaGenerate produces the
+        Java-to-TypeScript contract this gate exists to check.
+
+        The scaffolding it produces is NOT committed, despite what this comment
+        claimed until CI proved otherwise: generated-flow-imports.js,
+        app-shell-imports.js and vaadin-react.js are untracked, so they exist here
+        only as leftover output of an earlier local run. This gate therefore needs
+        `./gradlew :MODULE:vaadinPrepareFrontend` once on a fresh clone before it can
+        pass -- which is exactly what .github/workflows/build.yml does.
     #>
     param(
         [string]$Module,
