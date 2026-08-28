@@ -54,10 +54,22 @@ function Write-Section {
     Write-Host "== $Text" -ForegroundColor Cyan
 }
 
+function Test-IsWindows {
+    # $IsWindows is a PowerShell 7+ automatic variable; Windows PowerShell 5.1 has no such
+    # variable at all, and 5.1 only runs on Windows -- so its absence is itself the answer.
+    # Test-Path is what makes that readable under Set-StrictMode, which would otherwise throw
+    # on the undefined variable. Keep this expressed with if/else and not the ?: operator:
+    # cms/package.json and command-deck/package.json invoke this script through `powershell`
+    # (5.1), where a ternary is a *parse* error and takes the whole file down.
+    if (-not (Test-Path variable:IsWindows)) { return $true }
+    return [bool]$IsWindows
+}
+
 # ---------------------------------------------------------------- generation ---
 
 function Get-Gradlew {
-    $gradlew = Join-Path $repoRoot 'gradlew.bat'
+    if (Test-IsWindows) { $name = 'gradlew.bat' } else { $name = 'gradlew' }
+    $gradlew = Join-Path $repoRoot $name
     if (-not (Test-Path $gradlew)) {
         throw "Gradle wrapper not found at $gradlew"
     }
@@ -176,7 +188,16 @@ function Test-GeneratedClient {
 function Resolve-Tsc {
     param([string]$ModulePath)
 
-    foreach ($candidate in @('node_modules/.bin/tsc.cmd', 'node_modules/.bin/tsc.CMD')) {
+    # Windows first, and only there: pnpm writes a tsc.cmd shim *beside* the extensionless
+    # POSIX one, and that extensionless file is a sh script PowerShell cannot execute.
+    # Elsewhere only the extensionless shim exists. Nothing found falls through to pnpm exec.
+    if (Test-IsWindows) {
+        $candidates = @('node_modules/.bin/tsc.cmd', 'node_modules/.bin/tsc.CMD')
+    } else {
+        $candidates = @('node_modules/.bin/tsc')
+    }
+
+    foreach ($candidate in $candidates) {
         $path = Join-Path $ModulePath $candidate
         if (Test-Path $path) { return $path }
     }

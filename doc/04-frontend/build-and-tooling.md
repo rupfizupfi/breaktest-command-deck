@@ -133,7 +133,8 @@ npm/yarn workspaces were not needed.
    measures the production bundle both ways — the cross-module alias may
    interact badly with tree-shaking, which is the likeliest original
    motive. Measure, then decide; don't flip it blind. (OQ-16)
-2. **Can the Hilla generator run without booting the JVM app?** Today it
-   runs as part of `bootRun`, so there is no cheap CI-only TypeScript
-   typecheck. If it can't be run standalone, record why and close.
-   (OQ-17)
+2. **Can the Hilla generator run without booting the JVM app?** Answered in
+   practice: `hillaGenerate` boots only a Spring AOT context, which is what
+   `script/typecheck.ps1` and now CI run standalone — see
+   [`../02-modules/gradle-build.md`](../02-modules/gradle-build.md#continuous-integration).
+   Close the item. (OQ-17)

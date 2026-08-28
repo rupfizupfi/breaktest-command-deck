@@ -21,6 +21,7 @@ Document how the Gradle multi-project build wires `:cms` and `:command-deck`, wh
   - [Local JAR census (`lib/`)](#local-jar-census-lib)
   - [Build outputs](#build-outputs)
   - [`gradle.properties`](#gradleproperties)
+- [Continuous integration](#continuous-integration)
 - [Where to look in the code](#where-to-look-in-the-code)
 - [Open questions](#open-questions)
 
@@ -152,6 +153,23 @@ project.group=ch.rupfizupfi
 ```
 
 `hillaVersion` is set but **not referenced** by any build file in this checkout (`vaadinVersion` is used everywhere). Likely vestigial from older Hilla 2.x releases that pinned hilla independently of vaadin.
+
+## Continuous integration
+
+Two workflows, both on pull requests and pushes to `main`:
+
+| Workflow | Runs | Publishes |
+|---|---|---|
+| [`build.yml`](../../.github/workflows/build.yml) | `./gradlew build -x test`, then [`script/typecheck.ps1`](../../script/typecheck.ps1) under ubuntu's pwsh | nothing |
+| [`device-api.yml`](../../.github/workflows/device-api.yml) | `./gradlew -p device-api build` | the contract, when its version changed |
+
+Three things `build.yml` depends on:
+
+- **No credentials.** `build` never invokes `stageDrivers`, the only task that resolves from GitHub Packages, so the job needs no token and stages no driver jar. A driver is a launch-time plugin; its absence cannot fail a build.
+- **`pnpm install --frozen-lockfile` in each module**, so the gate can resolve `tsc`. It runs before Gradle: `build` in dev mode does not pull `vaadinPrepareFrontend` into the task graph, but a production-mode build would — and that task installs with npm and deletes `pnpm-lock.yaml`, which `--frozen-lockfile` afterwards could not survive (the same hazard `script/typecheck.ps1` steps around).
+- **The regenerated Hilla client is not diffed against what is committed.** It does not come back byte-identical — `generated-file-list.txt` reorders nondeterministically — so a drift check would fail on noise.
+
+The driver repos run the mirror image: each composite-includes `device-api/` from a sibling checkout of this repo pinned to `main`, making their compile the contract-conformance check. `dscusb` publishes on a version bump; `usbmodbus` builds only, since its shadow jar bundles vendor jars that may not be redistributed.
 
 ## Where to look in the code
 - `settings.gradle:1-21`
