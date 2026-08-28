@@ -32,24 +32,23 @@ separate deployments:
 | `cms` | Cloud host | Content management: projects, samples, customers, materials, results. Reachable by users who are nowhere near the machine. |
 | `deck` | The physical tester, on the shop floor | Needs local USB/serial access to the load cell, CFW11 frequency converter and relay board. |
 
-> **The `deck` image cannot currently reach that hardware.** Both driver plugins
-> are Windows-only and this image is Linux, so each refuses to register and the
-> container fails at startup rather than mid-run. Running `command-deck`
-> natively on the Windows bench box is the only path that drives hardware today.
-> Owner-owed as **OQ-79**; detail in
-> [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
+> **The `deck` image cannot reach that hardware.** Both driver plugins are
+> Windows-only and this image is Linux, so each refuses to register and the
+> container fails at startup rather than mid-run (**OQ-79**). Running natively on
+> the Windows bench is the only path that drives hardware today:
+> [`bench-deployment.md`](bench-deployment.md).
 
 The on-machine `deck` connects to the **cloud database**, so there is one
 authoritative dataset rather than a sync problem. That also means the
 tester needs network reachability to the cloud host in order to run a
 test.
 
-> **Config does not match this yet.** `application-docker.properties` in
-> both modules points at `jdbc:postgresql://db:5432/rupfizupfi` — the
-> Compose-local `db` service — and the compose file starts that `db`
-> service for both profiles. Pointing `deck` at the cloud Postgres is
-> outstanding work, not current behaviour. Tracked as OQ-61 in
-> [`../06-feature-work/address-open-questions/TASKS.md`](../06-feature-work/address-open-questions/TASKS.md).
+> **The mechanism exists; the value is owner-owed.** `spring.datasource.url` is
+> now `${DB_URL:...}`, and the deck service passes `DECK_DB_URL`. Unset, it still
+> falls back to the Compose-local `db` — fine for a smoke test, wrong for a real
+> run. Supplying the cloud URL is what remains of OQ-61. There is deliberately no
+> fallback on connection failure: a deck that quietly wrote results elsewhere
+> would be worse than one that refuses to start.
 
 ## Diagram — deployment topology
 
@@ -111,23 +110,18 @@ Source: [`doc/diagrams/src/deployment.mmd`](../diagrams/src/deployment.mmd).
 | `server-deck` | `deck` | `command-deck/Dockerfile` (context `..`) | 443 | 8043 | same as above |
 | `db` | (no profile gate; always on) | image `postgres` (no tag) | 5432 (`expose:`, not published) | — | `POSTGRES_DB=rupfizupfi`, `POSTGRES_USER=rupfizupfi`, `POSTGRES_PASSWORD_FILE=/run/secrets/db-password` |
 
-Activate exactly one of cms/deck per host — `cms` on the cloud host,
-`deck` on the tester:
+Activate exactly one per host — `cms` on the cloud host, `deck` on the tester.
+Both bind host `8043:443`, which is not a conflict precisely because they never
+share a host:
 
 ```bash
 docker compose -f docker/docker-compose.yaml --profile deck up -d
-# or
-docker compose -f docker/docker-compose.yaml --profile cms up -d
 ```
 
-Both app services bind host port `8043:443` — not a conflict, because
-they never share a host (see the topology table).
-
-`COMPOSE_PROFILES` in `docker/.env` picks the profile; `.env.example`
-sets `deck`. It drops the `rclone` entry the old tracked `.env` carried:
-no `rclone` service exists in the compose file, so it activated nothing.
-The intent is **not** dead config — off-tester backup of test result
-files — but the service definition, remote and schedule are all
+`COMPOSE_PROFILES` in `docker/.env` picks the profile; `.env.example` sets
+`deck`, dropping the `rclone` entry the old tracked `.env` carried — no such
+service is defined, so it activated nothing. The intent is **not** dead config
+(off-tester backup of result files) but the definition, remote and schedule are
 unrecorded, so nothing can activate it yet (OQ-56).
 
 ### Image build and entrypoint
@@ -154,7 +148,12 @@ go away and the cms classpath copies become canonical (OQ-4).
 | Profile | DB | Port | TLS | Notable extras |
 |---|---|---|---|---|
 | (default = `dev`) | H2 file `jdbc:h2:file:./.data/deck` (user `sa`, no password) | `${PORT:8080}` | none | H2 console at `/h2-console`, devtools, `vaadin.devmode.devTools.enabled=true`, `logging.level.web=DEBUG` |
-| `docker` | PostgreSQL `jdbc:postgresql://db:5432/rupfizupfi` (user `rupfizupfi`, password from secret) | `${PORT:443}` | PKCS12 at `/home/appuser/keystore/rupfizupfi.p12`, alias `rupfizupfi`, password `${KEY_STORE_PASSWORD}` | `defer-datasource-initialization`, `ImprovedNamingStrategy`, `ddl-auto=update` |
+| `docker` | PostgreSQL `${DB_URL:jdbc:postgresql://db:5432/rupfizupfi}` (user `rupfizupfi`, password from secret) | `${PORT:443}` | PKCS12 at `${KEY_STORE_PATH:/home/appuser/keystore/rupfizupfi.p12}`, alias `rupfizupfi`, password `${KEY_STORE_PASSWORD}` | `defer-datasource-initialization`, `ImprovedNamingStrategy`, `ddl-auto=update` |
+
+`bench` is an alias, not a third profile (`spring.profiles.group.bench=docker`):
+the two placeholders above plus `DECK_STORAGE_ROOT` are the only per-deployment
+differences, so no `application-bench.properties` exists —
+[`bench-deployment.md`](bench-deployment.md).
 
 See [`db.md`](db.md) for the database angle.
 
@@ -163,7 +162,9 @@ See [`db.md`](db.md) for the database angle.
 * **Bind mount `./breaktester:/home/appuser/breaktester`.** Holds the
   user's settings JSON (`settings.json`), uploads, and CSV result files
   written by `LoadCellThread`. Persists across container restarts because
-  it lives on the host.
+  it lives on the host. Reached via `DECK_STORAGE_ROOT=/home/appuser`: the images
+  create `appuser` with `--home /nonexistent`, so `user.home` — what `~` used to
+  resolve against — pointed outside this mount.
 * **Bind mount `./keystore:/home/appuser/keystore`.** Holds
   `rupfizupfi.p12`. The startup script auto-creates one if missing.
 * **Named volume `db-data`.** Postgres data directory. Survives

@@ -118,14 +118,14 @@ Both modules' base `application.properties` files (lines 1-18) are byte-identica
 
 ### Hardware mode
 
-`deck.hardware.mode` (`real` | `simulated`, base default `real`) selects how the deck reaches the machine, and `HardwareModeCheck` enforces it. The `dev` profile sets `simulated`; `docker` sets `real` explicitly and is **refused** if anything overrides it to `simulated`. The property is legal on any profile — only `docker` restricts its value.
+`deck.hardware.mode` (`real` | `simulated`, base default `real`) selects how the deck reaches the machine, and `HardwareModeCheck` enforces it. The `dev` profile sets `simulated`; `docker` sets `real` explicitly. **Simulation is allowlisted, not blocklisted**: it is permitted only when every effective profile is in `SIMULATION_PROFILES` (currently just `dev`), so any other profile — including `dev,docker` together, and any profile that does not exist yet — refuses.
 
 Because `spring.profiles.default=dev`, an unset `SPRING_PROFILES_ACTIVE` now resolves to the *safe* state rather than to one that talks to hardware.
 
 Three properties of the check matter:
 
 - **It is a `BeanFactoryPostProcessor`, not an ordinary bean.** It therefore runs after the bean definitions are known but *before any singleton is instantiated*, which is what lets it report "`usbmodbus.jar` is missing" instead of letting `DeviceService`'s constructor fail with a `NoSuchBeanDefinitionException` naming an interface. It also matches bean types with `allowEagerInit=false`, so the check itself never opens a USB device.
-- **It refuses `simulated` under the `docker` profile before the datasource is touched.** That profile is the on-machine deployment; simulated hardware must never reach the bench, and refusing at BFPP time means the refusal does not depend on a reachable Postgres.
+- **It refuses `simulated` outside the permitted profiles, before the datasource is touched.** Refusing at BFPP time means the refusal never depends on a reachable Postgres. The allowlist replaced a blocklist on `docker`, which had the failure mode backwards — a profile nobody remembered to add was permitted to simulate, and the deck now has a deployment that does *not* use `docker`: a native Windows bench run, the only path that reaches the hardware (OQ-79). Note `getActiveProfiles()` returns empty rather than the defaults, so the check falls back to `getDefaultProfiles()` explicitly; without that an unconfigured boot would present an empty set, which any allowlist trivially contains.
 - **It stands down when `spring.aot.processing` is set.** `hillaGenerate` boots a Spring AOT context purely to discover `@BrowserCallable` classes; without the exemption that context refuses to start and the *build* starts depending on the vendor jars, defeating their [runtime plugin wiring](gradle-build.md#driver-plugins-loaderpath-not-the-classpath). Load-bearing for every build now, not just a driverless one: drivers arrive over `loader.path`, so a build context never has a provider bean.
 
 There is no fallback in either direction. Rationale: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md#startup-contract).

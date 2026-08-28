@@ -16,6 +16,9 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
       - DB_PASSWORD_FILE=/run/secrets/db-password
+      # Both images create appuser with --home /nonexistent, so user.home cannot be the storage
+      # root: `~/breaktester` would resolve away from the bind mount below.
+      - DECK_STORAGE_ROOT=/home/appuser
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +48,12 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
       - DB_PASSWORD_FILE=/run/secrets/db-password
+      # Both images create appuser with --home /nonexistent, so user.home cannot be the storage
+      # root: `~/breaktester` would resolve away from the bind mount below.
+      - DECK_STORAGE_ROOT=/home/appuser
+      # The tester writes to the authoritative dataset, not the Compose-local db (OQ-61). Unset,
+      # it falls back to that local db - fine for a smoke test, wrong for a real run.
+      - DB_URL=${DECK_DB_URL:-jdbc:postgresql://db:5432/rupfizupfi}
     depends_on:
       db:
         condition: service_healthy
