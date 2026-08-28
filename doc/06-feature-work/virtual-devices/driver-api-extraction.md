@@ -132,7 +132,28 @@ classes.
 
 The corollary of "this repo references no driver class": nothing *here* can
 compile-check a jar. A contract change is verified by rebuilding the drivers,
-which needs the sibling checkouts.
+which is why the sibling checkout stays preferred over the published fallback.
+
+**What no compile can cover** is the jar actually on the machine — file-dropped
+onto `loader.path`, so one built months ago can meet a newer contract unnoticed.
+Each auto-configuration's initializer therefore calls
+`DeviceApi.verifyPluginBuiltAgainst(ContractVersion.VALUE)`. `VALUE` is a
+compile-time constant, so javac inlines it into the *driver's* class file: the
+argument is the version the jar was built against, while `DeviceApi` reads the
+one on the classpath. It must stay that literal — a runtime lookup would compare
+the deployed contract to itself and always pass. `ContractVersion` is generated
+from `project.version` in `device-api/build.gradle`, so the constant cannot drift
+from the version the policy below is about.
+
+`HardwareModeCheck` does not catch this: the bean *definitions* exist, so it
+passes, and the initializer throws when Spring instantiates the configuration
+class. Startup still fails, naming both versions and the jar to replace.
+
+| Skew | Outcome |
+|---|---|
+| Different major | refused — a method a provider must implement changed |
+| Plugin built against a newer minor | refused — it may call a `default` this contract lacks, otherwise a mid-run `NoSuchMethodError` |
+| Plugin built against an older minor | allowed silently — defaults fill the gap, which is what a minor bump promises |
 
 ## Contract evolution
 
@@ -142,15 +163,22 @@ breaking for them unless it is a `default` with a safe fallback (the post-Java-8
 JDBC approach); record components cannot be added compatibly at all; the build's
 version is semver **against providers** (default-method addition = minor,
 anything a provider must implement = major), bumped on contract change, never
-per app release.
+per app release. The runtime check above enforces that version, so a forgotten
+bump does not merely mislead a reader — it disarms the only thing that catches a
+stale jar.
 
-`device-api` also carries a ready-but-unused publish path (GitHub Packages,
-credentials from `GITHUB_ACTOR`/`GITHUB_TOKEN`) for the day a consumer without
-sibling checkouts appears — CI, a second machine. Only the API would ever be
-published; the licence-restricted driver never needs to be. The composite
-include stays the dev-time mechanism regardless: published versions pin what a
-checkout-less consumer compiles against, they do not replace the live-source
-conformance check.
+`device-api` is published to GitHub Packages by
+[`device-api.yml`](../../../.github/workflows/device-api.yml) on merge to `main`
+whenever the version in `device-api/build.gradle` changes, and by hand with
+`./gradlew -p device-api publish` (`GITHUB_ACTOR`/`GITHUB_TOKEN` set). Only the
+API is ever published; the licence-restricted driver never needs to be.
+
+Both driver repos include the sibling `device-api` directory **when it exists**
+and fall back to that artifact when it does not — a checkout of the driver alone,
+its own CI, a second machine. The sibling stays preferred deliberately: only it
+tracks the live contract, so only it turns drift into an immediate driver-build
+failure. The published fallback pins a version instead, and skew then surfaces at
+the deck's startup.
 
 ## Runtime discovery
 
@@ -197,7 +225,7 @@ declaring it — a standalone `hillaGenerate` fails otherwise.
 | `device-api` stays dependency-free | it lands on every consumer's classpath: the deck, both driver repos, and the boot jar |
 | Adapters stay pure delegation, now in the driver repos | they are the only code the simulated path never runs |
 | No build ever packs a driver | a missing jar must stay a startup failure named by `HardwareModeCheck`, never a build failure — and the licence-restricted `usbmodbus.jar` must not be redistributable by accident. `-PdeckDrivers=local` is `developmentOnly`, so it reaches `bootRun` and never `bootJar` |
-| Driver builds need the deck as a sibling checkout | their compile against `device-api` *is* the conformance check. Publishing `dscusb` did **not** change this: a version published from a stale checkout compiles against a stale contract and nothing downstream catches it |
+| Driver builds want the deck as a sibling checkout | their compile against `device-api` *is* the conformance check. They fall back to the published contract without one, but that pins a version instead of tracking it, so drift then waits until the deck's startup. Publishing `dscusb` did **not** change this either: a version published from a stale checkout compiles against a stale contract and nothing downstream catches it |
 | `usbmodbus.jar` is never published | licence. It reaches the tester as a host mount (`docker/drivers-local/`), which is also what keeps it out of the image |
 | `LoadCellCheck` and a future `Cfw11Check` probe through the API | with no vendor code loaded in dev, a simulated provider must declare its own distinguishable identity — this forces **OQ-44** rather than deferring it |
 

@@ -1,0 +1,82 @@
+name: device-api
+
+# Only the contract build. The deck application itself is not built here: it needs the Vaadin
+# frontend toolchain, and nothing about it gates publishing the contract.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# packages: write is only exercised by the publish step below.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  device-api:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the version check diffs against the commit the push started from, which for a
+      # rebase-merge is several commits back. A shallow clone would not contain it.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # -p device-api runs the standalone build alone, without configuring the deck's Spring Boot /
+      # Vaadin build - the same isolation the driver repos get from composite-including it.
+      # No tests exist; this compiles the contract and the generated ContractVersion constant.
+      - name: Build the contract
+        run: ./gradlew -p device-api build --no-daemon
+
+      # Publishing is driven by the version in device-api/build.gradle, not by tags: a merge that
+      # does not bump it is a code change to an unreleased version and must not overwrite a
+      # published artifact (GitHub Packages rejects re-publishing a release version anyway).
+      #
+      # The version is also the skew check drivers run at startup (DeviceApi), so an unbumped
+      # contract change publishes nothing AND is invisible to that check - which is why the bump
+      # rules in the api package-info are not optional.
+      - name: Detect version change
+        id: version
+        env:
+          # The commit main was on before this push. Correct for squash, merge-commit AND
+          # rebase-merge, where HEAD~1 would be one of the pushed commits and could easily be one
+          # that did not touch the version - silently skipping the release.
+          PUSHED_FROM: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          # Groovy assignment, single-quoted: `version = '1.0.0'`. Anchored so the driver-facing
+          # coordinate versions elsewhere in the file can never match.
+          extract() { grep -E "^version *= *'" | head -1 | sed -E "s/^version *= *'([^']*)'.*/\1/"; }
+          current=$(extract < device-api/build.gradle)
+
+          base="${PUSHED_FROM:-}"
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            # No push context (a pull_request run) or a branch's first push: fall back.
+            base="HEAD~1"
+          fi
+          previous=$(git show "${base}:device-api/build.gradle" 2>/dev/null | extract || true)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$current" != "$previous" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "device-api $previous -> $current, will publish" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "device-api unchanged at $current, nothing to publish" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Consumers without a sibling deck checkout resolve this artifact instead of the live source
+      # (both driver repos fall back to it). See doc/06-feature-work/virtual-devices/
+      # driver-api-extraction.md#contract-evolution.
+      - name: Publish to GitHub Packages
+        if: github.event_name == 'push' && steps.version.outputs.changed == 'true'
+        env:
+          # GITHUB_ACTOR is a default Actions variable; the build reads both.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew -p device-api publish --no-daemon

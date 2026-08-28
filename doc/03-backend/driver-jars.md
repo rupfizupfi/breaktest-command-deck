@@ -25,6 +25,7 @@ beans — see
 
 - [At a glance](#at-a-glance)
 - [Both drivers are Windows-only, and that decides the deployment](#both-drivers-are-windows-only-and-that-decides-the-deployment)
+- [The jar on the machine is checked at startup](#the-jar-on-the-machine-is-checked-at-startup)
 - [`dscusb.jar` — load cell](#dscusbjar--load-cell)
 - [`usbmodbus.jar` — frequency converter](#usbmodbusjar--frequency-converter)
 - [Open questions](#open-questions)
@@ -66,8 +67,10 @@ contract in a `deck` package (`compileOnly` on the contract and on
 `spring-boot-autoconfigure`, so neither is bundled into the shadow jar — a copy
 of the contract classes inside a driver jar would shadow the deck's own).
 **Their compile against the live contract is the conformance guarantee**: a
-`device.api` change surfaces as a compile error on the next driver build, and
-both repos therefore need the deck checkout as a sibling directory.
+`device.api` change surfaces as a compile error on the next driver build. Without
+that sibling checkout each repo falls back to the published
+`ch.rupfizupfi.deck:device-api`, which pins a version rather than tracking the
+contract — so a build there proves nothing about drift.
 
 The deck loads them at launch from the `loader.path` directories
 ([gradle-build.md](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath)),
@@ -75,6 +78,16 @@ so a missing jar is a *startup* failure, never a compile failure — and the fix
 a restart, not a rebuild. For bench work, `lib/` plus
 `-PdeckDrivers=local` puts both on `bootRun`'s classpath instead; see
 [`lib/README.md`](../../lib/README.md).
+
+## The jar on the machine is checked at startup
+
+Because a driver is a file drop, the jar running is whatever someone last copied
+there — no compile of either repo can see it. Both auto-configurations therefore
+call `DeviceApi.verifyPluginBuiltAgainst(ContractVersion.VALUE)` in their
+initializer and **refuse startup** on an incompatible contract version, naming
+both versions. Mechanism and the compatibility rules:
+[`driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md#conformance-guarantee).
+The fix is a driver rebuild and a file copy, never an application rebuild.
 
 ## `dscusb.jar` — load cell
 

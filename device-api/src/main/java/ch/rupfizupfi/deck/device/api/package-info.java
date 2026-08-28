@@ -19,6 +19,11 @@
  * <li>The version in this build's {@code build.gradle} is semver <b>against providers</b>:
  *     default-method addition bumps minor, anything a provider must implement bumps major. Bump on
  *     contract change, never per app release.</li>
+ * <li>That version is <b>enforced at runtime</b>, not merely documented:
+ *     {@link ch.rupfizupfi.deck.device.api.DeviceApi#verifyPluginBuiltAgainst} refuses a plugin jar
+ *     whose build-time version is incompatible with the deployed contract, which is the case a
+ *     driver rebuild cannot cover — jars are file-dropped onto {@code loader.path}. So forgetting a
+ *     bump does not just mislead a reader, it disarms the check.</li>
  * </ul>
  */
 package ch.rupfizupfi.deck.device.api;
