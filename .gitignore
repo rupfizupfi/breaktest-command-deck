@@ -45,6 +45,9 @@ scrtip/app.log
 # Local-only deployment secrets: PKCS12 keystore holds an SSL private key
 docker/keystore/
 docker/.secrets/
+# Per-host compose config. Carries KEY_STORE_PASSWORD, so it is a credential file however harmless
+# the default looks. Copy docker/.env.example, which is tracked and holds the non-secret defaults.
+docker/.env
 # Host-provided driver plugins mounted into the deck container. The licence-restricted
 # usbmodbus.jar lives here and must never be committed or baked into an image. The directory's
 # README is tracked so a fresh clone still shows what belongs in it.

@@ -43,7 +43,8 @@ Before `docker compose up -d` for the first time on a host:
 
 1. `<repo>/.secrets/db-password.txt` exists with the desired Postgres
    password (one line, no trailing newline preferred).
-2. `docker/.env` contains `KEY_STORE_PASSWORD=<some-value>`.
+2. `docker/.env` exists (copy `docker/.env.example`; it is gitignored,
+   per host) and contains `KEY_STORE_PASSWORD=<some-value>`.
 3. Optional: `docker/keystore/rupfizupfi.p12` is a real PKCS12 cert with
    alias `rupfizupfi` and the matching password. Otherwise the startup
    script self-signs one.
@@ -222,7 +223,7 @@ names the missing jar.
 | Concern | File |
 |---|---|
 | Compose | `docker/docker-compose.yaml` |
-| Compose env | `docker/.env` |
+| Compose env | `docker/.env` (from `docker/.env.example`) |
 | Container init | `cms/src/docker/bin/startup.sh` |
 | Local-JAR wiring | `command-deck/build.gradle` |
 | Profile properties | `cms/src/main/resources/application-{dev,docker}.properties` |

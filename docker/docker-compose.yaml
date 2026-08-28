@@ -86,7 +86,7 @@ secrets:
   # committed empty file — which yields an empty token, a warning from stageDrivers, and an empty
   # /app/drivers. On the tester, point it at the real thing:
   #     GITHUB_TOKEN_FILE=../.secrets/github-token.txt
-  # The variable holds a path, not a secret, so it is safe in docker/.env (which is tracked); the
-  # token itself belongs in .secrets/, which is not.
+  # The variable holds a path, not a secret, so docker/.env is its home (and .env.example carries it
+  # commented out); the token itself belongs in .secrets/.
   github-token:
     file: ${GITHUB_TOKEN_FILE:-./github-token.empty}

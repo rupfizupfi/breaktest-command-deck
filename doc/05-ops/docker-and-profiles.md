@@ -61,7 +61,7 @@ flowchart TB
         BT["docker/breaktester/<br/>config + media"]
         KS["docker/keystore/<br/>rupfizupfi.p12 (PKCS12)"]
         SEC[".secrets/db-password.txt"]
-        ENV["docker/.env<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
+        ENV["docker/.env (per host,<br/>from .env.example)<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
     end
 
     subgraph Net["docker network rupfizupfi"]
@@ -120,15 +120,15 @@ docker compose -f docker/docker-compose.yaml --profile deck up -d
 docker compose -f docker/docker-compose.yaml --profile cms up -d
 ```
 
-Both app services bind host port `8043:443`. That is not a conflict in
-practice, because they never share a host — see the topology table
-above.
+Both app services bind host port `8043:443` — not a conflict, because
+they never share a host (see the topology table).
 
-`docker/.env` ships with `COMPOSE_PROFILES=deck,rclone`. No `rclone`
-service exists in the compose file, so the profile currently activates
-nothing. It is **not** dead config to be deleted: rclone is intended for
-backing up test result files off the tester. The service definition is
-missing and the intended remote/schedule is unrecorded — see OQ-56.
+`COMPOSE_PROFILES` in `docker/.env` picks the profile; `.env.example`
+sets `deck`. It drops the `rclone` entry the old tracked `.env` carried:
+no `rclone` service exists in the compose file, so it activated nothing.
+The intent is **not** dead config — off-tester backup of test result
+files — but the service definition, remote and schedule are all
+unrecorded, so nothing can activate it yet (OQ-56).
 
 ### Image build and entrypoint
 
@@ -195,19 +195,20 @@ See [`db.md`](db.md) for the database angle.
 
 Before `docker compose up -d`, an operator must:
 
-1. Create `<repo>/.secrets/db-password.txt` containing the desired
+1. Copy `docker/.env.example` to `docker/.env` — per-host and gitignored,
+   because it carries `KEY_STORE_PASSWORD`. The defaults run as they are;
+   `changeit` matches the auto-generated keystore.
+2. Create `<repo>/.secrets/db-password.txt` containing the desired
    Postgres password. (`.gitignore` excludes `.secrets/`.)
-2. Optionally drop a real PKCS12 cert at `docker/keystore/rupfizupfi.p12`
-   (matched to `KEY_STORE_PASSWORD` in `docker/.env`). If absent, the
-   startup script generates a self-signed one. **Accepted as the normal
-   operating mode (2026-08-16)** — the tester is reached over a trusted
-   local network, so the auto-signed cert is intended, not a fallback.
-3. Set or accept `KEY_STORE_PASSWORD=changeit` in `docker/.env` (default
-   matches the auto-generated keystore).
+3. Optionally drop a real PKCS12 cert at `docker/keystore/rupfizupfi.p12`
+   (matched to `KEY_STORE_PASSWORD`). If absent, the startup script
+   generates a self-signed one. **Accepted as the normal operating mode
+   (2026-08-16)** — the tester is reached over a trusted local network,
+   so the auto-signed cert is intended, not a fallback.
 4. **Tester only:** put a PAT with `read:packages` in
    `<repo>/.secrets/github-token.txt` and set
    `GITHUB_TOKEN_FILE=../.secrets/github-token.txt` (a path, so `docker/.env`
-   is a fine home — the token is not). Optionally set `GITHUB_ACTOR`; it
+   is its home — the token is not). Optionally set `GITHUB_ACTOR`; it
    defaults to a placeholder GitHub Packages accepts alongside a valid token.
    Skipping this leaves `/app/drivers` empty, which fails at startup, not at
    build time. Confirm with
@@ -226,7 +227,7 @@ are skipped.
 | Concern | File |
 |---|---|
 | Compose file | `docker/docker-compose.yaml` |
-| Compose env defaults | `docker/.env` |
+| Compose env defaults | `docker/.env.example` (tracked); `docker/.env` is the per-host copy, gitignored |
 | CMS image | `cms/Dockerfile` |
 | Deck image | `command-deck/Dockerfile` |
 | Container entrypoint (shared) | `cms/src/docker/bin/startup.sh` |
@@ -242,7 +243,7 @@ are skipped.
    `application-docker.properties` still hardcodes the Compose-local
    `db:5432`. Needs an externalised JDBC URL and a decision on what
    happens to a running test when the link drops. (OQ-61)
-2. **`rclone` service is missing.** `docker/.env` activates the profile;
-   the compose file never defines it. Intended purpose is off-tester
+2. **`rclone` service is missing.** The compose file never defines it, so
+   `.env.example` does not activate it. Intended purpose is off-tester
    backup of test result files — the remote target, credentials handling
    and schedule are all unrecorded. (OQ-56)

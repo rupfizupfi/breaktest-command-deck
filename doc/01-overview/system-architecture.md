@@ -145,5 +145,5 @@ For Docker: [`05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
 | Gradle modules | `settings.gradle`, `build.gradle`, `cms/build.gradle`, `command-deck/build.gradle` |
 | Cross-module dep | `command-deck/build.gradle:2` (`implementation project(':cms')`) |
 | Profiles | `cms/src/main/resources/application{,-dev,-docker}.properties` (and byte-identical command-deck copies) |
-| Compose | `docker/docker-compose.yaml`, `docker/.env` |
+| Compose | `docker/docker-compose.yaml`, `docker/.env.example` (copy to the gitignored `docker/.env`) |
 | Driver plugin wiring | `command-deck/build.gradle` (`stageDrivers`, `-PdeckDrivers=local`, the `PropertiesLauncher` manifest), `command-deck/Dockerfile` (`LOADER_PATH`); both jars gitignored |

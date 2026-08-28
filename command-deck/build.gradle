@@ -43,8 +43,8 @@ if (deckDrivers == 'local') {
 // how an unpublished driver gets exercised through the real loader.path, and it is inert inside the
 // docker build, which has no ~/.m2. (Only ahead of *these two* - the root build.gradle's
 // subprojects repositories are declared first and are unfiltered, so they get asked first and 404.)
-// stageDrivers logs the filename it staged, which names the version but not which of the two
-// sources it came from.
+// stageDrivers logs each staged jar with the absolute path it resolved from, so a ~/.m2 build and a
+// GitHub Packages build are told apart in the log instead of looking identical.
 repositories {
     mavenLocal {
         content { includeGroup 'ch.rupfizupfi.dscusb' }
@@ -153,9 +153,12 @@ abstract class StageDriverPlugins extends DefaultTask {
             it.into(stagingDir)
         }
 
-        def names = (stagingDir.get().asFile.listFiles() ?: []).collect { it.name }.sort()
-        if (names) {
-            logger.lifecycle(":command-deck: staged driver plugins: " + names.join(', '))
+        // Log the resolved source, not the staged copy: filename alone names the version but not
+        // whether mavenLocal or GitHub Packages answered, which is exactly how version skew hides.
+        def sources = plugins.files.sort { it.name }
+        if (sources) {
+            logger.lifecycle(":command-deck: staged driver plugins:")
+            sources.each { logger.lifecycle(":command-deck:   " + it.name + " <- " + it.absolutePath) }
         } else {
             logger.warn(":command-deck: WARNING - no driver plugin could be staged. The artifact is "
                     + "unreachable (no GITHUB_TOKEN, offline, or the pinned version is not "
