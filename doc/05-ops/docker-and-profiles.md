@@ -179,17 +179,16 @@ See [`db.md`](db.md) for the database angle.
   second copy is a silent version-skew trap. Drop the jar in and restart; there
   is nothing to rebuild. Owned by
   [`driver-jars.md`](../03-backend/driver-jars.md).
-* **Build secret `github-token`**, deck build only, taken from the
-  **`GITHUB_TOKEN` environment variable**, which must be exported in the shell
-  that runs the build — **not** put in `docker/.env`, which is tracked in git.
-  A PAT with
+* **Build secret `github-token`**, deck build only. A file-backed secret like
+  `db-password`, its path set by `GITHUB_TOKEN_FILE` and defaulting to the
+  committed **empty** `docker/github-token.empty`. A PAT with
   `read:packages`, mounted only into the build stage so it never lands in a
   layer. `stageDrivers` needs it because GitHub Packages demands a token even
-  for public reads. **Optional** — unset, the build still succeeds, warns, and
-  leaves `/app/drivers` empty; the container then refuses to start in real mode
-  naming the missing provider. Environment-backed rather than a `file:` secret
-  precisely for that: compose aborts *before the build starts* if a declared
-  secret file is missing, which would have made the token mandatory. The `cms`
+  for public reads. **Optional** — left at the default the build still succeeds,
+  warns, and leaves `/app/drivers` empty; the container then refuses to start in
+  real mode naming the missing provider. The path is indirected precisely for
+  that: compose aborts *before the build starts* if a declared secret's file is
+  missing, so a plain path would have made the token mandatory. The `cms`
   profile neither uses nor needs it.
 
 ### Required host preparation
@@ -205,13 +204,13 @@ Before `docker compose up -d`, an operator must:
    local network, so the auto-signed cert is intended, not a fallback.
 3. Set or accept `KEY_STORE_PASSWORD=changeit` in `docker/.env` (default
    matches the auto-generated keystore).
-4. **Tester only:** `export GITHUB_TOKEN=<PAT with read:packages>` in the shell
-   that runs the build, so it can resolve the published `dscusb` driver plugin.
-   **Do not put it in `docker/.env`** — that file is tracked in git. Optionally
-   export `GITHUB_ACTOR` too; it defaults to a placeholder, which GitHub
-   Packages accepts alongside a valid token. Skipping this does not break the
-   build — it produces an image whose `/app/drivers` is empty, which fails at
-   startup instead. Confirm with
+4. **Tester only:** put a PAT with `read:packages` in
+   `<repo>/.secrets/github-token.txt` and set
+   `GITHUB_TOKEN_FILE=../.secrets/github-token.txt` (a path, so `docker/.env`
+   is a fine home — the token is not). Optionally set `GITHUB_ACTOR`; it
+   defaults to a placeholder GitHub Packages accepts alongside a valid token.
+   Skipping this leaves `/app/drivers` empty, which fails at startup, not at
+   build time. Confirm with
    `docker compose exec server-deck ls /app/drivers`.
 5. **Tester only:** copy `usbmodbus.jar` into `docker/drivers-local/`. Without
    it the container starts and then refuses, naming the missing `DriveProvider`

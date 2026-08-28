@@ -80,10 +80,13 @@ secrets:
   # Build-time only: a PAT with read:packages, used to resolve ch.rupfizupfi.dscusb:dscusb.
   # Only the deck image build reads it.
   #
-  # Environment-backed rather than file-backed on purpose. A `file:` secret whose path does not
-  # exist makes compose fail *before* the build starts, which would make the token mandatory and
-  # break the rule that a missing driver is a startup failure and never a build failure. With
-  # `environment:`, an unset GITHUB_TOKEN yields an empty secret, the build proceeds, stageDrivers
-  # warns, and /app/drivers ships empty. Set it in docker/.env on the tester.
+  # File-backed like db-password, so the token never has to exist in an environment. The path is
+  # indirected because compose aborts the build outright when a declared secret's file is missing,
+  # and a missing driver must stay a *startup* failure, never a build failure. So it defaults to a
+  # committed empty file — which yields an empty token, a warning from stageDrivers, and an empty
+  # /app/drivers. On the tester, point it at the real thing:
+  #     GITHUB_TOKEN_FILE=../.secrets/github-token.txt
+  # The variable holds a path, not a secret, so it is safe in docker/.env (which is tracked); the
+  # token itself belongs in .secrets/, which is not.
   github-token:
-    environment: GITHUB_TOKEN
+    file: ${GITHUB_TOKEN_FILE:-./github-token.empty}
