@@ -3,6 +3,7 @@ package ch.rupfizupfi.deck.filesystem;
 import ch.rupfizupfi.deck.data.SettingRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -33,8 +34,10 @@ public class SimulatedStorageLocationService extends StorageLocationService {
     /** Named so it is obvious in a file browser, not just to code. */
     public static final String SIMULATED_SUBDIRECTORY = "simulated";
 
-    public SimulatedStorageLocationService(SettingRepository settingRepository) {
-        super(settingRepository);
+    public SimulatedStorageLocationService(SettingRepository settingRepository,
+                                           @Value("${deck.storage.root:#{systemProperties['user.home']}}")
+                                           String storageRoot) {
+        super(settingRepository, storageRoot);
         logger.warn("SIMULATED HARDWARE: run artefacts are written under .../{}/ and are NOT"
                 + " measurements of a real specimen", SIMULATED_SUBDIRECTORY);
     }

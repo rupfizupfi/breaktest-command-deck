@@ -24,6 +24,11 @@ public class SettingRepository {
     @Value("${spring.profiles.active:dev}")
     private String activeProfile;
 
+    /** Where {@code settings.json} lives outside dev. See {@code StorageLocationService} for why
+     * {@code user.home} is not good enough in a container. */
+    @Value("${deck.storage.root:#{systemProperties['user.home']}}")
+    private String storageRoot;
+
     private final List<Setting<?>> defaultSettings = List.of(
             Setting.create(Setting.Key.TESTRUNNER_SUCK, true),
             Setting.create(Setting.Key.TESTRUNNER_SUCK_DURATION, 10),
@@ -56,6 +61,10 @@ public class SettingRepository {
     private void initializeSettingsFile() throws IOException {
         Path settingsFilePath = getSettingFilePath();
         if (Files.notExists(settingsFilePath)) {
+            // The parent is storage-root relative and may not exist yet on a fresh machine.
+            // Without this, createFile throws, init() swallows it, and every later read silently
+            // returns defaults — the settings file can then never be written.
+            Files.createDirectories(settingsFilePath.getParent());
             Files.createFile(settingsFilePath);
             objectMapper.writeValue(settingsFilePath.toFile(), defaultSettings);
         }
@@ -66,7 +75,7 @@ public class SettingRepository {
     }
 
     private Path getSettingFilePath() {
-        String baseDir = getEnvironment().equals("dev") ? Paths.get(System.getProperty("user.dir")).toString() : Paths.get(System.getProperty("user.home"), "breaktester").toString();
+        String baseDir = getEnvironment().equals("dev") ? Paths.get(System.getProperty("user.dir")).toString() : Paths.get(storageRoot, "breaktester").toString();
         return Paths.get(baseDir, SETTINGS_FILE);
     }
 

@@ -17,8 +17,6 @@ not in this one — see [`../../03-backend/driver-jars.md`](../../03-backend/dri
 - [[ ] OQ-50 · Investigate the dual `Cfw11` handle](#--oq-50--investigate-the-dual-cfw11-handle)
 - [[ ] OQ-43 · Document `usbmodbus.jar` procurement — **owner-owed**](#--oq-43--document-usbmodbusjar-procurement--owner-owed)
 - [[ ] OQ-74 · Decide whether one bad sample should end the run](#--oq-74--decide-whether-one-bad-sample-should-end-the-run)
-- [[ ] OQ-75 · Commit the `dscusb` source](#--oq-75--commit-the-dscusb-source)
-- [[ ] OQ-76 · Modernise the `usbmodbus` build](#--oq-76--modernise-the-usbmodbus-build)
 
 ### [ ] OQ-45 · Reconnect on load-cell loss
 - **Files:** `command-deck/.../device/loadcell/` (`LoadCellThread`, `CellValueStream`)
@@ -51,14 +49,3 @@ not in this one — see [`../../03-backend/driver-jars.md`](../../03-backend/dri
 - **Note:** whichever way it goes, OQ-45's reconnect-and-resume is what bounds the cost.
 - **Verify:** needs the bench, or the OQ-62 simulator's NaN-injection switch.
 
-### [ ] OQ-75 · Commit the `dscusb` source
-- **Where:** sibling `dscusb` repo — 14 files modified and uncommitted, including a package move into `ch.rupfizupfi.dscusb.dscusb` / `.t24` and `Main.kt` → `examples/Demo.kt`.
-- **Why it matters:** `lib/dscusb.jar` here (`ec47aa6`) was built from that working tree, so the shipped binary cannot be reproduced from that repo's history.
-- **Blast radius, now contained:** the shipped jar has `ch/rupfizupfi/dscusb/CellValueStream.class`, the working tree emits `ch/rupfizupfi/dscusb/dscusb/`. Since [driver-api-extraction](../virtual-devices/driver-api-extraction.md) landed, a rebuilt jar breaks only `CellValueStreamAdapter` / `CellValueStreamProvider` in the `drivers` source set — update those two imports in the same change.
-- **Verify:** rebuild from a clean checkout and confirm the jar still matches.
-
-### [ ] OQ-76 · Modernise the `usbmodbus` build
-- **Where:** sibling `usbmodbus` repo — Gradle 8.10, Kotlin 1.9.23, `jvmToolchain(21)`, johnrengelman shadow 7.1.0, foojay 0.5.0.
-- **Change:** the same migration `dscusb` already took — Gradle 9.7, Kotlin 2.4.10, `JvmTarget.JVM_26`, `com.gradleup.shadow`, foojay 1.0.0.
-- **Why now:** installed JDKs are 26 and corretto-19, so the repo cannot build at all today. The `Drive` seam does **not** wait on this — its adapter compiles against the shipped jar ([driver-api-extraction](../virtual-devices/driver-api-extraction.md)). What does: any CFW11-side change, including tier 2's fresh-handle path and OQ-50.
-- **Verify:** `./gradlew shadowJar` produces `usbmodbus.jar`; drop it in `lib/` and `./gradlew :command-deck:compileJava` still passes.

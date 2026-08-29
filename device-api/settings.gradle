@@ -1,0 +1,9 @@
+// A standalone build, not a subproject: the driver repos (../../dscusb, ../../usbmodbus)
+// composite-include THIS directory to compile against the contract, and they must not drag in the
+// deck's Spring Boot / Vaadin build to do it. The deck includes it via includeBuild in the root
+// settings.gradle.
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'device-api'

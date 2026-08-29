@@ -14,3 +14,8 @@ plugins {
 include 'cms'
 include 'command-deck'
 
+// The hardware contract lives in its own build so the driver repos can composite-include it
+// without configuring the deck's Spring Boot / Vaadin build. Substitutes
+// ch.rupfizupfi.deck:device-api wherever it is depended on.
+includeBuild 'device-api'
+

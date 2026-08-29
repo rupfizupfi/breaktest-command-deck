@@ -129,7 +129,7 @@ last refreshed and have no entry here yet; their detail lives in
 ## Hardware
 
 Moved to [`TASKS-hardware.md`](TASKS-hardware.md) — OQ-45, OQ-46, OQ-44,
-OQ-50, OQ-43, OQ-74, OQ-75, OQ-76, including the two sibling driver repos.
+OQ-50, OQ-43, OQ-74.
 
 ---
 
@@ -154,7 +154,7 @@ OQ-50, OQ-43, OQ-74, OQ-75, OQ-76, including the two sibling driver repos.
 - **Note:** with `ddl-auto=update` Hibernate will not drop the column — do it manually on the live database.
 
 ### [ ] OQ-56 · Define or drop the `rclone` service
-- **Files:** `docker/.env` (`COMPOSE_PROFILES=deck,rclone`), `docker/docker-compose.yaml`
+- **Files:** `docker/docker-compose.yaml`, `docker/.env.example` (`COMPOSE_PROFILES`, now `deck` only)
 - **Intent:** back up test result files off the tester. **Do not just delete the profile** — the intent is real; the service definition is missing.
 - **Needed:** remote target, credential handling, schedule, and what gets backed up (the `docker/breaktester/` bind mount holds the CSV results).
 

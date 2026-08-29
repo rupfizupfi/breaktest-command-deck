@@ -1,60 +1,170 @@
+import javax.inject.Inject
+
 dependencies {
     implementation project(':cms')
+    // Resolved by the device-api included build (root settings.gradle), never from a repository.
+    implementation 'ch.rupfizupfi.deck:device-api:1.0.0'
 }
 
-// The two vendor driver jars are OPTIONAL for the main source set: nothing under src/main
-// references ch.rupfizupfi.usbmodbus or ch.rupfizupfi.dscusb, so a fresh clone compiles and runs
-// without either jar. The adapters that do reference them live in their own 'drivers' source set.
+// The vendor driver jars are runtime plugins, never build inputs. Each implements
+// ch.rupfizupfi.deck:device-api in its own repo (../dscusb, ../usbmodbus — both composite-include
+// device-api, so THEIR compile is the contract-conformance check) and ships a Spring Boot
+// auto-configuration that registers its provider beans. Nothing in this module names a driver class.
 //
-// Registered only when BOTH jars are present: every test type drives the motor and watches the
-// load cell, so real hardware operation needs both or neither. Split this if that ever changes.
-// See doc/06-feature-work/virtual-devices/driver-api-extraction.md
-def vendorJarFiles = [
-        file("${rootProject.projectDir}/lib/dscusb.jar"),
-        file("${rootProject.projectDir}/lib/usbmodbus.jar")
-]
-def vendorJarsPresent = vendorJarFiles.every { it.exists() }
+// The boot jar therefore contains NO driver, in any build: bootJar runs through PropertiesLauncher
+// (see the manifest below) and the drivers come from the loader.path directories at launch. A jar
+// present there is loaded, a jar absent is not, and absence stays a *startup* failure named by
+// HardwareModeCheck — put the jar in place and restart, no rebuild. That is also what keeps the
+// licence-restricted usbmodbus.jar out of the docker image: it is only ever a host mount.
+//
+// deckDrivers=local is the bench escape hatch for driving real hardware from `bootRun`, which runs
+// off the classpath rather than the jar. developmentOnly is deliberate — the Spring Boot plugin
+// excludes it from bootJar, so even a jar built with -PdeckDrivers=local stays driver-free.
+def deckDrivers = providers.gradleProperty('deckDrivers').getOrElse('off')
+if (!(deckDrivers in ['off', 'local'])) {
+    throw new GradleException("deckDrivers=${deckDrivers} is not valid. Valid values: off, local. "
+            + "('auto' is gone: drivers load at runtime from loader.path, not from the build.)")
+}
 
-if (vendorJarsPresent) {
-    def vendorJars = files(vendorJarFiles)
+if (deckDrivers == 'local') {
+    def driverJars = fileTree("${rootProject.projectDir}/lib") { include '*.jar' }
+    dependencies {
+        developmentOnly driverJars
+    }
+    def names = driverJars.files.collect { it.name }.sort()
+    logger.lifecycle(":command-deck: deckDrivers=local - bootRun loads driver plugins from lib/: "
+            + (names ? names.join(', ') : "none - deck.hardware.mode=real will refuse to start"))
+}
 
-    sourceSets {
-        drivers {
-            java.srcDirs = ['src/drivers/java']
-            resources.srcDirs = []
+// The PUBLIC driver plugin, staged into the docker image by stageDrivers below. Resolved only by
+// that task: `build`, `bootRun` and `hillaGenerate` never touch this repository, so a fresh clone
+// builds with no credentials — GitHub Packages demands a token even for public reads.
+// mavenLocal is listed ahead of GitHub Packages on purpose: `publishToMavenLocal` in ../dscusb is
+// how an unpublished driver gets exercised through the real loader.path, and it is inert inside the
+// docker build, which has no ~/.m2. (Only ahead of *these two* - the root build.gradle's
+// subprojects repositories are declared first and are unfiltered, so they get asked first and 404.)
+// stageDrivers logs each staged jar with the absolute path it resolved from, so a ~/.m2 build and a
+// GitHub Packages build are told apart in the log instead of looking identical.
+repositories {
+    mavenLocal {
+        content { includeGroup 'ch.rupfizupfi.dscusb' }
+    }
+    maven {
+        name = 'GitHubPackagesDscusb'
+        url = uri('https://maven.pkg.github.com/rupfizupfi/dscusb')
+        credentials {
+            username = providers.environmentVariable('GITHUB_ACTOR').getOrElse('')
+            password = providers.environmentVariable('GITHUB_TOKEN').getOrElse('')
         }
+        content { includeGroup 'ch.rupfizupfi.dscusb' }
     }
+}
 
-    sourceSets.drivers.compileClasspath =
-            sourceSets.main.output + sourceSets.main.compileClasspath + vendorJars
-    sourceSets.drivers.runtimeClasspath =
-            sourceSets.drivers.output + sourceSets.drivers.compileClasspath
-
-    // On 'assemble', never on 'classes': compileDriversJava consumes the main output, so hooking it
-    // into 'classes' makes classes -> driversClasses -> compileDriversJava -> classes.
-    // bootJar/bootRun need no hook - a buildable source-set output on their classpath is enough.
-    tasks.named('assemble') { dependsOn 'driversClasses' }
-
-    bootRun {
-        classpath += sourceSets.drivers.output + vendorJars
+// Gradle 9 role-locked configurations: dependencies are declared against the dependencyScope and
+// resolved through the resolvable one. Declaring them on the resolvable configuration is an error.
+configurations {
+    dependencyScope('driverPlugins')
+    resolvable('deckDriver') {
+        extendsFrom driverPlugins
+        // Defensive: the published pom has no dependencies, and a driver plugin's own deps are
+        // already inside its shadow jar. Nothing else may ride along into the plugin directory.
+        transitive = false
     }
+}
 
-    bootJar {
-        classpath sourceSets.drivers.output, vendorJars
-    }
-} else {
-    logger.lifecycle(":command-deck: vendor driver jars absent from lib/, building without the "
-            + "'drivers' source set - deck.hardware.mode=real will refuse to start")
+dependencies {
+    driverPlugins "ch.rupfizupfi.dscusb:dscusb:${providers.gradleProperty('dscusbVersion').getOrElse('0.2.0')}"
+}
+
+tasks.register('stageDrivers', StageDriverPlugins) {
+    group = 'distribution'
+    description = 'Resolves the public driver plugins into build/drivers for the docker image.'
+    // lenient: a driver that cannot be resolved - no token, offline, version not published yet -
+    // must NOT fail the build. A missing driver is a *startup* failure named by HardwareModeCheck,
+    // and that rule holds for the image build too: an unreachable artifact repository is not a
+    // reason to be unable to build the application. The task warns instead.
+    plugins.from(configurations.deckDriver.incoming.artifactView { lenient = true }.files)
+    stagingDir = layout.buildDirectory.dir('drivers')
+    // Never up-to-date: with nothing resolved both the inputs and the output directory are empty,
+    // which is a textbook UP-TO-DATE and would swallow the warning that a driver is missing. That
+    // warning is the only build-time signal there is, so it has to print every run.
+    outputs.upToDateWhen { false }
+}
+
+// The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
+// task dependency on it — with device-api coming from an included build, a standalone
+// `hillaGenerate` (script/typecheck.ps1) then fails with "querying ... before task
+// ':device-api:jar' has completed is not supported". Compilation forces the jar as a side effect,
+// which is why `build` never sees this; the Vaadin/Hilla tasks need it stated.
+def deviceApiJar = gradle.includedBuild('device-api').task(':jar')
+tasks.matching {
+    it.name in ['hillaGenerate', 'hillaConfigure', 'vaadinPrepareFrontend', 'vaadinBuildFrontend']
+}.configureEach {
+    dependsOn deviceApiJar
 }
 
 bootJar {
     // Specific configuration for Command Deck application JAR
     archiveBaseName = 'command-deck-application'
     enabled = true
+    manifest {
+        // PropertiesLauncher instead of the plugin's default JarLauncher: it extends the classpath
+        // with the directories named by loader.path (LOADER_PATH env / -Dloader.path), which is how
+        // the driver plugins get loaded at launch instead of being baked in. Start-Class and
+        // Spring-Boot-Classes/Lib are still written by the plugin, so BOOT-INF stays on the
+        // classpath and the app itself starts exactly as before. Boot 4 moved the launcher into
+        // org.springframework.boot.loader.launch — the pre-3.2 name would fail with CNFE.
+        attributes 'Main-Class': 'org.springframework.boot.loader.launch.PropertiesLauncher'
+    }
 }
 
 jar {
     // Library JAR configuration for shared components
     archiveBaseName = 'command-deck-library'
     enabled = true
+}
+
+/**
+ * Syncs the resolved driver plugins into the staging directory the docker image copies.
+ *
+ * A plain Sync task cannot do this job: with nothing resolved its source is empty, Gradle reports
+ * NO-SOURCE and skips it entirely — leaving no directory for the Dockerfile to COPY (which would
+ * fail the image build) and no warning that the driver is missing. This always runs, and its
+ * @OutputDirectory guarantees the directory exists even when empty.
+ *
+ * Sync semantics, not copy: a version bump must remove the jar it replaces, or loader.path would
+ * offer both and the older one could win.
+ */
+abstract class StageDriverPlugins extends DefaultTask {
+
+    @InputFiles
+    abstract ConfigurableFileCollection getPlugins()
+
+    @OutputDirectory
+    abstract DirectoryProperty getStagingDir()
+
+    @Inject
+    abstract FileSystemOperations getFs()
+
+    @TaskAction
+    void stage() {
+        fs.sync {
+            it.from(plugins)
+            it.into(stagingDir)
+        }
+
+        // Log the resolved source, not the staged copy: filename alone names the version but not
+        // whether mavenLocal or GitHub Packages answered, which is exactly how version skew hides.
+        def sources = plugins.files.sort { it.name }
+        if (sources) {
+            logger.lifecycle(":command-deck: staged driver plugins:")
+            sources.each { logger.lifecycle(":command-deck:   " + it.name + " <- " + it.absolutePath) }
+        } else {
+            logger.warn(":command-deck: WARNING - no driver plugin could be staged. The artifact is "
+                    + "unreachable (no GITHUB_TOKEN, offline, or the pinned version is not "
+                    + "published). This is deliberately not a build failure - the jar that comes "
+                    + "out is valid. But with deck.hardware.mode=real it will refuse to start and "
+                    + "name the missing provider. See doc/03-backend/driver-jars.md.")
+        }
+    }
 }

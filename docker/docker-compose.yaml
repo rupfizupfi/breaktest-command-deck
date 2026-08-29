@@ -16,6 +16,9 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
       - DB_PASSWORD_FILE=/run/secrets/db-password
+      # Both images create appuser with --home /nonexistent, so user.home cannot be the storage
+      # root: `~/breaktester` would resolve away from the bind mount below.
+      - DECK_STORAGE_ROOT=/home/appuser
     depends_on:
       db:
         condition: service_healthy
@@ -26,6 +29,11 @@ services:
     build:
       context: ..
       dockerfile: command-deck/Dockerfile
+      args:
+        - GITHUB_ACTOR=${GITHUB_ACTOR:-docker-build}
+      # Read access to the published dscusb driver plugin. Needs read:packages only.
+      secrets:
+        - github-token
     secrets:
       - db-password
     ports:
@@ -33,10 +41,19 @@ services:
     volumes:
       - ./breaktester:/home/appuser/breaktester
       - ./keystore:/home/appuser/keystore
+      # The licence-restricted CFW11 driver plugin: host-provided, read-only, never in the image.
+      # Second entry on the container's LOADER_PATH; drop the jar in and restart, no rebuild.
+      - ./drivers-local:/app/drivers-local:ro
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
       - DB_PASSWORD_FILE=/run/secrets/db-password
+      # Both images create appuser with --home /nonexistent, so user.home cannot be the storage
+      # root: `~/breaktester` would resolve away from the bind mount below.
+      - DECK_STORAGE_ROOT=/home/appuser
+      # The tester writes to the authoritative dataset, not the Compose-local db (OQ-61). Unset,
+      # it falls back to that local db - fine for a smoke test, wrong for a real run.
+      - DB_URL=${DECK_DB_URL:-jdbc:postgresql://db:5432/rupfizupfi}
     depends_on:
       db:
         condition: service_healthy
@@ -69,3 +86,16 @@ volumes:
 secrets:
   db-password:
     file: ../.secrets/db-password.txt
+  # Build-time only: a PAT with read:packages, used to resolve ch.rupfizupfi.dscusb:dscusb.
+  # Only the deck image build reads it.
+  #
+  # File-backed like db-password, so the token never has to exist in an environment. The path is
+  # indirected because compose aborts the build outright when a declared secret's file is missing,
+  # and a missing driver must stay a *startup* failure, never a build failure. So it defaults to a
+  # committed empty file — which yields an empty token, a warning from stageDrivers, and an empty
+  # /app/drivers. On the tester, point it at the real thing:
+  #     GITHUB_TOKEN_FILE=../.secrets/github-token.txt
+  # The variable holds a path, not a secret, so docker/.env is its home (and .env.example carries it
+  # commented out); the token itself belongs in .secrets/.
+  github-token:
+    file: ${GITHUB_TOKEN_FILE:-./github-token.empty}

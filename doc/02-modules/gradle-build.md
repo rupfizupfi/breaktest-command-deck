@@ -16,11 +16,12 @@ Document how the Gradle multi-project build wires `:cms` and `:command-deck`, wh
   - [Root `build.gradle`](#root-buildgradle)
   - [`:cms/build.gradle` (cms-specific)](#cmsbuildgradle-cms-specific)
   - [`:command-deck/build.gradle`](#command-deckbuildgradle)
-  - [The `drivers` source set](#the-drivers-source-set)
+  - [Driver plugins: `loader.path`, not the classpath](#driver-plugins-loaderpath-not-the-classpath)
   - [Vaadin Gradle plugin](#vaadin-gradle-plugin)
   - [Local JAR census (`lib/`)](#local-jar-census-lib)
   - [Build outputs](#build-outputs)
   - [`gradle.properties`](#gradleproperties)
+- [Continuous integration](#continuous-integration)
 - [Where to look in the code](#where-to-look-in-the-code)
 - [Open questions](#open-questions)
 
@@ -57,7 +58,7 @@ Two-line module declaration plus plugin pinning:
 
 - `settings.gradle:7` pins `id 'com.vaadin' version "${vaadinVersion}"` (25.2.6 from `gradle.properties:3`).
 - `settings.gradle` also applies `org.gradle.toolchains.foojay-resolver-convention` so the JDK 26 toolchain can be provisioned.
-- `settings.gradle` includes `cms` and `command-deck`. There is no third module, and [`shared-code-strategy.md`](shared-code-strategy.md) records the decision that there won't be.
+- `settings.gradle` includes `cms` and `command-deck`, and `includeBuild`s `device-api` — a **standalone composite build**, not a third subproject, so [`shared-code-strategy.md`](shared-code-strategy.md)'s no-third-module decision stands. It is standalone so the driver repos can composite-include the contract without configuring the deck's Spring Boot / Vaadin build; it substitutes `ch.rupfizupfi.deck:device-api` wherever that coordinate is depended on.
 - The Vaadin pre-release maven repo is added in `pluginManagement.repositories`.
 
 ### Root `build.gradle`
@@ -88,20 +89,27 @@ No extra dependencies, no extra repositories, no extra plugins.
 Two things on top of the root:
 
 1. `implementation project(':cms')` — pulls in the `cms-library-plain.jar` (the plain jar, **not** the Spring Boot fat jar — Spring Boot's Gradle plugin makes `project(':cms')` resolve to the regular jar artefact). This is the only declared cross-module link; everything else flows through Spring component scan at runtime.
-2. The conditional [`drivers` source set](#the-drivers-source-set). There is deliberately **no** `fileTree` and no `flatDir` repository: no `src/main` class references a vendor type, so the jars belong to that source set alone.
+2. `implementation 'ch.rupfizupfi.deck:device-api:1.0.0'` — resolved by the `device-api` included build, never from a repository.
+3. The [driver plugin](#driver-plugins-loaderpath-not-the-classpath) wiring: a `stageDrivers` task and an opt-in `developmentOnly` edge. No configuration puts a driver on `bootJar`.
+4. An explicit `dependsOn` from the Vaadin/Hilla tasks onto the included build's `:jar`: the Vaadin plugin queries the runtime classpath mid-execution without declaring the dependency, so a standalone `hillaGenerate` (what `script/typecheck.ps1` runs) fails without it.
 
 Output JAR names follow the same pattern: `command-deck-application.jar` (boot) + `command-deck-library-plain.jar` (plain). The CMS Dockerfile assumes the `cms-application.jar` will be the only fat JAR copied; the command-deck Dockerfile makes the same assumption for its image.
 
-### The `drivers` source set
+### Driver plugins: `loader.path`, not the classpath
 
-Registered **only when both** `lib/dscusb.jar` and `lib/usbmodbus.jar` exist — real hardware needs both, so per-device gating buys nothing. Sources at `command-deck/src/drivers/java`; compile classpath is the main output plus the main compile classpath (the adapters are `@Component`s and need Spring) plus the two jars. `bootRun` and `bootJar` both get the drivers output **and** the jars, which is what puts the adapter classes in `BOOT-INF/classes` and the vendor jars in `BOOT-INF/lib`.
+**No build produces a boot jar containing a driver.** `bootJar` sets `Main-Class` to `org.springframework.boot.loader.launch.PropertiesLauncher` (Boot 4 moved the launcher into `…loader.launch`; the pre-3.2 name fails with `ClassNotFoundException`), which extends the classpath at launch with the directories named by `loader.path` / `LOADER_PATH`. A jar present there is loaded, a jar absent is not, and absence stays a *startup* failure named by `HardwareModeCheck` — the fix is to put the jar in place and restart, never to rebuild. That is also what keeps the licence-restricted `usbmodbus.jar` out of every image and out of git.
 
-Two constraints worth keeping:
+Each jar is a self-contained deck plugin, built in its own sibling repo: it implements `ch.rupfizupfi.deck:device-api` (composite-included from `device-api/` here, so **the driver repo's compile is the contract-conformance check**) and ships a Spring Boot auto-configuration registered via `META-INF/spring/...AutoConfiguration.imports` — required because the driver packages sit outside the deck's `ch.rupfizupfi.deck` component-scan root. `PropertiesLauncher` puts `loader.path` jars in the same classloader as the app, so those imports files are found exactly as a nested `BOOT-INF/lib` jar's would be. Nothing in this repo names a driver class.
 
-- **Hook `driversClasses` onto `assemble`, never onto `classes`.** `compileDriversJava` consumes the main output, so `classes.dependsOn driversClasses` creates `classes → driversClasses → compileDriversJava → classes` and Gradle fails with a circular-dependency error. `bootJar` / `bootRun` need no hook at all: a buildable source-set output on their classpath already carries the task dependency.
-- **`.gitignore`'s browser-driver rule is anchored** to `/drivers/` (`.gitignore:25`). Unanchored, it matched `command-deck/src/drivers/` too and the adapters never appeared in `git status`.
+Three build-side pieces, and that is all:
 
-With the jars absent the block is skipped and a lifecycle line says so; `:command-deck:compileJava` still succeeds. What fails then is *startup* — see [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode). Design rationale: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md).
+| Piece | Does what |
+|---|---|
+| `stageDrivers` (custom `StageDriverPlugins`) | Resolves the **public** driver `ch.rupfizupfi.dscusb:dscusb` into `build/drivers/` for the docker image to copy, with sync semantics so a version bump deletes the jar it replaces. Not a plain `Sync` task: with nothing resolved that reports `NO-SOURCE` and is skipped, leaving no directory for the Dockerfile to `COPY` and no warning. Never up-to-date, so the warning prints every run. The version stays in the filename so `ls /app/drivers` identifies the driver build. Pin with `-PdscusbVersion=`. |
+| `-PdeckDrivers=local` | Bench escape hatch: puts `lib/*.jar` on **`bootRun`'s** classpath as `developmentOnly`, which the Spring Boot plugin excludes from `bootJar` — so even a jar built with this option on stays driver-free. Default is `off`; those are the only two values. |
+| A content-filtered GitHub Packages repository | Resolved **only** by `stageDrivers`, because GitHub Packages demands a token even for public reads. `build`, `bootRun` and `hillaGenerate` never touch it, so a fresh clone builds with no credentials. `mavenLocal` is listed ahead of it so `publishToMavenLocal` in `../dscusb` can be exercised through the real `loader.path`; it is inert in the docker build, which has no `~/.m2`. |
+
+Design rationale and history: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md); what fails at startup without the jars: [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode); how the container gets them: [`../05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
 
 ### Vaadin Gradle plugin
 Applied to **both** subprojects (root `build.gradle:19`). Gives each module:
@@ -119,7 +127,7 @@ Crucially, **the plugin runs independently per module**. Each module's `bootJar`
   - a `rollupOptions.onwarn` filter that silences Rollup's `MIXED_EXPORTS` warning — likely arising from cross-module imports.
 
 ### Local JAR census (`lib/`)
-Sole tracked entry: `lib/dscusb.jar` (the USB load-cell driver). `lib/usbmodbus.jar` exists locally but is gitignored at `.gitignore:36`. Neither is on any module's `implementation` configuration; both reach only the [`drivers` source set](#the-drivers-source-set), so a missing jar is a **startup** failure, never a compile failure. Where each comes from and what its build needs: [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
+**Nothing in `lib/` is tracked** — `.gitignore` excludes `lib/*.jar`, and only the directory's `README.md` is committed. It holds bench-local copies of `dscusb.jar` and `usbmodbus.jar` for driving real hardware from `bootRun` with `-PdeckDrivers=local`; production takes neither from here. Where each comes from and what its build needs: [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
 
 The JARs are **not** available to `:cms`, which imports no driver code. Note for anyone tempted to add a `fileTree(dir: 'lib', ...)` to the root `subprojects` block: a *relative* directory there resolves per subproject, to `cms/lib/` and `command-deck/lib/`, neither of which exists — it would look like it grants both modules access and do nothing.
 
@@ -146,15 +154,33 @@ project.group=ch.rupfizupfi
 
 `hillaVersion` is set but **not referenced** by any build file in this checkout (`vaadinVersion` is used everywhere). Likely vestigial from older Hilla 2.x releases that pinned hilla independently of vaadin.
 
+## Continuous integration
+
+Two workflows, both on pull requests and pushes to `main`:
+
+| Workflow | Runs | Publishes |
+|---|---|---|
+| [`build.yml`](../../.github/workflows/build.yml) | `./gradlew build -x test`, then [`script/typecheck.ps1`](../../script/typecheck.ps1) under ubuntu's pwsh | nothing |
+| [`device-api.yml`](../../.github/workflows/device-api.yml) | `./gradlew -p device-api build` | the contract, when its version changed |
+
+Three things `build.yml` depends on:
+
+- **No credentials.** `build` never invokes `stageDrivers`, the only task that resolves from GitHub Packages, so the job needs no token and stages no driver jar. A driver is a launch-time plugin; its absence cannot fail a build.
+- **`pnpm install --frozen-lockfile` in each module**, so the gate can resolve `tsc`. It runs before Gradle: `build` in dev mode does not pull `vaadinPrepareFrontend` into the task graph, but a production-mode build would — and that task installs with npm and deletes `pnpm-lock.yaml`, which `--frozen-lockfile` afterwards could not survive (the same hazard `script/typecheck.ps1` steps around).
+- **The regenerated Hilla client is not diffed against what is committed.** It does not come back byte-identical — `generated-file-list.txt` reorders nondeterministically — so a drift check would fail on noise.
+
+The driver repos run the mirror image: each composite-includes `device-api/` from a sibling checkout of this repo pinned to `main`, making their compile the contract-conformance check. `dscusb` publishes on a version bump; `usbmodbus` builds only, since its shadow jar bundles vendor jars that may not be redistributed.
+
 ## Where to look in the code
-- `settings.gradle:1-17`
-- `build.gradle:1-68` (root)
+- `settings.gradle:1-21`
+- `build.gradle:1-73` (root)
 - `cms/build.gradle:1-11`
-- `command-deck/build.gradle:1-20`
+- `command-deck/build.gradle:1-164`
+- `device-api/settings.gradle:1-9` and `device-api/build.gradle:1-40` (the included build)
 - `gradle.properties:1-10`
-- `cms/Dockerfile:1-31` and `command-deck/Dockerfile:1-30`
+- `cms/Dockerfile:1-30` and `command-deck/Dockerfile:1-61`
 - `command-deck/vite.config.ts:1-53` and `command-deck/customFileSystemRouterPlugin.ts:1-144`
-- `lib/dscusb.jar` (tracked binary)
+- `lib/README.md` (the directory's only tracked file — see [Local JAR census](#local-jar-census-lib))
 
 To see the resolved dependency graph for either module, run
 `./gradlew :command-deck:dependencies --configuration runtimeClasspath`

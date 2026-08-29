@@ -1,0 +1,93 @@
+// The hardware contract and nothing else. Zero dependencies is load-bearing: every consumer
+// (the deck, dscusb, usbmodbus) substitutes ch.rupfizupfi.deck:device-api for this build, and a
+// dependency added here lands on all of their classpaths.
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'ch.rupfizupfi.deck'
+// Semver against the driver repos as providers — the bump rules live in the api package-info.
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(26))
+    }
+}
+
+// ContractVersion is generated rather than hand-written so the Java constant cannot drift from the
+// Gradle version above. That matters because DeviceApi's startup skew check compares this version
+// against the one javac inlined into a driver jar — a stale hand-edited constant would make the
+// check agree with a driver that does not match. Generating a source file keeps the zero-dependency
+// property intact.
+def generateContractVersion = tasks.register('generateContractVersion', WriteContractVersion) {
+    // Read now, not lazily: a Provider closing over `project` would be a configuration-cache
+    // violation, and the version is a constant in this file anyway.
+    contractVersion = project.version.toString()
+    outputDir = layout.buildDirectory.dir('generated/sources/contract-version/java/main')
+}
+sourceSets.main.java.srcDir(generateContractVersion)
+
+// Published by .github/workflows/device-api.yml on a version bump, and by hand with
+// `./gradlew -p device-api publish` (GITHUB_ACTOR/GITHUB_TOKEN set). Consumed only where there is
+// no sibling deck checkout — CI, a second machine. The composite include stays the dev-time
+// mechanism: published versions pin what a checkout-less consumer compiles against, they do not
+// replace the live-source conformance check. See
+// doc/06-feature-work/virtual-devices/driver-api-extraction.md#contract-evolution.
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = uri('https://maven.pkg.github.com/rupfizupfi/breaktest-command-deck')
+            credentials {
+                username = System.getenv('GITHUB_ACTOR')
+                password = System.getenv('GITHUB_TOKEN')
+            }
+        }
+    }
+}
+
+/**
+ * Writes ch.rupfizupfi.deck.device.api.ContractVersion from this build's version.
+ *
+ * The constant must stay a String literal initialiser: that is what makes it a compile-time
+ * constant, which is what makes javac inline it into a driver's own class file. DeviceApi's
+ * javadoc owns why that inlining is the whole mechanism.
+ */
+abstract class WriteContractVersion extends DefaultTask {
+
+    @Input
+    abstract Property<String> getContractVersion()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @TaskAction
+    void generate() {
+        def dir = outputDir.get().dir('ch/rupfizupfi/deck/device/api').asFile
+        dir.mkdirs()
+        new File(dir, 'ContractVersion.java').text = """\
+package ch.rupfizupfi.deck.device.api;
+
+/**
+ * The version of this contract, generated from device-api's Gradle version - do not edit.
+ *
+ * <p>{@link #VALUE} is a compile-time constant, so javac inlines it into every class that reads
+ * it. {@link DeviceApi} depends on exactly that and explains why.
+ */
+public final class ContractVersion {
+
+    public static final String VALUE = "${contractVersion.get()}";
+
+    private ContractVersion() {
+    }
+}
+"""
+    }
+}

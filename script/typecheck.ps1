@@ -54,10 +54,22 @@ function Write-Section {
     Write-Host "== $Text" -ForegroundColor Cyan
 }
 
+function Test-IsWindows {
+    # $IsWindows is a PowerShell 7+ automatic variable; Windows PowerShell 5.1 has no such
+    # variable at all, and 5.1 only runs on Windows -- so its absence is itself the answer.
+    # Test-Path is what makes that readable under Set-StrictMode, which would otherwise throw
+    # on the undefined variable. Keep this expressed with if/else and not the ?: operator:
+    # cms/package.json and command-deck/package.json invoke this script through `powershell`
+    # (5.1), where a ternary is a *parse* error and takes the whole file down.
+    if (-not (Test-Path variable:IsWindows)) { return $true }
+    return [bool]$IsWindows
+}
+
 # ---------------------------------------------------------------- generation ---
 
 function Get-Gradlew {
-    $gradlew = Join-Path $repoRoot 'gradlew.bat'
+    if (Test-IsWindows) { $name = 'gradlew.bat' } else { $name = 'gradlew' }
+    $gradlew = Join-Path $repoRoot $name
     if (-not (Test-Path $gradlew)) {
         throw "Gradle wrapper not found at $gradlew"
     }
@@ -81,9 +93,15 @@ function Invoke-GenerateModule {
         scaffolding (vaadin.ts, vite-devmode.ts, jar-resources/), but it also performs
         a frontend install using *npm* despite `pnpmEnable = true` in build.gradle --
         it deletes pnpm-lock.yaml and writes package-lock.json. Far too destructive
-        for a gate meant to run on every change, and the scaffolding it produces is
-        already committed. Only hillaGenerate produces the Java-to-TypeScript contract
-        this gate exists to check.
+        for a gate meant to run on every change. Only hillaGenerate produces the
+        Java-to-TypeScript contract this gate exists to check.
+
+        The scaffolding it produces is NOT committed, despite what this comment
+        claimed until CI proved otherwise: generated-flow-imports.js,
+        app-shell-imports.js and vaadin-react.js are untracked, so they exist here
+        only as leftover output of an earlier local run. This gate therefore needs
+        `./gradlew :MODULE:vaadinPrepareFrontend` once on a fresh clone before it can
+        pass -- which is exactly what .github/workflows/build.yml does.
     #>
     param(
         [string]$Module,
@@ -176,7 +194,16 @@ function Test-GeneratedClient {
 function Resolve-Tsc {
     param([string]$ModulePath)
 
-    foreach ($candidate in @('node_modules/.bin/tsc.cmd', 'node_modules/.bin/tsc.CMD')) {
+    # Windows first, and only there: pnpm writes a tsc.cmd shim *beside* the extensionless
+    # POSIX one, and that extensionless file is a sh script PowerShell cannot execute.
+    # Elsewhere only the extensionless shim exists. Nothing found falls through to pnpm exec.
+    if (Test-IsWindows) {
+        $candidates = @('node_modules/.bin/tsc.cmd', 'node_modules/.bin/tsc.CMD')
+    } else {
+        $candidates = @('node_modules/.bin/tsc')
+    }
+
+    foreach ($candidate in $candidates) {
         $path = Join-Path $ModulePath $candidate
         if (Test-Path $path) { return $path }
     }

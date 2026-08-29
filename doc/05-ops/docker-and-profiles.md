@@ -32,17 +32,23 @@ separate deployments:
 | `cms` | Cloud host | Content management: projects, samples, customers, materials, results. Reachable by users who are nowhere near the machine. |
 | `deck` | The physical tester, on the shop floor | Needs local USB/serial access to the load cell, CFW11 frequency converter and relay board. |
 
+> **The `deck` image cannot reach that hardware.** Both driver plugins are
+> Windows-only and this image is Linux, so each refuses to register and the
+> container fails at startup rather than mid-run (**OQ-79**). Running natively on
+> the Windows bench is the only path that drives hardware today:
+> [`bench-deployment.md`](bench-deployment.md).
+
 The on-machine `deck` connects to the **cloud database**, so there is one
 authoritative dataset rather than a sync problem. That also means the
 tester needs network reachability to the cloud host in order to run a
 test.
 
-> **Config does not match this yet.** `application-docker.properties` in
-> both modules points at `jdbc:postgresql://db:5432/rupfizupfi` — the
-> Compose-local `db` service — and the compose file starts that `db`
-> service for both profiles. Pointing `deck` at the cloud Postgres is
-> outstanding work, not current behaviour. Tracked as OQ-61 in
-> [`../06-feature-work/address-open-questions/TASKS.md`](../06-feature-work/address-open-questions/TASKS.md).
+> **The mechanism exists; the value is owner-owed.** `spring.datasource.url` is
+> now `${DB_URL:...}`, and the deck service passes `DECK_DB_URL`. Unset, it still
+> falls back to the Compose-local `db` — fine for a smoke test, wrong for a real
+> run. Supplying the cloud URL is what remains of OQ-61. There is deliberately no
+> fallback on connection failure: a deck that quietly wrote results elsewhere
+> would be worse than one that refuses to start.
 
 ## Diagram — deployment topology
 
@@ -54,7 +60,7 @@ flowchart TB
         BT["docker/breaktester/<br/>config + media"]
         KS["docker/keystore/<br/>rupfizupfi.p12 (PKCS12)"]
         SEC[".secrets/db-password.txt"]
-        ENV["docker/.env<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
+        ENV["docker/.env (per host,<br/>from .env.example)<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
     end
 
     subgraph Net["docker network rupfizupfi"]
@@ -104,24 +110,19 @@ Source: [`doc/diagrams/src/deployment.mmd`](../diagrams/src/deployment.mmd).
 | `server-deck` | `deck` | `command-deck/Dockerfile` (context `..`) | 443 | 8043 | same as above |
 | `db` | (no profile gate; always on) | image `postgres` (no tag) | 5432 (`expose:`, not published) | — | `POSTGRES_DB=rupfizupfi`, `POSTGRES_USER=rupfizupfi`, `POSTGRES_PASSWORD_FILE=/run/secrets/db-password` |
 
-Activate exactly one of cms/deck per host — `cms` on the cloud host,
-`deck` on the tester:
+Activate exactly one per host — `cms` on the cloud host, `deck` on the tester.
+Both bind host `8043:443`, which is not a conflict precisely because they never
+share a host:
 
 ```bash
 docker compose -f docker/docker-compose.yaml --profile deck up -d
-# or
-docker compose -f docker/docker-compose.yaml --profile cms up -d
 ```
 
-Both app services bind host port `8043:443`. That is not a conflict in
-practice, because they never share a host — see the topology table
-above.
-
-`docker/.env` ships with `COMPOSE_PROFILES=deck,rclone`. No `rclone`
-service exists in the compose file, so the profile currently activates
-nothing. It is **not** dead config to be deleted: rclone is intended for
-backing up test result files off the tester. The service definition is
-missing and the intended remote/schedule is unrecorded — see OQ-56.
+`COMPOSE_PROFILES` in `docker/.env` picks the profile; `.env.example` sets
+`deck`, dropping the `rclone` entry the old tracked `.env` carried — no such
+service is defined, so it activated nothing. The intent is **not** dead config
+(off-tester backup of result files) but the definition, remote and schedule are
+unrecorded, so nothing can activate it yet (OQ-56).
 
 ### Image build and entrypoint
 
@@ -147,7 +148,12 @@ go away and the cms classpath copies become canonical (OQ-4).
 | Profile | DB | Port | TLS | Notable extras |
 |---|---|---|---|---|
 | (default = `dev`) | H2 file `jdbc:h2:file:./.data/deck` (user `sa`, no password) | `${PORT:8080}` | none | H2 console at `/h2-console`, devtools, `vaadin.devmode.devTools.enabled=true`, `logging.level.web=DEBUG` |
-| `docker` | PostgreSQL `jdbc:postgresql://db:5432/rupfizupfi` (user `rupfizupfi`, password from secret) | `${PORT:443}` | PKCS12 at `/home/appuser/keystore/rupfizupfi.p12`, alias `rupfizupfi`, password `${KEY_STORE_PASSWORD}` | `defer-datasource-initialization`, `ImprovedNamingStrategy`, `ddl-auto=update` |
+| `docker` | PostgreSQL `${DB_URL:jdbc:postgresql://db:5432/rupfizupfi}` (user `rupfizupfi`, password from secret) | `${PORT:443}` | PKCS12 at `${KEY_STORE_PATH:/home/appuser/keystore/rupfizupfi.p12}`, alias `rupfizupfi`, password `${KEY_STORE_PASSWORD}` | `defer-datasource-initialization`, `ImprovedNamingStrategy`, `ddl-auto=update` |
+
+`bench` is an alias, not a third profile (`spring.profiles.group.bench=docker`):
+the two placeholders above plus `DECK_STORAGE_ROOT` are the only per-deployment
+differences, so no `application-bench.properties` exists —
+[`bench-deployment.md`](bench-deployment.md).
 
 See [`db.md`](db.md) for the database angle.
 
@@ -156,7 +162,9 @@ See [`db.md`](db.md) for the database angle.
 * **Bind mount `./breaktester:/home/appuser/breaktester`.** Holds the
   user's settings JSON (`settings.json`), uploads, and CSV result files
   written by `LoadCellThread`. Persists across container restarts because
-  it lives on the host.
+  it lives on the host. Reached via `DECK_STORAGE_ROOT=/home/appuser`: the images
+  create `appuser` with `--home /nonexistent`, so `user.home` — what `~` used to
+  resolve against — pointed outside this mount.
 * **Bind mount `./keystore:/home/appuser/keystore`.** Holds
   `rupfizupfi.p12`. The startup script auto-creates one if missing.
 * **Named volume `db-data`.** Postgres data directory. Survives
@@ -164,21 +172,52 @@ See [`db.md`](db.md) for the database angle.
 * **Secret `db-password`** (mapped to `../.secrets/db-password.txt`). Both
   Postgres (`POSTGRES_PASSWORD_FILE`) and the app server
   (`DB_PASSWORD_FILE`) read from `/run/secrets/db-password`.
+* **Bind mount `./drivers-local:/app/drivers-local:ro`, deck only.** The
+  licence-restricted `usbmodbus.jar`, which may not be redistributed and is
+  therefore never in the image. Second entry on the container's `LOADER_PATH`;
+  the public `dscusb.jar` is already at `/app/drivers` from the image build, and
+  must not be duplicated here — the earlier `loader.path` entry wins, so a
+  second copy is a silent version-skew trap. Drop the jar in and restart; there
+  is nothing to rebuild. Owned by
+  [`driver-jars.md`](../03-backend/driver-jars.md).
+* **Build secret `github-token`**, deck build only. A file-backed secret like
+  `db-password`, its path set by `GITHUB_TOKEN_FILE` and defaulting to the
+  committed **empty** `docker/github-token.empty`. A PAT with
+  `read:packages`, mounted only into the build stage so it never lands in a
+  layer. `stageDrivers` needs it because GitHub Packages demands a token even
+  for public reads. **Optional** — left at the default the build still succeeds,
+  warns, and leaves `/app/drivers` empty; the container then refuses to start in
+  real mode naming the missing provider. The path is indirected precisely for
+  that: compose aborts *before the build starts* if a declared secret's file is
+  missing, so a plain path would have made the token mandatory. The `cms`
+  profile neither uses nor needs it.
 
 ### Required host preparation
 
 Before `docker compose up -d`, an operator must:
 
-1. Create `<repo>/.secrets/db-password.txt` containing the desired
+1. Copy `docker/.env.example` to `docker/.env` — per-host and gitignored,
+   because it carries `KEY_STORE_PASSWORD`. The defaults run as they are;
+   `changeit` matches the auto-generated keystore.
+2. Create `<repo>/.secrets/db-password.txt` containing the desired
    Postgres password. (`.gitignore` excludes `.secrets/`.)
-2. Optionally drop a real PKCS12 cert at `docker/keystore/rupfizupfi.p12`
-   (matched to `KEY_STORE_PASSWORD` in `docker/.env`). If absent, the
-   startup script generates a self-signed one. **Accepted as the normal
-   operating mode (2026-08-16)** — the tester is reached over a trusted
-   local network, so the auto-signed cert is intended, not a fallback.
-3. Set or accept `KEY_STORE_PASSWORD=changeit` in `docker/.env` (default
-   matches the auto-generated keystore).
-4. Run the profile that matches the host: `deck` on the tester, `cms` in
+3. Optionally drop a real PKCS12 cert at `docker/keystore/rupfizupfi.p12`
+   (matched to `KEY_STORE_PASSWORD`). If absent, the startup script
+   generates a self-signed one. **Accepted as the normal operating mode
+   (2026-08-16)** — the tester is reached over a trusted local network,
+   so the auto-signed cert is intended, not a fallback.
+4. **Tester only:** put a PAT with `read:packages` in
+   `<repo>/.secrets/github-token.txt` and set
+   `GITHUB_TOKEN_FILE=../.secrets/github-token.txt` (a path, so `docker/.env`
+   is its home — the token is not). Optionally set `GITHUB_ACTOR`; it
+   defaults to a placeholder GitHub Packages accepts alongside a valid token.
+   Skipping this leaves `/app/drivers` empty, which fails at startup, not at
+   build time. Confirm with
+   `docker compose exec server-deck ls /app/drivers`.
+5. **Tester only:** copy `usbmodbus.jar` into `docker/drivers-local/`. Without
+   it the container starts and then refuses, naming the missing `DriveProvider`
+   — by design, it never falls back to a simulator.
+6. Run the profile that matches the host: `deck` on the tester, `cms` in
    the cloud.
 
 See [`runbook.md`](runbook.md) for failure modes when these preconditions
@@ -189,7 +228,7 @@ are skipped.
 | Concern | File |
 |---|---|
 | Compose file | `docker/docker-compose.yaml` |
-| Compose env defaults | `docker/.env` |
+| Compose env defaults | `docker/.env.example` (tracked); `docker/.env` is the per-host copy, gitignored |
 | CMS image | `cms/Dockerfile` |
 | Deck image | `command-deck/Dockerfile` |
 | Container entrypoint (shared) | `cms/src/docker/bin/startup.sh` |
@@ -205,7 +244,7 @@ are skipped.
    `application-docker.properties` still hardcodes the Compose-local
    `db:5432`. Needs an externalised JDBC URL and a decision on what
    happens to a running test when the link drops. (OQ-61)
-2. **`rclone` service is missing.** `docker/.env` activates the profile;
-   the compose file never defines it. Intended purpose is off-tester
+2. **`rclone` service is missing.** The compose file never defines it, so
+   `.env.example` does not activate it. Intended purpose is off-tester
    backup of test result files — the remote target, credentials handling
    and schedule are all unrecorded. (OQ-56)

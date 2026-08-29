@@ -80,6 +80,7 @@ doc/
 ├── 05-ops/
 │   ├── docker-and-profiles.md          topology (cloud cms / on-machine deck), compose, profiles, secrets
 │   ├── docker-images.md                two-stage image build + shared startup.sh entrypoint
+│   ├── bench-deployment.md             running the deck natively on the Windows bench (the only path to hardware)
 │   ├── db.md                           dev H2 + docker Postgres, backup/restore, seed
 │   └── runbook.md                      common failure modes, one-fix-per-entry
 ├── 06-feature-work/
@@ -157,6 +158,7 @@ docs may touch the topic but defer there.
 | Deployment topology (cloud cms vs on-machine deck) | [`05-ops/docker-and-profiles.md`](05-ops/docker-and-profiles.md) |
 | Docker compose, profiles, secrets | [`05-ops/docker-and-profiles.md`](05-ops/docker-and-profiles.md) |
 | Image build, Dockerfiles, entrypoint script | [`05-ops/docker-images.md`](05-ops/docker-images.md) |
+| Running on the bench natively (Windows-only drivers) | [`05-ops/bench-deployment.md`](05-ops/bench-deployment.md) |
 | Database (H2 + Postgres, seed, backup) | [`05-ops/db.md`](05-ops/db.md) |
 | "It broke" — common failures + fixes | [`05-ops/runbook.md`](05-ops/runbook.md) |
 
@@ -227,7 +229,8 @@ holds evaluations of *external* tooling — test harnesses, device simulators,
 agent configuration — considered for future adoption. **Assume nothing it
 verification gates are the one exception. Do not infer from it that this project
 uses Playwright, Testcontainers, or any other tool it names; the repo still has
-no tests, no CI, and no hardware abstraction layer.
+no tests and no hardware abstraction layer. (CI does now exist — see
+[`02-modules/gradle-build.md`](02-modules/gradle-build.md#continuous-integration) —
 
 The caveat is about **adoption, not subject matter**. Several of its findings are
 owns them until the work they inform lands, at which point they move into the

@@ -126,12 +126,12 @@ cd breaktest-command-deck
 Run **one at a time**: both open the same H2 file
 (`./.data/deck.mv.db`) exclusively.
 
-A fresh clone **compiles** without the driver jars, but `:command-deck`
-refuses to **start**: `deck.hardware.mode=real` needs both providers, and
-`lib/usbmodbus.jar` is not in the repo (licensing prevents redistribution),
-so obtain it separately and drop it in `lib/` alongside the tracked
-`lib/dscusb.jar`. The procurement source and version are still unrecorded
-(OQ-43); everything else about both jars is in
+A fresh clone builds without the driver jars and dev needs none —
+`application-dev.properties` runs `deck.hardware.mode=simulated`. Driving real
+hardware from a dev machine means putting both jars in `lib/` and running
+`bootRun -PdeckDrivers=local`; `usbmodbus.jar` is licence-restricted and must be
+obtained separately, its procurement source still unrecorded (OQ-43). In
+production neither jar comes from the build at all — see
 [`03-backend/driver-jars.md`](../03-backend/driver-jars.md).
 
 Then open <http://localhost:8080>. Default users from `data.sql`: `user`/`user` and `admin`/`admin`. The H2 console lives at `/h2-console` (URL `jdbc:h2:file:./.data/deck`, user `sa`, no password).
@@ -145,5 +145,5 @@ For Docker: [`05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
 | Gradle modules | `settings.gradle`, `build.gradle`, `cms/build.gradle`, `command-deck/build.gradle` |
 | Cross-module dep | `command-deck/build.gradle:2` (`implementation project(':cms')`) |
 | Profiles | `cms/src/main/resources/application{,-dev,-docker}.properties` (and byte-identical command-deck copies) |
-| Compose | `docker/docker-compose.yaml`, `docker/.env` |
-| Local-JAR wiring | `command-deck/build.gradle:1-8`, `lib/dscusb.jar` (tracked), `lib/usbmodbus.jar` (gitignored, licence-restricted) |
+| Compose | `docker/docker-compose.yaml`, `docker/.env.example` (copy to the gitignored `docker/.env`) |
+| Driver plugin wiring | `command-deck/build.gradle` (`stageDrivers`, `-PdeckDrivers=local`, the `PropertiesLauncher` manifest), `command-deck/Dockerfile` (`LOADER_PATH`); both jars gitignored |

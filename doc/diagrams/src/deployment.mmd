@@ -20,7 +20,7 @@ flowchart TB
         BT["docker/breaktester/<br/>config + media + CSV results"]
         KS["docker/keystore/<br/>rupfizupfi.p12 (PKCS12, self-signed by startup.sh)"]
         SEC[".secrets/db-password.txt"]
-        ENV["docker/.env<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
+        ENV["docker/.env (per host,<br/>from .env.example)<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
     end
 
     SD -- "JDBC :5432 — intended (OQ-61);<br/>today points at a local db service" --> DB

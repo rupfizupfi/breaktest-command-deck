@@ -239,8 +239,10 @@ public class SimulatedBench {
     private void emit(double plantForce) {
         if (faults.isActive(SimulatedFault.LOAD_CELL_STREAM_DEATH)) {
             // Terminal, and only once: the driver records a cause and its reader thread is gone.
-            var cause = new StreamFailure("14", "CommandExecutionException",
-                    "simulated driver fault: non-numeric value from READCOMMAND");
+            // -800 is CommandExecutionException.NON_NUMERIC_VALUE, the code the real driver uses for
+            // this exact failure — the trip reason must name an entry that exists in its table.
+            var cause = new StreamFailure("-800", "CommandExecutionException",
+                    "simulated driver fault: non-numeric value returned while the driver reported success");
             for (SimulatedLoadCellStream stream : streams) {
                 stream.fail(cause);
             }
