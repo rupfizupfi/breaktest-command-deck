@@ -15,6 +15,9 @@
 .DS_Store
 
 node_modules/
+
+# Bytecode from the doc gates (doc/_check-*.py)
+__pycache__/
 */src/main/frontend/generated/
 # Vaadin production frontend bundle (regenerable, ~38 MB)
 */src/main/bundles/

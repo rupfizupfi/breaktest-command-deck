@@ -16,6 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # First, because it needs no build and takes milliseconds: fail before spending minutes
+      # on Gradle. This is the one doc gate a *code-only* change can break — a table marked
+      # `<!-- inventory: enum ... -->` is held to that enum's constants, so adding a member
+      # without documenting it fails here. The other three doc gates
+      # (_check-size / _verify-refs / _check-diagrams) only react to doc edits and are still
+      # run by hand via /deck-doc; this one guards a contract that code can violate on its own.
+      # ubuntu-latest ships python3, and the script imports nothing outside the stdlib.
+      - name: Doc inventories match the code
+        run: python3 doc/_check-inventories.py
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

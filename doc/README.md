@@ -48,6 +48,8 @@ doc/
 ├── OPEN-QUESTIONS.md                   the backlog, grouped by kind
 ├── _verify-refs.mjs                    scan all docs for broken file refs
 ├── _check-size.py                      enforce the size / TOC / anchor standard
+├── _check-diagrams.py                  hold inline mermaid fences to their .mmd source
+├── _check-inventories.py               hold a doc table to the symbol set it enumerates
 │   ├── README.md                       what this folder is, and what it is not
 │   ├── test-harness-jvm.md             a first backend suite on Java 26 + Boot 4.1
 │   ├── test-harness-frontend.md        what can test a Hilla/React frontend
@@ -277,9 +279,14 @@ entry, and a reader after one stops paying for the other.
   another.
 - "Where to look in the code", and an "Open questions" section that stays in
   sync with [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md).
-- Run [`_check-size.py`](_check-size.py) **and** [`_verify-refs.mjs`](_verify-refs.mjs)
-  before calling it done. The first checks sizes, TOC presence and that every
-  in-page TOC link resolves; the second catches dangling file references.
+- Run all four gates before calling it done: [`_check-size.py`](_check-size.py)
+  (sizes, TOC presence, in-page TOC links), [`_verify-refs.mjs`](_verify-refs.mjs)
+  (dangling file references), [`_check-diagrams.py`](_check-diagrams.py) (an
+  inline `mermaid` fence still matching its `diagrams/src/*.mmd` source — the one
+  region the other two cannot see, since `_verify-refs.mjs` skips fenced blocks),
+  and [`_check-inventories.py`](_check-inventories.py) (a table that enumerates a
+  code symbol set still matching that set — the only gate that catches a doc being
+  *incomplete* rather than wrong).
 
 ---
 
@@ -289,9 +296,18 @@ entry, and a reader after one stops paying for the other.
   TOC over 120 lines, minimum words with zero lost facts.
 - Cross-link instead of duplicating.
 - Keep diagrams as code (`.mmd` under `diagrams/src/`) — never paste
-  rendered SVG into the markdown.
+  rendered SVG into the markdown. The `.mmd` is **canonical**: an inline
+  ` ```mermaid ` fence may be a summary of it, but must never contradict it
+  or carry a fact the source lacks. [`_check-diagrams.py`](_check-diagrams.py)
+  enforces exactly that, and it is why editing only the fence is a defect.
 - File references use the form `module/path/File.ext:NN` so the verifier
   catches drift. Avoid relative `./` or `../` in file references unless
   the link is rendered (Markdown link, not inline citation).
+- A table that enumerates a set declared in code (an enum's constants, say)
+  carries `<!-- inventory: enum <repo-relative-path> -->` on the line above it,
+  so [`_check-inventories.py`](_check-inventories.py) fails when the set grows
+  and the table doesn't. Name the value's owner rather than copying the value:
+  a default written out in prose drifts the moment somebody tunes it, and no
+  gate compares prose against a literal.
 - When adding a new doc, also add it to the file-tree and reading-order
   table above.
