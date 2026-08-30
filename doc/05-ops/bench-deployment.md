@@ -4,11 +4,16 @@
 
 ## Purpose
 
-The `docker` deck image cannot drive the test bench: both driver plugins are
-Windows-only, and the image is Linux (**OQ-79**, detail in
-[`../03-backend/driver-jars.md`](../03-backend/driver-jars.md)). Running
-`command-deck` natively on the Windows bench machine is the only path to the
-hardware today. This page owns that path. The containerised deployment is
+**This is how the deck is deployed** — decided, not a stopgap. The hardware
+controller is a Windows PC and `command-deck` runs natively on it. Both driver
+plugins are Windows-only and the `docker` image is Linux, so a containerised deck
+cannot drive the bench at all
+([`../03-backend/driver-jars.md`](../03-backend/driver-jars.md#both-drivers-are-windows-only-and-that-decides-the-deployment));
+the alternative — rewriting both drivers onto serial so a Linux host could do the
+job — was weighed and declined, and survives only as a recorded future option in
+[`../06-feature-work/dscusb-serial-port/README.md`](../06-feature-work/dscusb-serial-port/README.md).
+What remains of OQ-79 is only whether the unusable `docker` deck profile is
+retired. This page owns the bench path; the containerised deployment is
 [`docker-and-profiles.md`](docker-and-profiles.md).
 
 **There is no `bench` properties file, deliberately.** On the axes that matter —
