@@ -16,6 +16,9 @@ import java.util.stream.Collectors;
 public class CSVStoreService {
     private static final Logger log = Logger.getLogger(CSVStoreService.class.getName());
 
+    private static final String FORCE_CSV_SUFFIX = "_force.csv";
+    private static final String GAPS_SIDECAR_SUFFIX = "_gaps.json";
+
     protected long minTimeStamp = 0;
     protected final StorageLocationService storageLocationService;
 
@@ -24,15 +27,37 @@ public class CSVStoreService {
     }
 
     public String generateFilePathForTestResult(long testResultId) {
-        String filePath = Paths.get(getBasePathForTestResult(testResultId), System.currentTimeMillis() + "_force.csv").toString();
+        String filePath = Paths.get(getBasePathForTestResult(testResultId), System.currentTimeMillis() + FORCE_CSV_SUFFIX).toString();
         Paths.get(filePath).getParent().toFile().mkdirs();
         return filePath;
+    }
+
+    /**
+     * The two files one run writes: the force CSV and the sidecar that records the gaps in it.
+     * Both names carry the same millis prefix, taken once here, so they pair up by construction
+     * rather than by reconstructing one name from the other. {@code gapsSidecarPath} is where a
+     * sidecar would go - a run that never loses the sensor writes none.
+     */
+    public record TestRunFiles(String forceCsvPath, String gapsSidecarPath) {
+    }
+
+    public TestRunFiles generateRunFilesForTestResult(long testResultId) {
+        Path directory = Paths.get(getBasePathForTestResult(testResultId));
+        directory.toFile().mkdirs();
+        long stamp = System.currentTimeMillis();
+        return new TestRunFiles(directory.resolve(stamp + FORCE_CSV_SUFFIX).toString(),
+                directory.resolve(stamp + GAPS_SIDECAR_SUFFIX).toString());
     }
 
     public String[] listCSVFilesForTestResult(long testResultId) {
         Path path = Paths.get(getBasePathForTestResult(testResultId));
         if (path.toFile().exists()) {
-            return path.toFile().list();
+            // The result directory is not CSV-only: TestLogger writes <millis>_test.log beside the
+            // force files and a run that lost the sensor adds a <millis>_gaps.json sidecar. Both
+            // reach getPeakFromResultFile() through the Excel export in api/rest/DownloadResults,
+            // where any file of 100+ lines without an '@' is fed to an unguarded Double.parseDouble;
+            // both are also offered in the frontend's result-file dropdown as if they were data.
+            return path.toFile().list((dir, name) -> name.endsWith(FORCE_CSV_SUFFIX));
         } else {
             return new String[0];
         }

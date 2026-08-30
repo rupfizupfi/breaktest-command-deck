@@ -53,10 +53,10 @@ sequenceDiagram
         Repo-->>Aspect: Sample (DataWithOwner)
         Aspect->>Auth: get() current User
         Auth-->>Aspect: User
-        alt owner == null OR owner.id == user.id
+        alt entity.owner == null<br/>or owner.id == user.id
             Aspect-->>Service: allow (returns; method runs)
         else mismatch
-            Aspect--xBrowser: throw SecurityException
+            Aspect--xBrowser: throw SecurityException<br/>"User can only access their own data"
         end
     end
 

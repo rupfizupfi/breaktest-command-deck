@@ -9,6 +9,7 @@ import ch.rupfizupfi.deck.device.api.StreamFailure;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,6 +23,7 @@ public class LoadCellDevice extends Device {
     private final List<MeasurementObserver> observers = new CopyOnWriteArrayList<>();
     private Thread dataThread;
     private volatile boolean isRunning = false;
+    private final AtomicInteger readerThreads = new AtomicInteger();
 
     /**
      * nanoTime of the last non-empty batch handed to observers. nanoTime, not currentTimeMillis:
@@ -32,6 +34,13 @@ public class LoadCellDevice extends Device {
     /** Poll interval of {@link #awaitFreshMeasurement(long)}; the reader loop itself ticks every 20 ms. */
     private static final long FRESHNESS_POLL_INTERVAL_MS = 20;
 
+    /**
+     * Bounded so a reader wedged in a native driver call can never pin the instance monitor. Same
+     * reasoning as {@code CFW11Device.POLL_THREAD_JOIN_TIMEOUT_MS}, and it matters more here: what
+     * strands this thread - a yanked USB cable - is what triggers the teardown in the first place.
+     */
+    private static final long READER_JOIN_TIMEOUT_MS = 2000;
+
     public LoadCellDevice(LoadCellStreamProvider streamProvider) {
         this.streamProvider = streamProvider;
     }
@@ -39,14 +48,25 @@ public class LoadCellDevice extends Device {
     @Override
     protected void openConnection() {
         log.info("openConnection entered");
+        // Must NOT touch `observers`. Clearing them is the obvious "cleanup" to bolt onto a reset, and
+        // it would silently disconnect LoadCellThread and ForceBroadcaster after a reconnect:
+        // observers live on the Device, not on the stream, which is precisely what makes reset()
+        // transparent to its holders.
+
         // A reopened device must not inherit the previous session's freshness, otherwise the
         // first watchdog tick after a reconnect would pass on data from the old connection.
         lastDataNanos = 0;
-        // A new instance every time: a stopped stream can never be restarted.
-        stream = streamProvider.open();
-        stream.startReading();
+        // A new instance every time: a stopped stream can never be restarted. The reconnect flag is
+        // deck-side only - see SessionAwareStreamProvider for why device-api does not carry it.
+        LoadCellStream fresh = (streamProvider instanceof SessionAwareStreamProvider aware)
+                ? aware.open(reopening)
+                : streamProvider.open();
+        stream = fresh;
+        fresh.startReading();
         isRunning = true;
-        dataThread = new Thread(this::readData);
+        // Named: two readers exist briefly whenever a reconnect abandons a stranded one, and
+        // "Thread-7 vs Thread-9" makes the one log that matters - an incident log - unreadable.
+        dataThread = new Thread(this::readData, "load-cell-reader-" + readerThreads.incrementAndGet());
         dataThread.start();
     }
 
@@ -55,13 +75,24 @@ public class LoadCellDevice extends Device {
         log.info("closeConnection entered");
         isRunning = false;
         if (dataThread != null) {
+            // Interrupt first so the reader leaves its 20 ms sleep at once rather than being waited
+            // on for the rest of the tick.
+            dataThread.interrupt();
             try {
-                dataThread.join(); // Wait for the thread to finish
+                // Bounded, and the reference is dropped either way. Unbounded, this pins the Device
+                // instance monitor that connect()/disconnect() synchronize on, so a reader stuck in
+                // a native call would block the operator's Stop button. Abandoning it is safe: it
+                // can no longer publish, because readData() exits once its stream is not current.
+                dataThread.join(READER_JOIN_TIMEOUT_MS);
+                if (dataThread.isAlive()) {
+                    log.log(Level.WARNING, "Load cell reader did not stop within "
+                            + READER_JOIN_TIMEOUT_MS + " ms, abandoning it");
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
             dataThread = null;
-            log.info("dataThread joined");
+            log.info("dataThread released");
         }
         if (stream != null) {
             stream.stopReading();
@@ -149,6 +180,16 @@ public class LoadCellDevice extends Device {
     }
 
     /**
+     * Readings the driver discarded rather than delivered this session; 0 when the stream is closed
+     * or the driver discards none. A rising count on a stream that is still reading is the only
+     * sign that the cell is producing frames the driver will not trust.
+     */
+    public long getDroppedSampleCount() {
+        LoadCellStream current = stream;
+        return current == null ? 0 : current.droppedSampleCount();
+    }
+
+    /**
      * Blocks until a batch arrives that is strictly newer than the moment of the call, or the timeout
      * expires. Returns true only if fresh data actually arrived. Never throws: on interrupt it restores
      * the interrupt flag and returns false.
@@ -183,11 +224,20 @@ public class LoadCellDevice extends Device {
     }
 
     private void readData() {
+        // Captured once; the loop exits the moment the field no longer holds it. A teardown may
+        // abandon this thread (see closeConnection) and a reopen installs a new stream — a stranded
+        // reader still following the field would drain the NEXT session's queue alongside its real
+        // reader. Two readers on one queue split each batch, so the CSV goes out of chronological
+        // order, the rise detector compares across the other thread's batch, and a dead connection
+        // keeps refreshing lastDataNanos, which isDataFlowing/awaitFreshMeasurement/LoadCellCheck
+        // all rest on.
+        final LoadCellStream mine = this.stream;
         log.info("readData entered");
 
         boolean interrupted = false;
         boolean readerFailureLogged = false;
-        while (isRunning) {
+        long lastLoggedDrops = 0;
+        while (isRunning && this.stream == mine) {
             try {
                 // Logged once, not per iteration, so the cause is not buried under 50 lines a second.
                 // The loop continues afterwards: the driver's queue can still hold the samples taken
@@ -203,8 +253,21 @@ public class LoadCellDevice extends Device {
                     }
                 }
 
-                var measurements = stream.getNextValues();
-                if (!measurements.isEmpty()) {
+                // On change, never per iteration. An absorbed fault leaves no other trace: the
+                // stream keeps reading, lastError() stays null, and the hole shows up only as a jump
+                // in the sample timestamps.
+                long drops = mine.droppedSampleCount();
+                if (drops != lastLoggedDrops) {
+                    lastLoggedDrops = drops;
+                    log.log(Level.WARNING, "Load cell driver has discarded " + drops
+                            + " reading(s) this session; the stream is still reading");
+                }
+
+                var measurements = mine.getNextValues();
+                // The identity is re-checked here and not only in the loop condition: the drain
+                // above can straddle a reopen, and publishing afterwards would stamp the new
+                // session's freshness with the old session's data.
+                if (!measurements.isEmpty() && this.stream == mine) {
                     // Recorded before the fan-out so the timestamp reflects when the hardware
                     // delivered, not how long the observers took.
                     lastDataNanos = System.nanoTime();
@@ -217,10 +280,8 @@ public class LoadCellDevice extends Device {
                 Thread.currentThread().interrupt();
                 break;
             } catch (RuntimeException e) {
-                // One bad batch must not end measurement collection, so the loop continues.
-                // Detecting a *persistently* broken stream is deliberately not done here: the
-                // freshness tracking above (isDataFlowing / the LoadCellThread watchdog) is what
-                // surfaces a reader that keeps failing.
+                // One bad batch must not end collection. Detecting a *persistently* broken stream is
+                // deliberately not done here — that is the LoadCellThread watchdog's job.
                 log.log(Level.WARNING, "Ignoring error while reading load cell values, continuing", e);
 
                 // Keeps the loop cadence when getNextValues() throws immediately every time,
@@ -237,7 +298,10 @@ public class LoadCellDevice extends Device {
 
         // Logged at INFO so a reader that stops for any reason leaves a trace in the server log
         // instead of dying silently while the device still reports itself connected.
-        log.info("readData finished (" + (interrupted ? "interrupted" : "isRunning went false")
-                + "), data was " + (lastDataNanos == 0 ? "never received" : "received at least once"));
+        String why = interrupted ? "interrupted"
+                : this.stream != mine ? "stream was replaced"
+                : "isRunning went false";
+        log.info("readData finished (" + why + "), data was "
+                + (lastDataNanos == 0 ? "never received" : "received at least once"));
     }
 }

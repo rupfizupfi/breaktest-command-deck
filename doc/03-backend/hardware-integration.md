@@ -99,7 +99,7 @@ uncalibrated parameters:
 
 ### The `Device` base class
 
-`Device` (`command-deck/src/main/java/ch/rupfizupfi/deck/device/Device.java:17`)
+`Device` (`command-deck/src/main/java/ch/rupfizupfi/deck/device/Device.java:14`)
 is a thin reference-counted lifecycle wrapper:
 
 * `connect()` increments a counter; the *first* caller actually opens the
@@ -133,15 +133,16 @@ USB sessions close.
   `loader.path`, reached only through its own `CellValueStreamAdapter`. Absent,
   the build still succeeds but startup fails (no `LoadCellStreamProvider` bean).
   Its provenance, build requirements and the driver contract that decides run
-  outcomes — a non-finite reading **ends the stream**, and a stopped stream can
-  never be restarted — are in [`driver-jars.md`](driver-jars.md).
+  outcomes — a transient fault dropped within an 80 ms budget, a terminal one
+  ending the stream, a stopped stream never restartable — are in [`driver-jars.md`](driver-jars.md).
 * Wrapper: `LoadCellDevice`
   (`command-deck/.../device/loadcell/LoadCellDevice.java:14`). `openConnection`
   asks its `LoadCellStreamProvider` for a **new** `LoadCellStream`, calls
   `startReading()`, spins a `dataThread` polling `stream.getNextValues()` every
   20 ms, and notifies registered `MeasurementObserver`s. `getStreamFailure()`
   turns `isReading()` + `lastError()` into the named cause the watchdog appends
-  to a trip reason.
+  to a trip reason; `readData` logs `droppedSampleCount()` on change, the only
+  trace an absorbed fault leaves. Loss recovery: [`loadcell-recovery-design.md`](../06-feature-work/testrunner-safety/loadcell-recovery-design.md).
 * Observer interface: `command-deck/.../device/loadcell/MeasurementObserver.java:7`
   — single `update(List<Measurement>)`.
 * Broadcaster: `ForceBroadcaster`
@@ -151,9 +152,9 @@ USB sessions close.
   charts manageable.
 * Test runner consumer: `LoadCellThread`
   (`command-deck/.../testrunner/LoadCellThread.java:15`) is *also* a
-  `MeasurementObserver`. It writes every measurement to a CSV file and
-  feeds force-threshold checks back to the test runner via `TestContext`
-  signals — see [`test-types.md`](test-types.md).
+  `MeasurementObserver`. It writes every measurement to a CSV file and feeds
+  force-threshold checks back via `TestContext` — see
+  [`test-types.md`](test-types.md).
 
 ### Frequency converter — `CFW11` over USB Modbus
 
@@ -242,8 +243,7 @@ page names what it doesn't cover.
 | OQ | Topic |
 |---|---|
 | OQ-44 | No presence check for the CFW11 — a missing converter surfaces only once `setup()` throws. `Cfw11Check` should follow `LoadCellCheck` |
-| OQ-45 | Reconnect and resume after load-cell loss. Decided; the window length and how the result records the gap are unspecified |
-| OQ-74 | One non-finite reading ends the stream, and therefore the run |
+| OQ-81 | Only *consecutive* driver faults are budgeted, so nothing bounds a run's total dropped fraction — the residual risk of OQ-74's answer |
 | OQ-46 | `FourWayRelaySwitch.java:19` matches the `CH9102` literal — move it to configuration |
 | OQ-62 | The seam exists; the simulated providers do not, so no test can yet run without hardware. Decided: [simulated devices](../06-feature-work/virtual-devices/README.md), `dev` only |
 | OQ-70 | `DeviceInfoService.isEnabled` is process-global, not per-client |

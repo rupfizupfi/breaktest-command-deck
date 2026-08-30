@@ -151,12 +151,20 @@ in-memory bus:
 * `addSignalListener(...)` / `removeSignalListener(...)` — fan out to
   `AbstractTest` subclasses.
 * Signal values: `RELEASE_SIGNAL = 1`, `PULL_SIGNAL = 2`, `0` = stop.
-* `sendSignal` is a no-op when the same signal arrives twice in a row.
+  `SENSOR_LOST_SIGNAL = 3` is declared and **never sent** — every consumer acts
+  on whatever it pops, so a bookkeeping-only value would be indistinguishable
+  from a command; `TestStateMachine` carries that instead.
+* `sendSignal` is a no-op when the same signal arrives twice in a row, **except
+  for `0`** — which also bypasses the dispatch gate. Without both exemptions the
+  watchdog's stop swallowed the operator's Stop.
 
 Limit values (`upperLimit`, `lowerLimit`) are held in Newtons and mutated by
 `CyclicTest.handleSignal` to compensate for overshoot: measured min/max
 diverge from target, so the limit is nudged to turn the motor around earlier
-next cycle.
+next cycle. `TestContext` refuses a **non-finite** limit outright, and
+`LoadCellThread` skips a non-finite sample rather than comparing it: a NaN makes
+every comparison false, which used to mean no signal ever fired again with the
+motor still driving.
 
 ## Startup checks
 

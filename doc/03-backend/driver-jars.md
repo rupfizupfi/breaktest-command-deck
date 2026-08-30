@@ -51,7 +51,12 @@ come from a machine-wide vendor install on the bench PC. `DSCUSBDrv64.dll` is a
 Win32 library on FTDI's Windows D2XX stack; `usbiojava_x64.dll` is a JNI shim
 over the Thesycon USBIO **kernel-mode** driver that finds devices by Windows
 device-interface GUID. So **the `docker` profile's Linux image cannot drive the
-bench** — see OQ-79 for the researched detail and the two ways out.
+bench.** That is settled rather than open: the bench controller stays a Windows PC
+and the deck runs natively on it
+([`bench-deployment.md`](../05-ops/bench-deployment.md)). Rewriting the drivers onto
+serial to make a Linux deck possible is recorded as a future option only
+([`dscusb-serial-port`](../06-feature-work/dscusb-serial-port/README.md)); what OQ-79
+still tracks is just the fate of the now-unusable `docker` deck profile.
 
 Each driver's auto-configuration therefore refuses to register off Windows and
 logs why. That is deliberate: registering and failing later would let
@@ -94,8 +99,9 @@ The fix is a driver rebuild and a file copy, never an application rebuild.
 Published from the sibling repo as `ch.rupfizupfi.dscusb:dscusb` — by its CI on
 merge to `main` whenever `version` in its `gradle.properties` changes, or by
 hand with `./gradlew publish` there (needs `GITHUB_ACTOR` and a `write:packages`
-token). **Nothing is published yet**: until that first merge, `stageDrivers`
-warns and stages nothing unless the artifact is in the local `~/.m2`.
+token). `0.2.0` shipped and is the fallback pin in `command-deck/build.gradle`;
+`0.3.0` follows OQ-74 (below). Where nothing resolves, `stageDrivers` warns and
+stages nothing unless the artifact is in the local `~/.m2`.
 `:command-deck:stageDrivers` resolves the pinned version into `build/drivers/`,
 and the deck image copies it to `/app/drivers`. Bump `-PdscusbVersion` here to
 move the deck onto a new driver build.
@@ -119,14 +125,48 @@ stay one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in the
 is the whole blast radius of that move — the deck owns its own `Measurement`, so
 nothing over there sees it.
 
+**We load the optional DLL, not the COM-port one.** Mantracourt ship two:
+`MantraASCII2.DLL` over the FTDI virtual COM port, and `DSCUSBDrv.DLL` addressing
+modules directly by serial number — the manual's "preferred method", and the one the
+driver loads. Its only substantive gain is **up to 127 modules on one bus**; the bench
+has one cell, so the COM-port path would cost nothing we use, and it is what any
+non-Windows driver would have to speak. The device also has a **continuous output
+mode** (`SOUT`, XON/XOFF-gated, ASCII protocol only) that would replace polling
+outright — unreachable through this DLL, so unexploited (OQ-80). Protocol, the
+`1781:0BAD` Linux enumeration blocker and the rest:
+[`dscusb-serial-port`](../06-feature-work/dscusb-serial-port/README.md).
+
 **Driver contract, and it decides run outcomes:**
 
 - `READCOMMAND` signals errors by return code only, so a non-finite float
-  alongside a success code is a contract violation. The driver throws instead of
-  returning it.
-- That throw exits the reader loop, which closes the port and records the cause.
-  So one bad sample **ends the stream**, and the run then dies on the no-data
-  watchdog — the trade recorded as OQ-74.
+  alongside a success code is a contract violation. `DSCUSB.readCommand` seeds
+  its out-parameter with `NaN` and throws `-800` instead of returning it —
+  unchanged by OQ-74.
+- **A transient fault is dropped, not fatal** (`dscusb` 0.3.0, OQ-74 answered).
+  The reader discards the reading and reads on within an **80 ms wall-clock
+  budget** — wall clock rather than a retry count because the loop never sleeps,
+  so N retries is an unpredictable amount of missing data and what has to be
+  bounded is the length of the hole. 80 ms is sized under the deck's 250 ms
+  no-data watchdog so a *recovered* burst cannot trip it. Past the budget the
+  original exception is rethrown unwrapped, so the trip reason still names the
+  driver's own code. Droppable: `-200`, `-300`, `-500`, `-600`, `-700`, `-800`.
+- **Terminal, and still ending the stream:** `-1`, `-2`, `-100`, `-400`, and any
+  unknown code — stopping with a named cause beats retrying a condition the
+  table cannot reason about. `-100` is terminal despite reading as transient:
+  the vendor documentation says the DLL *"will halt all processing while waiting
+  for a response from the instrument"* with a default timeout of 300 ms, so a
+  `-100` has already punched a hole longer than the deck's watchdog by the time
+  it is thrown. Retrying cannot save a run that is already over, and dropping it
+  would leave `isReading()` true — bare silence with no named cause. Note the
+  vendor only documents `0/-1/-100/-200/-400` for `READCOMMAND`; `-300`, `-500`,
+  `-600` and `-700` come from the driver header, so classifying those is a
+  judgement about meaning, not an observation.
+- `LoadCellStream.droppedSampleCount()` is the **only** trace a recovered burst
+  leaves: the stream keeps reading, `lastError()` stays null, and the sample
+  timestamps show a hole without saying whether the driver rejected readings or
+  the bus was merely slow. `LoadCellDevice.readData` logs it on change and
+  `LoadCellThread`'s incident line carries it. Nothing bounds the *total*
+  dropped fraction of a run — OQ-81.
 - **A stopped stream can never be restarted.** Reconnection must construct a new
   `CellValueStream`; this is why `LoadCellStreamProvider` is a factory, and the
   constraint the
@@ -202,5 +242,6 @@ Reasoning in
 | OQ | Topic |
 |---|---|
 | OQ-43 | `usbmodbus.jar` provenance — owner-owed |
-| OQ-74 | One non-finite reading ends the stream, and therefore the run |
-| OQ-79 | Both drivers are Windows-only, so the Linux deck image cannot drive the bench — owner-owed |
+| OQ-81 | Only *consecutive* driver faults are budgeted — nothing bounds a run's total dropped fraction |
+| OQ-79 | Native Windows is decided; only the fate of the unusable `docker` deck profile is open |
+| OQ-80 | Continuous output mode would remove load-cell polling — unexploited, unverified on this variant |

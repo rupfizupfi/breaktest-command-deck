@@ -24,7 +24,7 @@ flowchart TB
     AD["Lab Admin<br/>(USER+ADMIN role)"]:::actor
 
     subgraph SUT["Breaktest Command Deck (system)"]
-        SYS["Two Spring Boot deployments, two hosts<br/>cms in the cloud · deck on the tester<br/>one shared schema, one shared DB"]
+        SYS["Two Spring Boot deployments, two hosts<br/>cms in the cloud · deck on the tester<br/>one shared schema, one shared DB intended (OQ-61)"]
     end
 
     HW["Test bench<br/>(electric motor + load cell<br/>+ frequency converter + relays)"]:::external
@@ -56,8 +56,8 @@ flowchart LR
     BR["Browser<br/>React 19 + TypeScript<br/>@stomp/rx-stomp"]:::container
 
     subgraph Apps["Spring Boot 4.1 apps (Java 26, Vaadin/Hilla 25.2.6)"]
-        DECK["command-deck app — tester host<br/>command-deck-application.jar<br/>(superset of cms)<br/>hardware control + tests"]:::container
-        CMS["cms app — cloud host<br/>cms-application.jar<br/>projects/samples/results CRUD<br/>REST under /api/**"]:::container
+        DECK["command-deck app · tester host<br/>command-deck-application.jar<br/>(superset of cms)<br/>hardware control + tests"]:::container
+        CMS["cms app · cloud host<br/>cms-application.jar<br/>projects/samples/results CRUD<br/>REST under /api/**"]:::container
     end
 
     subgraph DB["Database"]

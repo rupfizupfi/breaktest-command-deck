@@ -46,7 +46,7 @@ erDiagram
     SAMPLE   }o--o{ MATERIAL      : "sample_material (M:N)"
     SAMPLE         ||--o{ TEST_RESULT : "tested by (required)"
     TEST_PARAMETER ||--o{ TEST_RESULT : "uses (required)"
-    TEST_RESULT    ||--o{ FILE_METADATA : "files (cascade=ALL)"
+    TEST_RESULT    ||--o{ FILE_METADATA : "files (cascade=ALL, orphanRemoval)"
 ```
 
 Source: [`doc/diagrams/src/er-diagram.mmd`](../diagrams/src/er-diagram.mmd).

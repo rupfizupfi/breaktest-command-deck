@@ -21,9 +21,6 @@ last refreshed and have no entry here yet; their detail lives in
 ## Contents
 
 - [Quick wins — mechanical, zero decision left](#quick-wins--mechanical-zero-decision-left)
-  - [[ ] OQ-10 · Drop unused `hillaVersion`](#--oq-10--drop-unused-hillaversion)
-  - [[ ] OQ-13 · Delete empty `hilla/` package tree](#--oq-13--delete-empty-hilla-package-tree)
-  - [[ ] OQ-31 · Remove dead `Avatar` import](#--oq-31--remove-dead-avatar-import)
   - [[ ] OQ-38 · `System.out.println` → SLF4J debug](#--oq-38--systemoutprintln--slf4j-debug)
   - [[ ] OQ-42 · Comment `SettingService`'s direct `CrudService`](#--oq-42--comment-settingservices-direct-crudservice)
   - [[ ] OQ-27 · Rename `OnwerSelector` → `OwnerSelector`](#--oq-27--rename-onwerselector--ownerselector)
@@ -41,7 +38,6 @@ last refreshed and have no entry here yet; their detail lives in
 - [Ops](#ops)
   - [[ ] OQ-61 · Point deck at the cloud Postgres](#--oq-61--point-deck-at-the-cloud-postgres)
   - [[ ] OQ-4 · Dedupe `application*.properties`](#--oq-4--dedupe-applicationproperties)
-  - [[ ] OQ-14 · Fully untrack `generated/`](#--oq-14--fully-untrack-generated)
   - [[ ] OQ-34 · Delete the profile-picture feature](#--oq-34--delete-the-profile-picture-feature)
   - [[ ] OQ-56 · Define or drop the `rclone` service](#--oq-56--define-or-drop-the-rclone-service)
 - [Investigations](#investigations)
@@ -54,19 +50,6 @@ last refreshed and have no entry here yet; their detail lives in
   - [[ ] OQ-49 · Explicit constructor lookup in `TestRunnerFactory`](#--oq-49--explicit-constructor-lookup-in-testrunnerfactory)
 
 ## Quick wins — mechanical, zero decision left
-
-### [ ] OQ-10 · Drop unused `hillaVersion`
-- **File:** `gradle.properties:1`
-- **Change:** delete the line. Nothing reads it; the Hilla starter's version comes from the Vaadin BOM.
-- **Verify:** `./gradlew build`.
-
-### [ ] OQ-13 · Delete empty `hilla/` package tree
-- **Path:** `command-deck/src/main/java/ch/rupfizupfi/deck/hilla/` (contains empty `crud/` and `mappedtypes/`)
-- **Change:** remove the directories.
-
-### [ ] OQ-31 · Remove dead `Avatar` import
-- **File:** `cms/src/main/frontend/views/@layout.tsx:4`
-- **Change:** delete the `import { Avatar } from '@vaadin/react-components/Avatar.js';` line.
 
 ### [ ] OQ-38 · `System.out.println` → SLF4J debug
 - **File:** `cms/src/main/java/ch/rupfizupfi/deck/security/CheckUserCanOnlyAccessOwnDataAspect.java:22` and `:40`
@@ -144,10 +127,6 @@ OQ-50, OQ-43, OQ-74.
 - **Files:** `command-deck/src/main/resources/application{,-dev,-docker}.properties`
 - **Change:** delete the deck copies and rely on the cms classpath copies, or import them explicitly.
 - **Verify first:** classpath ordering for the *profile-specific* files — `application.properties` and `application-dev.properties` are byte-identical and `application-docker.properties` differs only in line endings, so nothing is lost if resolution works as expected. Boot both modules in both profiles.
-
-### [ ] OQ-14 · Fully untrack `generated/`
-- **Change:** `git rm --cached -r` both modules' `src/main/frontend/generated/` trees; confirm `.gitignore` covers them.
-- **Verify:** clean clone + build produces a working frontend with no tracked generated files. This is what removes the permanent `git status` noise.
 
 ### [ ] OQ-34 · Delete the profile-picture feature
 - **Scope:** the image column on `User` / `application_user`, its rows in `cms/src/main/resources/data.sql`, and any UI reading it.

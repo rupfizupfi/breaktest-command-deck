@@ -33,7 +33,6 @@ to the deeper docs for the *why*.
   - [Frontend `404 /api/...` for upload/download endpoints](#frontend-404-api-for-uploaddownload-endpoints)
   - [Postgres container restarts in a loop with `database "rupfizupfi" does not exist`](#postgres-container-restarts-in-a-loop-with-database-rupfizupfi-does-not-exist)
   - [Gradle wrapper crashes with `Unsupported class file major version NN`](#gradle-wrapper-crashes-with-unsupported-class-file-major-version-nn)
-  - [Vaadin dev-server complains about generated files](#vaadin-dev-server-complains-about-generated-files)
 - [Where to look in the code](#where-to-look-in-the-code)
 - [Open questions](#open-questions)
 
@@ -209,14 +208,6 @@ names the missing jar.
   `gradle:9.7.0-jdk26-corretto`. An older or newer JDK on PATH can produce
   a class-file version Gradle's Groovy parser rejects. Use a version
   manager to select JDK 26 for the build.
-
-### Vaadin dev-server complains about generated files
-- **Diagnostic:** check `git status` for stale `generated/` files.
-- **Fix:** `src/main/frontend/generated/` is gitignored but parts are
-  tracked from earlier commits, so a Hilla regeneration produces noisy
-  diffs. `git checkout -- '*/src/main/frontend/generated/*'` resets to the
-  tracked baseline. The decision is to untrack these trees entirely
-  (OQ-14) — once that lands, this failure mode disappears.
 
 ## Where to look in the code
 

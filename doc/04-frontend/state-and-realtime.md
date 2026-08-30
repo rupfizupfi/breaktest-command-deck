@@ -32,11 +32,11 @@ sequenceDiagram
     participant Status as StatusService.ts<br/>(@stomp/rx-stomp singleton)
     participant Hilla as Hilla generated<br/>TestRunnerService.ts
     participant Spring as Spring MVC /<br/>Hilla dispatcher
-    participant Runner as TestRunnerService.java
-    participant Thread as TestRunnerThread.java
+    participant Runner as TestRunnerService.java<br/>@BrowserCallable
+    participant Thread as TestRunnerThread.java<br/>(plain class that owns a java.lang.Thread)
     participant LCThread as LoadCellThread.java
     participant Device as LoadCellDevice<br/>(dscusb.jar serial)
-    participant Broadcast as ForceBroadcaster.java
+    participant Broadcast as ForceBroadcaster.java<br/>(MeasurementObserver)
     participant Broker as Spring SimpleBroker<br/>/topic/load-cell
 
     User->>ChartCmp: Click "Run test"
@@ -50,20 +50,20 @@ sequenceDiagram
 
     par WebSocket already connected
         ChartCmp->>Status: connectComponent(this) +<br/>loadCellObservable.subscribe(...)
-        Status->>Broker: STOMP CONNECT (ws://host/status)
+        Status->>Broker: STOMP CONNECT<br/>(ws://host/status)
         Status->>Broker: SUBSCRIBE /topic/load-cell
     and Hardware loop
         Thread->>LCThread: starts inside test setup()
         loop continuous sampling
             Device-->>LCThread: Measurement(timestamp, force)
             LCThread->>Broadcast: update(measurements)
-            Broadcast->>Broker: convertAndSend("/topic/load-cell", buf)
+            Broadcast->>Broker: convertAndSend("/topic/load-cell", buf)<br/>(flushes when the oldest buffered sample is<br/>&gt;60 ms old, tested on the 20 ms reader tick)
         end
     end
 
     Broker-->>Status: STOMP MESSAGE frame
     Status-->>ChartCmp: IMessage (rxjs Observable)
-    ChartCmp->>ChartCmp: setDataPoints([...prev, ...new])
+    ChartCmp->>ChartCmp: setDataPoints(prev =&gt; push into prev arrays)<br/>mutates in place, unbounded — Chart.js re-renders
 
     User->>ChartCmp: Click "Stop"
     ChartCmp->>Hilla: TestRunnerService.stop()
@@ -107,7 +107,7 @@ Three topics are pushed today:
 
 | Topic | Producer | Frame body |
 |---|---|---|
-| `/topic/load-cell` | `device/loadcell/ForceBroadcaster.java` | JSON array of `{timestamp, force}` measurements, batched every ~60ms |
+| `/topic/load-cell` | `device/loadcell/ForceBroadcaster.java` | JSON array of `{timestamp, force}` measurements, flushed once the buffer's oldest sample passes 60 ms (tested on the 20 ms reader tick, so not a fixed rate) |
 | `/topic/frequency-converter-info` | `device/frequencyconverter/DeviceInfoBroadcaster.java` | JSON `Info` object (speed, motor current/voltage/torque, ...) |
 | `/topic/logs` | `testrunner/TestLogger.java` (subscribed to via `Status.logObservable`) | plain string per log line |
 

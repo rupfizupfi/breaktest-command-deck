@@ -3,8 +3,9 @@ import TestResultModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestResu
 import {createAutoComboBoxService} from "cms/components/combobox/service";
 import AutoComboBox from "cms/components/combobox/AutoComboBox";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
+import RunStatus from "Frontend/generated/ch/rupfizupfi/deck/data/RunStatus";
 import {GridColumn, Icon, TextArea, VerticalLayout} from "@vaadin/react-components";
-import React, {useEffect, useState} from "react";
+import {useEffect, useState} from "react";
 import {useSignal} from "@vaadin/hilla-react-signals";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
@@ -19,6 +20,28 @@ import sampleGridColumn from "cms/model/sample/sampleGridColumn";
 import {TestParameterService, SampleService, TestResultService} from "Frontend/generated/endpoints";
 
 createEmptyValueProxy(TestResultModel);
+
+/**
+ * A run that survived a sensor loss must be visibly not a clean one in the list — see RunStatus, which
+ * makes COMPLETED_WITH_GAPS its own value rather than a flag beside COMPLETED for the same reason.
+ * The name is rendered verbatim: it is the stored audit vocabulary, and prettifying it would leave the
+ * operator and the database saying different words about the same run.
+ */
+const RUN_STATUS_COLOUR: Partial<Record<RunStatus, string>> = {
+    [RunStatus.COMPLETED_WITH_GAPS]: '#a35b00',
+    [RunStatus.ABORTED]: '#8a1f14',
+    [RunStatus.FAULT]: '#8a1f14',
+};
+
+function runStatusCell(status?: RunStatus) {
+    if (!status) {
+        // Every run predating the recovery feature has no status, and that is not a fault.
+        return <span style={{color: 'var(--lumo-secondary-text-color)'}}>&mdash;</span>;
+    }
+
+    const colour = RUN_STATUS_COLOUR[status];
+    return <span style={{color: colour, fontWeight: colour ? 600 : undefined}}>{status}</span>;
+}
 
 export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/play-circle-solid.svg'}, title: 'Execute test', loginRequired: true};
 
@@ -59,13 +82,17 @@ export default function RunView() {
                 service={TestResultService}
                 model={TestResultModel}
                 gridProps={{
-                    visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'results', 'images', 'tracking'],
+                    // Explicit list: a new entity field does not appear here on its own.
+                    visibleColumns: ['owner', 'testParameter', 'sample', 'description', 'runStatus', 'results', 'images', 'tracking'],
                     columnOptions: {
                         owner: ownerGridColumn,
                         testParameter: {
                             renderer: ({item}: { item: TestResult }) => item.testParameter.label
                         },
-                        sample: sampleGridColumn
+                        sample: sampleGridColumn,
+                        runStatus: {
+                            renderer: ({item}: { item: TestResult }) => runStatusCell(item.runStatus)
+                        }
                     },
                     customColumns: [
                         <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>,

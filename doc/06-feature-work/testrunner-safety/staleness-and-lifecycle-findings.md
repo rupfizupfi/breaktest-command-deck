@@ -15,7 +15,7 @@ The no-data watchdog in `LoadCellThread` closes the silent-sensor case. What it 
 | Finding | Anchor | Note |
 |---|---|---|
 | A feed that is slow but not silent passes every detector — the no-data timeout is 250 ms, the frozen detector needs 100 bit-identical samples | `LoadCellThread#noDataTimedOut`, `#inspectSample` | Limit checks run on whatever the trickle delivers |
-| ~~NaN poisons `minValue`/`maxValue`~~ — **closed** at source; the driver now throws on a non-finite reading and the jar shipped (`ec47aa6`) | `LoadCellThread#run` | Traded for OQ-74: the throw kills the stream, so one bad sample ends the run |
+| ~~NaN poisons `minValue`/`maxValue`~~ — **closed twice**: the driver rejects non-finite readings, and the envelope now updates only past the plausibility check | `LoadCellThread#inspectSample` | The driver fix alone was not enough — a finite-but-absurd reading did the same damage arithmetically, and `dscusb` only rejects non-finite values |
 | Limit check still inspects only `measurements.getLast()` — intra-batch peaks never reach the shut-off | `LoadCellThread#run` | Original audit C7; phase 4 |
 
 ## Stale data reaching the operator

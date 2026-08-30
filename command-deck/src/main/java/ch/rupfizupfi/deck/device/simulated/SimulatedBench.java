@@ -15,20 +15,43 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 /**
- * One plant model that the simulated drive writes to and the simulated load cell reads from.
+ * One plant model that the simulated drive writes to and the simulated load cell reads from. They
+ * cannot be independent — a cyclic run closes its loop through the hardware.
  * <p>
- * They cannot be independent: a cyclic run closes a loop through the hardware — force crosses the
- * upper limit, the runner flips direction on the drive, and the force must actually <i>fall</i> as
- * a result. An independent force generator either never crosses the thresholds or crosses them
- * regardless of the motor, and either way the cycle logic goes untested.
- * <p>
- * All parameters are invented; see {@link SimulatedBenchProperties}.
+ * Why one model, the update rule of each state variable, and the watchdog constants every value
+ * emitted here has to respect: {@code doc/06-feature-work/virtual-devices/README.md}. All
+ * parameters are invented ({@link SimulatedBenchProperties}) and the traces are shape-plausible,
+ * not calibrated.
  */
 @Component
 @ConditionalOnProperty(name = "deck.hardware.mode", havingValue = "simulated")
 public class SimulatedBench {
 
     private static final Logger logger = LoggerFactory.getLogger(SimulatedBench.class);
+
+    /**
+     * Offset a freshly registered stream reports while {@link SimulatedFault#LOAD_CELL_RECONNECT_GARBAGE}
+     * is armed. Deliberately between the two gates: above the drift gate ({@code RecoveryProperties}
+     * driftFraction of the envelope, floored at minEnvelopeNewton) so the reconnect is rejected as
+     * drifted, and far below {@code LoadCellThread}'s plausibility bound so it is not rejected as
+     * impossible first — that would exercise the wrong branch and leave drift as untested as before.
+     */
+    private static final double RECONNECT_GARBAGE_OFFSET_NEWTON = 25_000;
+
+    /**
+     * How long the garbage offset lasts. Longer than {@code plausibilityGateMillis}, so every sample
+     * the gate inspects carries it — a shorter window would let the reconnect pass on the samples
+     * that arrived after the offset cleared.
+     */
+    private static final long RECONNECT_GARBAGE_WINDOW_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
+
+    /**
+     * How long a stream survives while {@link SimulatedFault#LOAD_CELL_FLAPPING} is armed. Longer than
+     * the first reconnect backoff plus the plausibility gate, so each cycle is a resume that genuinely
+     * completed followed by a fresh loss — a shorter life would only ever exercise reconnect, never
+     * the loss counter the cap is built on.
+     */
+    private static final long FLAPPING_STREAM_LIFETIME_NANOS = TimeUnit.SECONDS.toNanos(2);
 
     private final SimulatedBenchProperties properties;
     private final SimulatedFaultSwitches faults;
@@ -52,6 +75,9 @@ public class SimulatedBench {
     private boolean wasEnergized = false;
 
     private final Set<SimulatedLoadCellStream> streams = new CopyOnWriteArraySet<>();
+
+    /** nanoTime of the most recent {@link #register}; the age both reconnect faults are keyed on. */
+    private volatile long lastStreamRegisteredNanos = System.nanoTime();
 
     private volatile Thread tickThread;
     private volatile boolean running = false;
@@ -95,21 +121,22 @@ public class SimulatedBench {
     }
 
     /**
-     * Discards the specimen: travel back to zero, fracture healed. Without it the fracture latch and
-     * the accumulated crosshead travel survive into the next run, and every run after a destructive
-     * one reads zero force forever — its cyclic loop then never crosses a limit and hangs.
-     * <p>
-     * Two independent triggers, because neither alone is sufficient. The rising edge of energization
-     * misses the case that matters most: a stop that <em>failed</em> never cleared the drive's
-     * control bits, so the next run's energize is not an edge at all. Opening a load cell stream
-     * covers that, and cannot fire mid-run — the device only opens one when its reference count
-     * leaves zero, which happens before the motor is energized.
-     * <p>
-     * Known limit: if something holds the load cell open across two runs and the drive was left
-     * energized by a failed stop, neither trigger fires and the second run inherits the first one's
-     * specimen. Fidelity loss confined to simulated mode, never a corruption of real data.
+     * Discards the specimen: travel back to zero, fracture healed. Called from two independent
+     * triggers because neither alone suffices — see the plant-model section of
+     * {@code doc/06-feature-work/virtual-devices/README.md}, which points back here for the one
+     * case both triggers miss: a load cell held open across two runs while a failed stop left the
+     * drive energized. The second run then inherits the first one's specimen — a fidelity loss
+     * confined to simulated mode, never a corruption of real data.
      */
     void mountNewSpecimen(String reason) {
+        // Defence in depth for a caller that gets here mid-run: remounting under a live test teleports
+        // the crosshead to zero and fails every simulated resume's drift gate. The precise fix is
+        // upstream in SimulatedLoadCellStreamProvider#open(boolean), which skips a reconnect's remount.
+        if (generalEnabled || measuredRpm != 0) {
+            logger.info("Simulated bench: keeping the current specimen, the machine is running ({})", reason);
+            return;
+        }
+
         if (positionMm == 0 && !fractured) {
             return;
         }
@@ -120,6 +147,10 @@ public class SimulatedBench {
     }
 
     void register(SimulatedLoadCellStream stream) {
+        // Stamped so the two reconnect faults below can act on stream AGE. Both need "shortly after
+        // this stream came up", which is the only thing distinguishing a reconnect from a run that
+        // never lost its sensor - the bench is not told which open was which.
+        lastStreamRegisteredNanos = System.nanoTime();
         streams.add(stream);
     }
 
@@ -161,11 +192,7 @@ public class SimulatedBench {
         return directionForward;
     }
 
-    /**
-     * The MEASURED shaft speed, which is the whole point of the drive fake: a fake that echoed its
-     * own setpoint would mark every stop instantly verified and leave the coast-down, and with it
-     * the entire escalation ladder, unexercised.
-     */
+    /** The MEASURED shaft speed. Never echo the setpoint here — that unexercises the whole ladder. */
     int measuredRpm() {
         return (int) Math.round(measuredRpm);
     }
@@ -183,8 +210,8 @@ public class SimulatedBench {
             }
 
             long now = System.nanoTime();
-            // Measured, not assumed: a descheduled tick must advance the plant by the time that
-            // actually passed, or the force curve silently depends on machine load.
+            // Measured, not assumed from the tick interval: a descheduled tick must still advance
+            // the plant by the time that actually passed.
             double dtSeconds = (now - previous) / 1_000_000_000.0;
             previous = now;
 
@@ -209,8 +236,7 @@ public class SimulatedBench {
         double step = rate * dtSeconds;
 
         double rpm = measuredRpm;
-        // The drive still answers; only the shaft ignores it. That distinction is the whole reason
-        // the escalation is gated on drive responsiveness rather than on the clock.
+        // The drive still answers; only the shaft ignores it.
         boolean shaftFrozen = faults.isActive(SimulatedFault.DRIVE_MOTOR_NEVER_SLOWS);
         if (!shaftFrozen) {
             if (rpm < target) {
@@ -224,8 +250,6 @@ public class SimulatedBench {
         // Pull (directionForward == false) takes up slack and raises force; release pays it back.
         double travel = rpm * properties.getMmPerRev() * dtSeconds / 60.0;
         double position = positionMm + (directionForward ? -travel : travel);
-        // Clamped at zero so a long release does not bank negative travel the next pull has to
-        // undo before any force appears.
         positionMm = Math.max(0, position);
 
         emit(forceFor(positionMm));
@@ -233,14 +257,13 @@ public class SimulatedBench {
 
     /**
      * Turns the plant's force into the sample the streams see, applying whichever load-cell fault is
-     * armed. Faults are injected here rather than inside the stream so every subscriber sees one
-     * consistent view of the same broken sensor.
+     * armed. Injected here rather than inside the stream so every subscriber sees one consistent
+     * view of the same broken sensor.
      */
     private void emit(double plantForce) {
         if (faults.isActive(SimulatedFault.LOAD_CELL_STREAM_DEATH)) {
-            // Terminal, and only once: the driver records a cause and its reader thread is gone.
-            // -800 is CommandExecutionException.NON_NUMERIC_VALUE, the code the real driver uses for
-            // this exact failure — the trip reason must name an entry that exists in its table.
+            // -800 is CommandExecutionException.NON_NUMERIC_VALUE: the trip reason must name a code
+            // that exists in the real driver's table.
             var cause = new StreamFailure("-800", "CommandExecutionException",
                     "simulated driver fault: non-numeric value returned while the driver reported success");
             for (SimulatedLoadCellStream stream : streams) {
@@ -249,9 +272,28 @@ public class SimulatedBench {
             return;
         }
 
+        if (faults.isActive(SimulatedFault.LOAD_CELL_FLAPPING)
+                && System.nanoTime() - lastStreamRegisteredNanos >= FLAPPING_STREAM_LIFETIME_NANOS) {
+            // Same driver code as LOAD_CELL_STREAM_DEATH and for the same reason: a trip reason must
+            // name an entry that exists in the driver's table. Fires once per stream - fail()
+            // unregisters it, so nothing dies again until a reconnect registers a replacement.
+            var cause = new StreamFailure("-800", "CommandExecutionException",
+                    "simulated driver fault: the stream died again shortly after it was reconnected");
+            for (SimulatedLoadCellStream stream : streams) {
+                stream.fail(cause);
+            }
+            return;
+        }
+
         if (faults.isActive(SimulatedFault.LOAD_CELL_SILENT)) {
-            // Still "reading" as far as the driver is concerned - the sensor just went quiet, which
-            // is precisely the case the deck can only detect as silence.
+            // Still "reading" as far as the driver is concerned: the sensor just went quiet.
+            return;
+        }
+
+        if (faults.isActive(SimulatedFault.LOAD_CELL_DROPPED_SAMPLES)) {
+            for (SimulatedLoadCellStream stream : streams) {
+                stream.drop();
+            }
             return;
         }
 
@@ -265,7 +307,7 @@ public class SimulatedBench {
         } else if (faults.isActive(SimulatedFault.LOAD_CELL_IMPLAUSIBLE_FORCE)) {
             force = 1_000_000f;
         } else {
-            force = (float) (plantForce + dither());
+            force = (float) (plantForce + dither() + reconnectGarbageOffset());
             lastEmittedForce = force;
         }
 
@@ -273,6 +315,19 @@ public class SimulatedBench {
         for (SimulatedLoadCellStream stream : streams) {
             stream.offer(new Measurement(force, timestamp));
         }
+    }
+
+    /**
+     * A cell that came back mis-zeroed: the plant is untouched, only the reading is offset, and only
+     * for the first samples of a freshly registered stream. Zero unless the fault is armed.
+     */
+    private double reconnectGarbageOffset() {
+        if (!faults.isActive(SimulatedFault.LOAD_CELL_RECONNECT_GARBAGE)) {
+            return 0;
+        }
+
+        long age = System.nanoTime() - lastStreamRegisteredNanos;
+        return age < RECONNECT_GARBAGE_WINDOW_NANOS ? RECONNECT_GARBAGE_OFFSET_NEWTON : 0;
     }
 
     private double forceFor(double position) {
@@ -298,10 +353,7 @@ public class SimulatedBench {
         return Math.min(force, properties.getMaxForceNewton());
     }
 
-    /**
-     * Applied AFTER the zero clamp, on purpose: an unloaded specimen otherwise emits a bit-identical
-     * 0.0 every tick and trips the frozen-sample detector within two seconds.
-     */
+    /** Applied AFTER the zero clamp, or an unloaded specimen trips the frozen-sample detector. */
     private double dither() {
         double amplitude = properties.getDitherNewton();
         return amplitude <= 0 ? 0 : ThreadLocalRandom.current().nextDouble(-amplitude, amplitude);

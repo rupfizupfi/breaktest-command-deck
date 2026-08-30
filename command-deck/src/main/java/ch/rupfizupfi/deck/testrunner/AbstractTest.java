@@ -3,13 +3,18 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.api.Drive;
+import ch.rupfizupfi.deck.filesystem.CSVStoreService;
 import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
 import ch.rupfizupfi.deck.testrunner.startup.check.CheckFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class AbstractTest implements SignalListener {
+public abstract class AbstractTest implements SignalListener, SensorLossListener {
+    private static final Logger logger = LoggerFactory.getLogger(AbstractTest.class);
+
     /** Motor energization must never be gated on anything weaker than a real, fresh sample. */
     private static final long LOAD_CELL_STARTUP_TIMEOUT_MS = 2000;
 
@@ -22,6 +27,31 @@ public abstract class AbstractTest implements SignalListener {
     protected DeviceService deviceService;
     protected long startTime;
 
+    protected TestRunnerThread runner;
+    protected TestStateMachine stateMachine;
+    protected RecoveryProperties recovery;
+    protected SensorReconnector reconnector;
+    protected GapRecorder gapRecorder;
+    protected RecoveryGates gates;
+
+    /** Set by {@link #abort(String)} from an operator thread, read on the runner thread in finish(). */
+    protected volatile boolean aborted = false;
+
+    /**
+     * Losses this run has already survived. Incremented only on the measurement thread, but read by
+     * {@link #canResume()} on an operator thread, hence volatile.
+     */
+    protected volatile int lossCount = 0;
+
+    /** Whether the last completed recovery gate passed. A new loss invalidates the previous verdict. */
+    private volatile boolean lastGatePassed = false;
+
+    /** When the current SAFE_HOLD began; 0 while no hold is standing. */
+    private volatile long holdEnteredAtMillis = 0;
+
+    /** Created once and shared by the CSV writer and the gap recorder, which must agree on the run. */
+    private CSVStoreService.TestRunFiles runFiles;
+
     private boolean frequencyConverterConnected = false;
 
     AbstractTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService, MotorSafetyController motorSafety) {
@@ -31,6 +61,66 @@ public abstract class AbstractTest implements SignalListener {
         this.deviceService = deviceService;
         this.motorSafety = motorSafety;
         this.startTime = System.currentTimeMillis();
+    }
+
+    /**
+     * Hands the run its per-run recovery collaborators. Deliberately a setter and not four more
+     * constructor parameters: {@code TestRunnerFactory#createTestRunner} resolves constructor
+     * parameters by TYPE out of the ApplicationContext, so anything added there would have to be a
+     * singleton bean - and a state machine or a reconnector shared between runs carries one run's
+     * history and listeners into the next.
+     * <p>
+     * Must be called before {@link #setup()}; see {@link #requireRecoveryWiring()}.
+     */
+    public void initRecovery(TestRunnerThread runner, TestStateMachine stateMachine,
+                             GapRecorder gapRecorder, CSVStoreService.TestRunFiles runFiles,
+                             RecoveryGates gates) {
+        this.runner = runner;
+        this.stateMachine = stateMachine;
+        this.gapRecorder = gapRecorder;
+        this.runFiles = runFiles;
+        this.gates = gates;
+        // Taken from the factory rather than passed in. The two can only diverge if the properties
+        // are rebound mid-run, which needs devtools - and a devtools reload restarts the context and
+        // takes the run with it. So the snapshot recorded in the audit log is the one that was in
+        // force; it is not a guarantee the type system makes, which is why this says so.
+        this.recovery = testRunnerFactory.recoveryProperties();
+    }
+
+    /**
+     * Separate from {@link #initRecovery} because {@code SensorReconnector} is constructed around
+     * the run's {@code LoadCellThread}, which only exists once {@link #setup()} has run - while the
+     * state machine has to be in place before that, or a setup() failure has nowhere to be recorded.
+     * A run whose reconnector never arrives holds and aborts; it never resumes.
+     */
+    public void setReconnector(SensorReconnector reconnector) {
+        this.reconnector = reconnector;
+    }
+
+    /**
+     * The run's file set. Lazily created and cached, because the measurement CSV and the gap record
+     * must describe the same run - two calls to {@code createRunFiles} would be two file sets.
+     */
+    public CSVStoreService.TestRunFiles runFiles() {
+        if (runFiles == null) {
+            // Only reachable for a run that was never wired through initRecovery; the runner owns the
+            // file set because it has to build the gap recorder around it before the test exists.
+            runFiles = testRunnerFactory.createRunFiles(testResult.getId());
+        }
+        return runFiles;
+    }
+
+    /**
+     * Refuses to set up a run whose loss path is not wired: without a state machine
+     * {@link #onSensorLoss} cannot even record the incident, and the operator would get a motor that
+     * stopped for no stated reason.
+     */
+    protected void requireRecoveryWiring() {
+        if (stateMachine == null || recovery == null) {
+            throw new IllegalStateException(
+                    "initRecovery(...) was not called before setup(), refusing to start a run whose"
+                            + " sensor-loss path is not wired");
+        }
     }
 
     abstract void setup();
@@ -52,6 +142,169 @@ public abstract class AbstractTest implements SignalListener {
     }
 
     /**
+     * Runs on the MEASUREMENT thread, which has already de-energized the drive in
+     * {@code LoadCellThread#sensorLost} before calling this. Everything here is bookkeeping and
+     * handover - the motor is not waiting on it, but the measurement thread is, so nothing may
+     * block and nothing may throw back into the watchdog.
+     */
+    @Override
+    public void onSensorLoss(String reason, float lastKnownForce) {
+        try {
+            lossCount++;
+            lastGatePassed = false;
+            stateMachine.transition(TestState.SENSOR_LOST, reason);
+
+            TestContext context = testContext;
+            if (context != null) {
+                // Gate first, then drain: a crossing that arrives between the two would otherwise be
+                // queued after the drain and dispatched into a drive that is being re-initialised.
+                context.setSignalDispatchEnabled(false);
+                context.drainSignals();
+            }
+
+            onHoldEntry();
+
+            holdEnteredAtMillis = System.currentTimeMillis();
+            stateMachine.transition(TestState.SAFE_HOLD, reason);
+
+            startRecovery(reason, lastKnownForce);
+        } catch (Throwable t) {
+            logger.error("sensor-loss handling failed, the run cannot be held safely", t);
+            log("error while entering the safe hold: " + t);
+            if (stateMachine != null) {
+                stateMachine.transition(TestState.FAULT, "sensor-loss handling failed: " + t);
+            }
+        }
+    }
+
+    /**
+     * The measurement loop died rather than the sensor. Nothing to reconnect to, so there is no hold:
+     * record the run as a FAULT and unwind it. The motor is already stopped by the caller.
+     */
+    @Override
+    public void onWatchdogFailure(String detail) {
+        log("load cell thread failed: " + detail);
+        if (stateMachine != null) {
+            stateMachine.transition(TestState.FAULT, detail);
+        }
+        abort(detail);
+    }
+
+    /**
+     * Type-specific work at the start of a hold. Runs on the measurement thread, so an override must
+     * be short and must not wait on the drive.
+     */
+    protected void onHoldEntry() {
+    }
+
+    /**
+     * Hands the loss to the reconnector on a thread of its own. The measurement thread must not wait
+     * for a reconnect: it stays responsible for parking the hold and for answering
+     * {@code LoadCellThread#endHold()}, and a reconnect window is seconds long.
+     */
+    private void startRecovery(String reason, float lastKnownForce) {
+        if (reconnector == null) {
+            log("no reconnector wired for this run, the hold can only end in an abort");
+            return;
+        }
+
+        TestContext context = testContext;
+        // The gate's own floor (RecoveryProperties#minEnvelopeNewton) is applied by the gate; this is
+        // just the test's configured force envelope.
+        double envelope = context == null ? 0
+                : Math.max(Math.abs(context.getUpperLimit()), Math.abs(context.getLowerLimit()));
+
+        Thread worker = new Thread(() -> {
+            try {
+                SensorReconnector.Outcome outcome =
+                        reconnector.attemptRecovery(reason, lastKnownForce, envelope);
+                lastGatePassed = outcome.recovered() && outcome.gate() != null && outcome.gate().passed();
+                log("sensor recovery after " + outcome.attempts() + " attempt(s): " + outcome.detail());
+                // The verdict is produced here, on the loss path, but it is resumeTest() and the
+                // incident broadcast that need it - so it is handed back rather than kept local.
+                if (runner != null) {
+                    runner.recordRecoveryOutcome(outcome);
+                }
+            } catch (Throwable t) {
+                // A failed recovery is an abort, never a resume - and it must not take a thread down
+                // silently, because the operator is looking at a banner that is waiting for it.
+                lastGatePassed = false;
+                logger.error("sensor recovery failed", t);
+                log("sensor recovery failed: " + t);
+            }
+        }, "sensor-recovery-" + testResult.getId());
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /**
+     * Ends the run from outside the runner thread - the operator's Abort button, or the SAFE_HOLD
+     * timeout. Deliberately does not touch the hardware: signal 0 unblocks the runner from
+     * {@code processSignals()} and lets it unwind through the normal {@link #finish()} path, so an
+     * abort tears the run down exactly the way a stop does.
+     */
+    public void abort(String reason) {
+        aborted = true;
+        log("abort: " + reason);
+
+        TestContext context = testContext;
+        if (context == null) {
+            return;
+        }
+        // Drain before re-enabling, so re-opening the gate cannot let a pre-loss crossing out with
+        // the stop. Signal 0 passes the gate either way; enabling makes that independent of how the
+        // run reached here.
+        context.drainSignals();
+        context.setSignalDispatchEnabled(true);
+        context.sendSignal(0);
+    }
+
+    /** For {@link TestStateMessage}: how many losses this run has already been through. */
+    public int getLossCount() {
+        return lossCount;
+    }
+
+    /** Whether a sensor-loss hold of this test type may end in a resume rather than an abort. */
+    protected boolean supportsResume() {
+        return false;
+    }
+
+    /** Re-energizes the drive for a resumed run, as {@link #setup()} does for a fresh one. */
+    protected void reinitDriveForResume() {
+        throw new UnsupportedOperationException(
+                getClass().getSimpleName() + " does not support resuming after a sensor loss");
+    }
+
+    /**
+     * Whether the standing hold may end in a resume. Evaluated under the state lock by
+     * {@code TestStateMachine#compareAndTransition}'s guard, so it stays cheap and side-effect free.
+     */
+    public boolean canResume() {
+        if (recovery == null || !recovery.isResumeEnabled() || !supportsResume()) {
+            return false;
+        }
+        if (!lastGatePassed) {
+            return false;
+        }
+        if (lossCount > recovery.getMaxLossesPerRun()) {
+            return false;
+        }
+        // holdEnteredAtMillis is 0 when no hold ever started, which makes this comfortably false.
+        if (System.currentTimeMillis() - holdEnteredAtMillis >= recovery.getMaxHoldForResumeMillis()) {
+            return false;
+        }
+
+        // The gate that decides resumable from abort-only: past tier 1 the CFW11 is deliberately left
+        // handle-less with its refcount already dropped, so there is nothing to re-energize through -
+        // note frequencyConverterConnected still reads true there. See the resume gates in
+        // doc/06-feature-work/testrunner-safety/loadcell-recovery-design.md.
+        return motorSafety.isDriveAvailable();
+    }
+
+    // The resume sequence lives ONLY in TestRunnerThread#performResume - call the runner, never
+    // re-derive it here. A second copy is a second ordering of a safety sequence.
+
+    /**
      * This method can be executed twice!!
      */
     void cleanup() {
@@ -68,7 +321,15 @@ public abstract class AbstractTest implements SignalListener {
             log("WARNING: motor stop could not be confirmed (" + result.detail() + ") - use the physical E-stop");
         }
         if (loadCellThread != null) {
-            loadCellThread.setRunning(false);
+            // stop(), not just setRunning(false): a measurement thread parked in a recovery hold is
+            // not looking at that flag and would outlive destroy() still holding the run's CSV.
+            // Idempotent, which this method needs it to be.
+            loadCellThread.stop();
+        }
+        if (reconnector != null) {
+            // Run teardown is the reconnector's documented end: a reconnect still in flight is
+            // chasing a sensor for a run that is over, and its thread would outlive it.
+            reconnector.shutdownNow();
         }
     }
 

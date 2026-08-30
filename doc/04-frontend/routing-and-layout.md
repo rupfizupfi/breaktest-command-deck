@@ -159,11 +159,10 @@ any more.) The full multi-tenancy story (the AOP aspect, `DataWithOwner`) is in
 
 ## Where to look in the code
 - `command-deck/src/main/frontend/views/@layout.tsx:1-75`
-- `cms/src/main/frontend/views/@layout.tsx:1-74`
-- `command-deck/src/main/frontend/routes.tsx:1-38`
+- `cms/src/main/frontend/views/@layout.tsx:1-73`
+- `command-deck/src/main/frontend/routes.tsx:1-11`
 - `command-deck/customFileSystemRouterPlugin.ts:73-143`
-- `command-deck/src/main/frontend/generated/file-routes.json` (merged output)
-- `cms/src/main/frontend/generated/file-routes.json` (cms-only tree)
+- `file-routes.json` in each module — the deck's copy is the merged output, cms's the cms-only tree. Build artifacts, not in git: `frontend/generated/` in dev mode, the Vite `outDir` in production (`command-deck/customFileSystemRouterPlugin.ts:114`).
 - `cms/src/main/frontend/views/login.tsx:1-38`
 - `cms/src/main/java/ch/rupfizupfi/deck/security/SecurityConfiguration.java:27-45`
 

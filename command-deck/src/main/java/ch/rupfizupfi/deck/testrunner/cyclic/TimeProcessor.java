@@ -5,6 +5,7 @@ import ch.rupfizupfi.deck.testrunner.SignalListener;
 import ch.rupfizupfi.deck.testrunner.TestContext;
 
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -21,11 +22,6 @@ public class TimeProcessor implements SignalListener {
         this.testContext.addSignalListener(this);
     }
 
-    public void start() {
-        scheduler.scheduleAtFixedRate(this::sendReleaseSignal, 0, releaseTime, TimeUnit.MILLISECONDS);
-        scheduler.scheduleAtFixedRate(this::sendPullSignal, releaseTime, pullTime, TimeUnit.MILLISECONDS);
-    }
-
     private void sendReleaseSignal() {
         testContext.sendSignal(TestContext.RELEASE_SIGNAL);
     }
@@ -34,21 +30,36 @@ public class TimeProcessor implements SignalListener {
         testContext.sendSignal(TestContext.PULL_SIGNAL);
     }
 
+    /**
+     * Ends this processor for good; there is no counterpart. A scheduler cannot be restarted after
+     * {@code shutdownNow()}, so a resumed run gets a NEW processor - see
+     * {@code TimeCyclicTest#reinitDriveForResume}.
+     */
     public void stop() {
         testContext.removeSignalListener(this);
-        scheduler.shutdown();
+        // shutdownNow, not shutdown: a scheduled direction change still pending would fire into a
+        // drive that a safe stop just de-energized, or into one that is being re-energized.
+        scheduler.shutdownNow();
     }
 
     @Override
     public void handleSignal(int signal) throws FinishTestException {
         if (signal == TestContext.RELEASE_SIGNAL) {
-            // send pull signal after release time
-            scheduler.schedule(this::sendPullSignal, releaseTime, TimeUnit.MILLISECONDS);
+            schedule(this::sendPullSignal, releaseTime);
         }
 
         if (signal == TestContext.PULL_SIGNAL) {
-            // send release signal after pull time
-            scheduler.schedule(this::sendReleaseSignal, pullTime, TimeUnit.MILLISECONDS);
+            schedule(this::sendReleaseSignal, pullTime);
+        }
+    }
+
+    private void schedule(Runnable task, long delayMillis) {
+        try {
+            scheduler.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+            // stop() can land between the signal fan-out reading the listener list and this call.
+            // The rejection would otherwise travel out of TestContext.processSignals() and tear down
+            // a run that is only meant to be holding.
         }
     }
 }

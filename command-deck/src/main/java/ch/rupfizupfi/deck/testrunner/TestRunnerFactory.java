@@ -1,6 +1,7 @@
 package ch.rupfizupfi.deck.testrunner;
 
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.HardwareModeInfo;
 import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
@@ -12,8 +13,13 @@ import ch.rupfizupfi.deck.testrunner.startup.check.LoadCellCheck;
 import org.springframework.context.ApplicationContext;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
 import java.lang.reflect.Constructor;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 @Service
 public class TestRunnerFactory {
@@ -35,7 +41,6 @@ public class TestRunnerFactory {
     @SuppressWarnings("unchecked")
     public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult, TestLogger testLogger) {
         try {
-            // Get the constructor of the testRunnerClass
             Constructor<T> constructor;
             Constructor<?> firstConstructor = testRunnerClass.getConstructors()[0];
             if (firstConstructor.getDeclaringClass().equals(testRunnerClass)) {
@@ -44,7 +49,6 @@ public class TestRunnerFactory {
                 throw new RuntimeException("Failed to found constructor for " + testRunnerClass.getName());
             }
 
-            // Get the parameter types of the constructor
             Class<?>[] parameterTypes = constructor.getParameterTypes();
             Object[] parameters = new Object[parameterTypes.length];
 
@@ -66,8 +70,52 @@ public class TestRunnerFactory {
         }
     }
 
-    public LoadCellThread createLoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice) {
-        return new LoadCellThread(testContext, loadCellDevice, applicationContext.getBean(CSVStoreService.class), getMotorSafetyController());
+    /**
+     * The force CSV and its gap sidecar, named once per run. Both paths are fixed before the run
+     * starts so a reconnect writes its gap record next to the trace it interrupts, rather than
+     * deriving a second name from a later timestamp.
+     */
+    public CSVStoreService.TestRunFiles createRunFiles(long testResultId) {
+        return applicationContext.getBean(CSVStoreService.class).generateRunFilesForTestResult(testResultId);
+    }
+
+    public GapRecorder createGapRecorder(long testResultId, CSVStoreService.TestRunFiles runFiles,
+                                         RecoveryGates gates) {
+        return new GapRecorder(runFiles, testResultId, gates, applicationContext.getBean(ObjectMapper.class));
+    }
+
+    public LoadCellThread createLoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice,
+                                               CSVStoreService.TestRunFiles runFiles,
+                                               SensorLossListener lossListener,
+                                               RecoveryProperties recovery, GapRecorder gapRecorder) {
+        return new LoadCellThread(testContext, loadCellDevice, runFiles, getMotorSafetyController(),
+                lossListener, recovery, gapRecorder);
+    }
+
+    public SensorReconnector createReconnector(LoadCellDevice loadCellDevice, LoadCellThread loadCellThread,
+                                               RecoveryProperties recovery) {
+        return new SensorReconnector(loadCellDevice, loadCellThread, recovery);
+    }
+
+    /**
+     * The live bean. A run must snapshot it into {@link RecoveryGates} instead of holding this:
+     * devtools reloads it mid-run in dev.
+     */
+    public RecoveryProperties recoveryProperties() {
+        return applicationContext.getBean(RecoveryProperties.class);
+    }
+
+    public TestStateBroadcaster createStateBroadcaster(long testResultId, ScheduledExecutorService scheduler,
+                                                       Supplier<TestStateMessage> snapshotSupplier) {
+        return new TestStateBroadcaster(applicationContext.getBean(SimpMessagingTemplate.class), scheduler,
+                testResultId, snapshotSupplier);
+    }
+
+    public TestResultStatusPersister createStatusPersister(long testResultId, Executor persistExecutor,
+                                                           RecoveryGates gates, IntSupplier gapCount) {
+        return new TestResultStatusPersister(testResultId,
+                applicationContext.getBean(TestResultRepository.class),
+                applicationContext.getBean(ObjectMapper.class), persistExecutor, gates, gapCount);
     }
 
     public TestLogger createLogger(TestResult testResult) {

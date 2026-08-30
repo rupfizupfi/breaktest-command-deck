@@ -97,7 +97,7 @@ doc/
 │   ├── testrunner-safety/
 │   │   ├── README.md                   scope of the safety audit + in-flight state
 │   │   ├── audit-findings.md           surviving C / H findings, verified against source
-│   │   ├── loadcell-recovery-design.md reconnect-and-resume design (OQ-45)
+│   │   ├── loadcell-recovery-design.md reconnect-and-resume, shipped
 │   │   └── staleness-and-lifecycle-findings.md
 │   │                                   second audit: stale values, leaks, phase-1 debts
 │   └── virtual-devices/
