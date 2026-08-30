@@ -23,7 +23,6 @@ Document how the Gradle multi-project build wires `:cms` and `:command-deck`, wh
   - [`gradle.properties`](#gradleproperties)
 - [Continuous integration](#continuous-integration)
 - [Where to look in the code](#where-to-look-in-the-code)
-- [Open questions](#open-questions)
 
 ## Diagram
 
@@ -123,7 +122,7 @@ Crucially, **the plugin runs independently per module**. Each module's `bootJar`
 
 - `cms/vite.config.ts` — three-line user config, only adds an alias `cms -> __dirname + '/src/main/frontend'`.
 - `command-deck/vite.config.ts` — extends the alias to point one module up (`'../cms/src/main/frontend'`), adds:
-  - the `customFileSystemRouterPlugin` (file at `command-deck/customFileSystemRouterPlugin.ts`) which merges `cms/src/main/frontend/generated/file-routes.json` into the deck's own at build start and on dev-time `fs-route-update` HMR events;
+  - the `customFileSystemRouterPlugin` (file at `command-deck/customFileSystemRouterPlugin.ts`) which merges the cms `file-routes.json` into the deck's own at build start and on dev-time `fs-route-update` HMR events. It derives the cms path from the deck's by swapping the module segment, and the deck's own from the Vite config: `frontend/generated/` in dev mode, the build `outDir` in production (`command-deck/customFileSystemRouterPlugin.ts:114`). Neither copy is in git — `generated/` is untracked — so both exist only after a build has run;
   - a `rollupOptions.onwarn` filter that silences Rollup's `MIXED_EXPORTS` warning — likely arising from cross-module imports.
 
 ### Local JAR census (`lib/`)
@@ -144,7 +143,6 @@ Both Dockerfiles build with `gradle:9.7.0-jdk26-corretto` and run on `eclipse-te
 Single source for plugin and runtime versions:
 
 ```
-hillaVersion=25.2.6
 java.version=26
 vaadinVersion=25.2.6
 springBootVersion=4.1.0
@@ -152,7 +150,7 @@ project.name=breaktest command deck
 project.group=ch.rupfizupfi
 ```
 
-`hillaVersion` is set but **not referenced** by any build file in this checkout (`vaadinVersion` is used everywhere). Likely vestigial from older Hilla 2.x releases that pinned hilla independently of vaadin.
+`vaadinVersion` is the only Vaadin-side pin: `hilla-spring-boot-starter` takes its version from the Vaadin BOM, so there is nothing to bump separately. A `hillaVersion` property used to sit here, read by nothing — bumping it had no effect, which is why it is gone.
 
 ## Continuous integration
 
@@ -185,7 +183,3 @@ The driver repos run the mirror image: each composite-includes `device-api/` fro
 To see the resolved dependency graph for either module, run
 `./gradlew :command-deck:dependencies --configuration runtimeClasspath`
 (or `:cms:...`).
-
-## Open questions
-
-1. **`hillaVersion=25.2.6` in `gradle.properties` is unreferenced.** Nothing in `settings.gradle`, `build.gradle` or either module build script reads it — `com.vaadin:hilla-spring-boot-starter` takes its version from the Vaadin BOM. Drop the line; leaving it invites someone to bump it and expect an effect. (OQ-10)

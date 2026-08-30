@@ -1,7 +1,7 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {FileMetadataService, TestResultService} from "Frontend/generated/endpoints";
 import {useParams} from "react-router";
-import React, {useEffect, useState} from "react";
+import {useEffect, useState} from "react";
 import Placeholder from "cms/components/placeholder/Placeholder";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
 import {Button, VerticalLayout} from "@vaadin/react-components";

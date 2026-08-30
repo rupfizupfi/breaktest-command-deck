@@ -232,11 +232,7 @@ depends on those semantics yet.
 
 ## Open questions
 
-1. **`generated/` TypeScript stubs are gitignored *and* tracked.**
-   Decided 2026-08-16: fully untrack. Needs `git rm --cached` across both
-   modules' `generated/` trees, and confirmation that a clean build
-   regenerates everything the frontend build needs. (OQ-14)
-2. **`SettingService` implements `CrudService` directly** rather than
+1. **`SettingService` implements `CrudService` directly** rather than
    extending `CrudRepositoryService`, because `Setting` is not a JPA
    entity. Add a one-line comment so the next reader doesn't take it for
    an oversight. (OQ-42)

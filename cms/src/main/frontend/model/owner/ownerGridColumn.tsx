@@ -1,6 +1,5 @@
 import {TextField} from "@vaadin/react-components";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
-import React from "react";
 import {HeaderFilterRendererProps} from "@vaadin/hilla-react-crud";
 
 export default {

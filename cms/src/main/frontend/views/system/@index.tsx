@@ -4,7 +4,6 @@ import {VerticalLayout} from "@vaadin/react-components";
 import MaterialModel from "Frontend/generated/ch/rupfizupfi/deck/data/MaterialModel";
 import GearTypeModel from "Frontend/generated/ch/rupfizupfi/deck/data/GearTypeModel";
 import GearStandardModel from "Frontend/generated/ch/rupfizupfi/deck/data/GearStandardModel";
-import React from "react";
 import {AutoCrud} from "@vaadin/hilla-react-crud";
 
 export const config: ViewConfig = {

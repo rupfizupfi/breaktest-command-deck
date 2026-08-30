@@ -19,7 +19,6 @@ and ends with a short, clearly-flagged recommendation.
 - [What is unique to each module](#what-is-unique-to-each-module)
 - [Recommendation (NOT current state)](#recommendation-not-current-state)
 - [Where to look in the code](#where-to-look-in-the-code)
-- [Open questions](#open-questions)
 
 ## Diagram — Venn-style
 
@@ -30,6 +29,7 @@ flowchart LR
         cms_components[components/: autocrud, combobox, control,<br/>dashboard/{LogComponent, ResultViewer},<br/>owner, placeholder]
         cms_util[util/: auth.ts, model.ts, service.ts]
         cms_model[model/: init.ts, owner/, sample/]
+        cms_themes[themes/breaktest-command-deck<br/>duplicated byte-for-byte in deck — not aliased]
     end
 
     subgraph SHARED["Shared via alias 'cms' -> ../cms/src/main/frontend"]
@@ -38,12 +38,16 @@ flowchart LR
 
     subgraph DECK["command-deck/src/main/frontend (authored)"]
         deck_views[views: @index, control,<br/>result/{resultId}/tracking, run]
-        deck_components[components/dashboard: InfoBoard, LiveTestResult<br/>components/webcam: DistanceMeasureCam, tracking/*]
+        deck_components[components/dashboard: InfoBoard, LiveTestResult<br/>components/webcam: DistanceMeasureCam,<br/>tracking/{AreaSelector, CamShiftTracking}]
         deck_service[service/StatusService.ts<br/>(STOMP singleton — unique to deck)]
     end
 
     CMS -.alias 'cms'.-> SHARED
     SHARED -.imported via alias.-> DECK
+
+    note["@layout.tsx is duplicated nearly verbatim<br/>(deck adds &lt;InfoBoard/&gt; and &lt;SimulatedModeBanner/&gt;)<br/>— candidate for extraction"]
+    deck_views -.see.-> note
+    cms_views -.see.-> note
 ```
 
 (Source: [`doc/diagrams/src/frontend-venn.mmd`](../diagrams/src/frontend-venn.mmd).)
@@ -141,11 +145,5 @@ operator) and partly accidental (the merge plugin is order-sensitive).
 - `command-deck/customFileSystemRouterPlugin.ts:73-102` (route merge)
 - `command-deck/src/main/frontend/routes.tsx:1-9`
 - `command-deck/src/main/frontend/views/run.tsx:1-20` (the import block is the most concentrated cms-import surface)
-- `command-deck/src/main/frontend/views/@layout.tsx:5,8` vs `cms/src/main/frontend/views/@layout.tsx:6` (the divergence)
+- `command-deck/src/main/frontend/views/@layout.tsx:5,8` vs `cms/src/main/frontend/views/@layout.tsx:5` (the divergence)
 - `cms/src/main/frontend/util/auth.ts:1-7`
-
-## Open questions
-
-1. **Dead `Avatar` import** in `cms/src/main/frontend/views/@layout.tsx:4`
-   — imported from `@vaadin/react-components/Avatar.js`, referenced
-   nowhere else in the file. Delete the line. (OQ-31)

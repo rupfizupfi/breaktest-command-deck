@@ -1,6 +1,6 @@
 %% Package overlap map for shared root ch.rupfizupfi.deck
 %% Source: cms/src/main/java/ch/rupfizupfi/deck/** and command-deck/src/main/java/ch/rupfizupfi/deck/**
-%% Branch: dev-split, 2026-04-25
+%% Branch: main, 2026-08-29
 graph TD
     root["ch.rupfizupfi.deck<br/>(both modules host classes here)"]
 
@@ -18,9 +18,12 @@ graph TD
     subgraph deck_pkgs["Defined in :command-deck"]
         deck_root["ch.rupfizupfi.deck<br/>Application.java<br/>(SAME PACKAGE as cms)"]
         deck_api["ch.rupfizupfi.deck.api.services<br/>(SAME PACKAGE as cms)"]
-        deck_device["ch.rupfizupfi.deck.device<br/>+ device.loadcell<br/>+ device.frequencyconverter<br/>+ device.relayswitch"]
+        deck_device["ch.rupfizupfi.deck.device<br/>+ device.loadcell<br/>+ device.frequencyconverter<br/>+ device.relayswitch<br/>+ device.simulated"]
         deck_test["ch.rupfizupfi.deck.testrunner<br/>+ testrunner.cyclic<br/>+ testrunner.startup.check"]
-        deck_hilla["ch.rupfizupfi.deck.hilla<br/>(empty placeholder)"]
+    end
+
+    subgraph api_pkgs["Defined in :device-api (included build)"]
+        api_device["ch.rupfizupfi.deck.device.api<br/>Drive, LoadCellStream + their providers"]
     end
 
     deck_api -.->|imports| cms_data
@@ -31,6 +34,7 @@ graph TD
     deck_test -.->|imports| deck_device
     deck_device -.->|imports| cms_data
     deck_root -.->|imports| cms_data
+    deck_device -.->|implements| api_device
 
     classDef shared fill:#fff3b0,stroke:#333,stroke-width:2px
     class cms_root,deck_root,cms_api,deck_api shared

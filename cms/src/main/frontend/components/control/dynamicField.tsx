@@ -1,4 +1,3 @@
-import React from 'react';
 import {Checkbox, DatePicker, NumberField, TextField} from "@vaadin/react-components";
 
 function convertValue(newValue: string | number | Date): any {
