@@ -3,8 +3,8 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.api.Drive;
 import ch.rupfizupfi.deck.device.api.DriveProvider;
-import ch.rupfizupfi.deck.device.frequencyconverter.CFW11Device;
-import ch.rupfizupfi.deck.device.frequencyconverter.DriveUnavailableException;
+import ch.rupfizupfi.deck.device.frequencyinverter.DriveUnavailableException;
+import ch.rupfizupfi.deck.device.frequencyinverter.FrequencyInverterDevice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,7 +40,7 @@ public class MotorSafetyController {
     /** Speed drop, in rpm, above which the shaft counts as measurably slowing down. */
     private static final int COASTING_DROP_RPM = 10;
 
-    private final CFW11Device frequencyConverter;
+    private final FrequencyInverterDevice frequencyInverter;
 
     /** Tier 2 opens its own handle, bypassing the one the device holds — see stopWithFreshHandle. */
     private final DriveProvider driveProvider;
@@ -78,20 +78,20 @@ public class MotorSafetyController {
     private final Object latchLock = new Object();
 
     public MotorSafetyController(DeviceService deviceService, DriveProvider driveProvider) {
-        this.frequencyConverter = deviceService.getFrequencyConverter();
+        this.frequencyInverter = deviceService.getFrequencyInverter();
         this.driveProvider = driveProvider;
     }
 
     public boolean isDriveAvailable() {
-        return frequencyConverter.isDriveHandleOpen();
+        return frequencyInverter.isDriveHandleOpen();
     }
 
     public void withDrive(Consumer<Drive> action) {
-        frequencyConverter.withDrive(action);
+        frequencyInverter.withDrive(action);
     }
 
     public <T> T queryDrive(Function<Drive, T> action) {
-        return frequencyConverter.queryDrive(action);
+        return frequencyInverter.queryDrive(action);
     }
 
     /** True once safeStop() has been requested for the current run, until clearStopLatch(). */
@@ -155,7 +155,7 @@ public class MotorSafetyController {
      * @throws IllegalStateException if a safety stop has been requested
      */
     public void energize(Consumer<Drive> action) {
-        frequencyConverter.withDrive(drive -> {
+        frequencyInverter.withDrive(drive -> {
             if (stopLatched.get()) {
                 throw new IllegalStateException(
                         "refusing to energize the motor, a safety stop was requested for this run: " + stopReason);
@@ -281,7 +281,7 @@ public class MotorSafetyController {
         var outcome = new AtomicReference<VerifyOutcome>();
 
         try {
-            frequencyConverter.withDrive(drive -> {
+            frequencyInverter.withDrive(drive -> {
                 commandProblems.set(commandStop(drive));
                 outcome.set(verifyStopped(drive));
             });
@@ -310,7 +310,7 @@ public class MotorSafetyController {
         // monitor and the lock order is monitor-before-driveLock, so doing it inside runExclusive
         // would deadlock against closeConnection(). Doing it before the close is also what makes a
         // later connect() genuinely re-open instead of handing back the handle we are about to kill.
-        frequencyConverter.dropConnectionBookkeeping();
+        frequencyInverter.dropConnectionBookkeeping();
 
         try {
             // Exclusive for the rest of the tier: the 400 ms info poller must not talk on the bus
@@ -320,8 +320,8 @@ public class MotorSafetyController {
             // condition this teardown exists to prevent (OQ-50).
             // Deadlock-free: closeDriveHandle() takes driveLock only, never the instance monitor, so
             // nothing here inverts the monitor-before-driveLock order.
-            frequencyConverter.runExclusive(() -> {
-                frequencyConverter.closeDriveHandle();
+            frequencyInverter.runExclusive(() -> {
+                frequencyInverter.closeDriveHandle();
                 Drive fresh = null;
                 try {
                     fresh = driveProvider.open();
@@ -366,7 +366,7 @@ public class MotorSafetyController {
                 + " | tier 2 (FRESH_HANDLE) ran, re-enumerated the drive and reported: " + tier2Detail
                 + " | tier 3 (operator escalation): both software stop tiers failed, motor may still be "
                 + "running - USE THE PHYSICAL E-STOP. The only active backstop left is the drive's own "
-                + "setActionInCaseOfCommunicationError(2), which reacts to loss of the CFW11 link only "
+                + "setActionInCaseOfCommunicationError(2), which reacts to loss of the drive link only "
                 + "and not to loss of the load cell.";
         logger.error("safeStop escalated to the operator after both software tiers ran."
                 + " Last measured motor speed: {} rpm. {}", lastSpeed, detail);

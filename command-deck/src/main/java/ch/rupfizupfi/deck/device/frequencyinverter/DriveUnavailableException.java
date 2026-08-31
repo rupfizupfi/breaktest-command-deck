@@ -1,7 +1,7 @@
-package ch.rupfizupfi.deck.device.frequencyconverter;
+package ch.rupfizupfi.deck.device.frequencyinverter;
 
 /**
- * Thrown when drive access is requested while no CFW11 handle is open.
+ * Thrown when drive access is requested while no frequency inverter drive handle is open.
  */
 public class DriveUnavailableException extends RuntimeException {
     public DriveUnavailableException(String message) {

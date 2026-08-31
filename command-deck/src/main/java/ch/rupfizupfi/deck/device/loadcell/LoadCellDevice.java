@@ -36,7 +36,7 @@ public class LoadCellDevice extends Device {
 
     /**
      * Bounded so a reader wedged in a native driver call can never pin the instance monitor. Same
-     * reasoning as {@code CFW11Device.POLL_THREAD_JOIN_TIMEOUT_MS}, and it matters more here: what
+     * reasoning as {@code FrequencyInverterDevice.POLL_THREAD_JOIN_TIMEOUT_MS}, and it matters more here: what
      * strands this thread - a yanked USB cable - is what triggers the teardown in the first place.
      */
     private static final long READER_JOIN_TIMEOUT_MS = 2000;

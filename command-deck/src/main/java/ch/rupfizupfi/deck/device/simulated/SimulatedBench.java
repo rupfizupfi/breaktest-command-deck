@@ -65,7 +65,7 @@ public class SimulatedBench {
     private volatile int setpointRpm = 0;
     private volatile boolean generalEnabled = false;
     private volatile boolean started = false;
-    /** True is release (force falls), false is pull (force rises) — matches {@code cfw11Release}/{@code cfw11Pull}. */
+    /** True is release (force falls), false is pull (force rises) — matches {@code driveRelease}/{@code drivePull}. */
     private volatile boolean directionForward = true;
 
     private volatile double measuredRpm = 0;

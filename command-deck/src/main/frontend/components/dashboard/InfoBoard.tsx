@@ -33,7 +33,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
     const [force, setForce] = useState<number | null>(null);
     const [enabled, setEnabled] = useState<boolean>(false);
     const [suckEnabled, setSuck] = useState<boolean>(false);
-    const {loadCell, frequencyConverter, connected} = useLiveStatus();
+    const {loadCell, frequencyInverter, connected} = useLiveStatus();
 
     useEffect(() => {
         if (!enabled) {
@@ -48,7 +48,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             }
         });
 
-        const infoSubscription = service.frequencyConverterInfoObservable.subscribe((value: IMessage) => {
+        const infoSubscription = service.frequencyInverterInfoObservable.subscribe((value: IMessage) => {
             const newInfo: Info = JSON.parse(value.body);
             setFCInfo(newInfo);
         });
@@ -64,19 +64,19 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         };
     }, [enabled]);
 
-    // The backend only publishes converter info while broadcasting is enabled, so silence is only
+    // The backend only publishes inverter info while broadcasting is enabled, so silence is only
     // meaningful once we have asked for it.
-    const converterStale = enabled && info !== null && frequencyConverter.stale;
+    const inverterStale = enabled && info !== null && frequencyInverter.stale;
 
     const infoDom = info ? (
         <>
             <h3 className="lumo-typography">Status: {info.id}</h3>
-            {converterStale && (
+            {inverterStale && (
                 <p className="feed-warning">
-                    no update for {formatAge(frequencyConverter.staleForSeconds)} &mdash; the values below are not live
+                    no update for {formatAge(frequencyInverter.staleForSeconds)} &mdash; the values below are not live
                 </p>
             )}
-            <ul className={converterStale ? "info-list feed-values--stale" : "info-list"}>
+            <ul className={inverterStale ? "info-list feed-values--stale" : "info-list"}>
                 <li className="info-item"><span>Speed:</span> <span>{info.speed * .375} mm/min</span></li>
                 <li className="info-item"><span>Ramp:</span> <span>{info.useSecondRamp ? 'second' : 'first'}</span></li>
                 <li className="info-item"><span>Direction:</span> <span>{info.directionIsForward ? 'push' : 'pull'}</span></li>

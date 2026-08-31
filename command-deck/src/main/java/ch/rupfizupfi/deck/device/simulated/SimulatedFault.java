@@ -46,7 +46,7 @@ public enum SimulatedFault {
     /** → {@code coasting()}, deliberately no escalation: the drive is answering. */
     DRIVE_MOTOR_NEVER_SLOWS("drive accepts the stop but the motor keeps turning"),
 
-    /** → {@code CFW11Device#closeDriveHandle}'s best-effort path. */
+    /** → {@code FrequencyInverterDevice#closeDriveHandle}'s best-effort path. */
     DRIVE_CLOSE_THROWS("closing a drive handle throws");
 
     private final String description;

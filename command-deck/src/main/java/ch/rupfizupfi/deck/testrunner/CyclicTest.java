@@ -32,7 +32,7 @@ public class CyclicTest extends AbstractTest {
         awaitLoadCellOrFail();
         log("load cell delivering measurements");
 
-        connectFrequencyConverter();
+        connectFrequencyInverter();
         energizeForRun(true);
     }
 
@@ -96,7 +96,7 @@ public class CyclicTest extends AbstractTest {
     /**
      * No state guard of its own: {@code TestContext}'s dispatch gate already drops every crossing
      * measured while the run is not dispatching, so nothing here can act on a pre-loss force. That
-     * is what protects {@code cfw11IsPull()} below, which queries the drive and throws
+     * is what protects {@code driveIsPull()} below, which queries the drive and throws
      * {@code DriveUnavailableException} once the handle is gone - the state
      * {@code canResume()} already refuses to resume out of.
      */
@@ -107,7 +107,7 @@ public class CyclicTest extends AbstractTest {
                 finish();
                 break;
             case TestContext.RELEASE_SIGNAL: //upper limit triggered
-                if (cfw11IsPull()) {
+                if (driveIsPull()) {
                     log("Current min value " + loadCellThread.getMinValue());
                     double diff = targetLowerLimit - loadCellThread.getMinValue();
 
@@ -119,12 +119,12 @@ public class CyclicTest extends AbstractTest {
                     log("change direction to forward");
                     log("CycleCount " + testContext.getCycleCount());
 
-                    cfw11Release();
+                    driveRelease();
                     loadCellThread.setMinValue((float) targetUpperLimit);
                 }
                 break;
             case TestContext.PULL_SIGNAL:
-                if (cfw11IsRelease()) {
+                if (driveIsRelease()) {
                     log("Current max value " + loadCellThread.getMaxValue());
                     double diff = targetUpperLimit - loadCellThread.getMaxValue();
 
@@ -136,7 +136,7 @@ public class CyclicTest extends AbstractTest {
                     log("change direction to backword");
                     log("CycleCount " + testContext.getCycleCount());
 
-                    cfw11Pull();
+                    drivePull();
                     loadCellThread.setMaxValue((float) targetLowerLimit);
                     testContext.decrementCycleCount();
                 }

@@ -52,7 +52,7 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
     /** Created once and shared by the CSV writer and the gap recorder, which must agree on the run. */
     private CSVStoreService.TestRunFiles runFiles;
 
-    private boolean frequencyConverterConnected = false;
+    private boolean frequencyInverterConnected = false;
 
     AbstractTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService, MotorSafetyController motorSafety) {
         this.testResult = testResult;
@@ -294,9 +294,9 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
             return false;
         }
 
-        // The gate that decides resumable from abort-only: past tier 1 the CFW11 is deliberately left
+        // The gate that decides resumable from abort-only: past tier 1 the frequency inverter is deliberately left
         // handle-less with its refcount already dropped, so there is nothing to re-energize through -
-        // note frequencyConverterConnected still reads true there. See the resume gates in
+        // note frequencyInverterConnected still reads true there. See the resume gates in
         // doc/06-feature-work/testrunner-safety/loadcell-recovery-design.md.
         return motorSafety.isDriveAvailable();
     }
@@ -346,17 +346,17 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         }
     }
 
-    protected void connectFrequencyConverter() {
-        deviceService.getFrequencyConverter().connect();
-        frequencyConverterConnected = true;
+    protected void connectFrequencyInverter() {
+        deviceService.getFrequencyInverter().connect();
+        frequencyInverterConnected = true;
     }
 
     void destroy() {
         // only balance a connect we actually made, otherwise a setup() that threw early
         // drives the shared reference count negative
-        if (frequencyConverterConnected) {
-            frequencyConverterConnected = false;
-            deviceService.getFrequencyConverter().disconnect();
+        if (frequencyInverterConnected) {
+            frequencyInverterConnected = false;
+            deviceService.getFrequencyInverter().disconnect();
         }
         loadCellThread = null;
         testContext = null;
@@ -367,19 +367,19 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         testLogger.log(message);
     }
 
-    protected void cfw11Pull() {
+    protected void drivePull() {
         motorSafety.withDrive(drive -> drive.setDirection(false));
     }
 
-    protected boolean cfw11IsPull() {
+    protected boolean driveIsPull() {
         return !motorSafety.queryDrive(Drive::getDirection);
     }
 
-    protected void cfw11Release() {
+    protected void driveRelease() {
         motorSafety.withDrive(drive -> drive.setDirection(true));
     }
 
-    protected boolean cfw11IsRelease() {
+    protected boolean driveIsRelease() {
         return motorSafety.queryDrive(Drive::getDirection);
     }
 

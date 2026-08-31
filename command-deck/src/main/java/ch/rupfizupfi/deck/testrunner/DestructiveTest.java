@@ -42,7 +42,7 @@ public class DestructiveTest extends AbstractTest {
         awaitLoadCellOrFail();
         log("load cell delivering measurements");
 
-        connectFrequencyConverter();
+        connectFrequencyInverter();
         int speedRpm = (int) Math.round(testResult.testParameter.speed / 0.375);
         // One energize() block: atomic against the polling thread, and a safe stop the load cell
         // thread already requested wins - see MotorSafetyController#energize.

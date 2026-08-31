@@ -17,8 +17,8 @@ function resolveBrokerUrl(): string {
  * ordinary scheduler jitter.
  */
 const LOAD_CELL_STALE_AFTER_MS = 1500;
-/** The backend polls the frequency converter every 400 ms, so three missed rounds. */
-const FREQUENCY_CONVERTER_STALE_AFTER_MS = 1200;
+/** The backend polls the frequency inverter every 400 ms, so three missed rounds. */
+const FREQUENCY_INVERTER_STALE_AFTER_MS = 1200;
 /** Staleness has to be noticed without an incoming frame, so it is driven by a timer. */
 const FRESHNESS_TICK_MS = 500;
 
@@ -35,7 +35,7 @@ export interface LiveStatus {
     /** The WebSocket itself. Distinguishes "machine is quiet" from "we lost the server". */
     connected: boolean;
     loadCell: FeedStatus;
-    frequencyConverter: FeedStatus;
+    frequencyInverter: FeedStatus;
 }
 
 const NEVER_RECEIVED: FeedStatus = {everReceived: false, stale: false, staleForSeconds: null};
@@ -43,7 +43,7 @@ const NEVER_RECEIVED: FeedStatus = {everReceived: false, stale: false, staleForS
 export const DISCONNECTED_LIVE_STATUS: LiveStatus = {
     connected: false,
     loadCell: NEVER_RECEIVED,
-    frequencyConverter: NEVER_RECEIVED,
+    frequencyInverter: NEVER_RECEIVED,
 };
 
 function sameFeed(a: FeedStatus, b: FeedStatus): boolean {
@@ -104,14 +104,14 @@ export default class StatusService {
     private rxStomp: RxStomp;
     private loadCellTopic: Observable<IMessage>;
     private updateLog: Observable<IMessage>;
-    private frequencyConverterInfoTopic: Observable<IMessage>;
+    private frequencyInverterInfoTopic: Observable<IMessage>;
     private testStateTopic: Observable<IMessage>;
     private connectedComponents: Set<object> = new Set();
 
     // performance.now(), not Date.now(): a monotonic clock, so a system time adjustment cannot
     // make a dead feed look fresh (or vice versa).
     private lastLoadCellAt: number | null = null;
-    private lastFrequencyConverterAt: number | null = null;
+    private lastFrequencyInverterAt: number | null = null;
     private socketOpen = false;
     private feedSubscriptions: Subscription[] = [];
     private freshnessTimer: ReturnType<typeof setInterval> | null = null;
@@ -128,8 +128,8 @@ export default class StatusService {
         this.loadCellTopic = this.rxStomp
             .watch({destination: "/topic/load-cell"});
 
-        this.frequencyConverterInfoTopic = this.rxStomp
-            .watch({destination: "/topic/frequency-converter-info"});
+        this.frequencyInverterInfoTopic = this.rxStomp
+            .watch({destination: "/topic/frequency-inverter-info"});
 
         this.updateLog = this.rxStomp
             .watch({destination: "/topic/logs"});
@@ -151,7 +151,7 @@ export default class StatusService {
                 // inherit freshness earned before the gap. Note what is NOT reset here: the last
                 // test-state frame. See applyTestState.
                 this.lastLoadCellAt = null;
-                this.lastFrequencyConverterAt = null;
+                this.lastFrequencyInverterAt = null;
             }
             this.publishLiveStatus();
         });
@@ -221,8 +221,8 @@ export default class StatusService {
                 this.lastLoadCellAt = performance.now();
                 this.publishLiveStatus();
             }),
-            this.frequencyConverterInfoTopic.subscribe(() => {
-                this.lastFrequencyConverterAt = performance.now();
+            this.frequencyInverterInfoTopic.subscribe(() => {
+                this.lastFrequencyInverterAt = performance.now();
                 this.publishLiveStatus();
             }),
             this.testStateTopic.subscribe((message: IMessage) => this.ingestTestState(message)),
@@ -241,7 +241,7 @@ export default class StatusService {
         }
 
         this.lastLoadCellAt = null;
-        this.lastFrequencyConverterAt = null;
+        this.lastFrequencyInverterAt = null;
         this.publishLiveStatus();
     }
 
@@ -282,7 +282,7 @@ export default class StatusService {
         const next: LiveStatus = {
             connected: this.socketOpen,
             loadCell: this.feedStatus(this.lastLoadCellAt, LOAD_CELL_STALE_AFTER_MS),
-            frequencyConverter: this.feedStatus(this.lastFrequencyConverterAt, FREQUENCY_CONVERTER_STALE_AFTER_MS),
+            frequencyInverter: this.feedStatus(this.lastFrequencyInverterAt, FREQUENCY_INVERTER_STALE_AFTER_MS),
         };
 
         // Before the early return below, and from the same snapshot: the freshness timer is what
@@ -295,7 +295,7 @@ export default class StatusService {
         const previous = this.liveStatusSubject.value;
         if (previous.connected === next.connected
             && sameFeed(previous.loadCell, next.loadCell)
-            && sameFeed(previous.frequencyConverter, next.frequencyConverter)) {
+            && sameFeed(previous.frequencyInverter, next.frequencyInverter)) {
             return;
         }
 
@@ -349,8 +349,8 @@ export default class StatusService {
         return this.updateLog;
     }
 
-    get frequencyConverterInfoObservable(){
-        return this.frequencyConverterInfoTopic;
+    get frequencyInverterInfoObservable(){
+        return this.frequencyInverterInfoTopic;
     }
 
     get testStateObservable(){

@@ -50,7 +50,7 @@ public class TimeCyclicTest extends CyclicTest {
         awaitLoadCellOrFail();
         log("load cell delivering measurements");
 
-        connectFrequencyConverter();
+        connectFrequencyInverter();
         energizeForAnalysePhase();
     }
 
@@ -145,7 +145,7 @@ public class TimeCyclicTest extends CyclicTest {
 
         log("Current min value " + minForceValue);
         log("<b>init: start release round<b/>");
-        cfw11Release();
+        driveRelease();
 
         if (Math.abs(minForceValue - targetLowerLimit) < FORCE_THRESHOLD) {
             analysedData[index].minForce = minForceValue;
@@ -165,7 +165,7 @@ public class TimeCyclicTest extends CyclicTest {
 
         log("Current max value " + maxForceValue);
         log("<b>init: start pull round<b/>");
-        cfw11Pull();
+        drivePull();
 
         if (Math.abs(maxForceValue - targetUpperLimit) < FORCE_THRESHOLD) {
             analysedData[index].maxForce = maxForceValue;

@@ -1,4 +1,4 @@
-package ch.rupfizupfi.deck.device.frequencyconverter;
+package ch.rupfizupfi.deck.device.frequencyinverter;
 
 import ch.rupfizupfi.deck.device.Device;
 import ch.rupfizupfi.deck.device.api.Drive;
@@ -15,9 +15,13 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Single serialized gateway to the CFW11 USB/Modbus handle.
+ * Single serialized gateway to the drive handle of the frequency inverter.
  * Every read and write of the drive goes through {@code driveLock}, so the info poll thread
  * and the test runner can no longer interleave requests on the wire.
+ * <p>
+ * Drive-model agnostic: every hardware call goes through {@link Drive}, and which inverter
+ * answers is the injected {@link DriveProvider}'s decision. No vendor type, register number or
+ * model name belongs in this class - a second inverter model is a new provider, not an edit here.
  * <p>
  * Lock ordering rule: the {@link Device} instance monitor (held by the synchronized
  * {@code connect()} / {@code disconnect()}) may be taken before {@code driveLock}, NEVER the
@@ -33,8 +37,8 @@ import java.util.function.Supplier;
  * concurrent {@code connect()}, which then simply blocks on {@code driveLock}, instead of
  * slipping in between the halves and leaving two live USB handles on one drive.
  */
-public class CFW11Device extends Device {
-    private static final Logger logger = LoggerFactory.getLogger(CFW11Device.class);
+public class FrequencyInverterDevice extends Device {
+    private static final Logger logger = LoggerFactory.getLogger(FrequencyInverterDevice.class);
 
     /** Bounded so a wedged native USB call can never pin the instance monitor forever. */
     private static final long POLL_THREAD_JOIN_TIMEOUT_MS = 2000;
@@ -52,7 +56,7 @@ public class CFW11Device extends Device {
      */
     private volatile boolean driveWasUnavailable = false;
 
-    public CFW11Device(DriveProvider driveProvider) {
+    public FrequencyInverterDevice(DriveProvider driveProvider) {
         this.driveProvider = driveProvider;
     }
 
@@ -94,7 +98,7 @@ public class CFW11Device extends Device {
                 // would pin this instance monitor and with it every connect()/disconnect().
                 dataThread.join(POLL_THREAD_JOIN_TIMEOUT_MS);
                 if (dataThread.isAlive()) {
-                    logger.warn("CFW11 poll thread did not stop within {} ms, abandoning it",
+                    logger.warn("Frequency inverter poll thread did not stop within {} ms, abandoning it",
                             POLL_THREAD_JOIN_TIMEOUT_MS);
                 }
             } catch (InterruptedException e) {
@@ -139,7 +143,7 @@ public class CFW11Device extends Device {
         try {
             var handle = drive;
             if (handle == null) {
-                throw new DriveUnavailableException("CFW11 drive handle is not open");
+                throw new DriveUnavailableException("Frequency inverter drive handle is not open");
             }
             action.accept(handle);
         } finally {
@@ -153,7 +157,7 @@ public class CFW11Device extends Device {
         try {
             var handle = drive;
             if (handle == null) {
-                throw new DriveUnavailableException("CFW11 drive handle is not open");
+                throw new DriveUnavailableException("Frequency inverter drive handle is not open");
             }
             return action.apply(handle);
         } finally {
@@ -199,7 +203,7 @@ public class CFW11Device extends Device {
                 try {
                     drive.close();
                 } catch (Throwable t) {
-                    logger.warn("Failed to close CFW11 USB communication while invalidating the handle", t);
+                    logger.warn("Failed to close the drive handle while invalidating it", t);
                 }
             }
             // Unconditional, even when the close threw: keeping a reference to a handle we can no
@@ -222,7 +226,7 @@ public class CFW11Device extends Device {
         } catch (Throwable t) {
             // Swallowed on purpose: this runs on the emergency-stop path, where losing the
             // bookkeeping reset must never abort the teardown that follows it.
-            logger.warn("Failed to drop CFW11 connection bookkeeping", t);
+            logger.warn("Failed to drop the frequency inverter connection bookkeeping", t);
         }
     }
 
@@ -265,7 +269,7 @@ public class CFW11Device extends Device {
                 this.notifyObservers(info);
                 if (driveWasUnavailable) {
                     driveWasUnavailable = false;
-                    logger.info("CFW11 drive handle is available again, resuming info polling");
+                    logger.info("Drive handle is available again, resuming info polling");
                 }
             } catch (DriveUnavailableException e) {
                 // Handle closed (typically after a safe-stop escalation) - skip this round. Logged
@@ -273,10 +277,10 @@ public class CFW11Device extends Device {
                 // permanently dead poll behind stale dashboard values.
                 if (!driveWasUnavailable) {
                     driveWasUnavailable = true;
-                    logger.warn("CFW11 drive handle is not open, info polling is idle until it reopens");
+                    logger.warn("Drive handle is not open, info polling is idle until it reopens");
                 }
             } catch (RuntimeException e) {
-                logger.warn("Failed to poll CFW11 device data", e);
+                logger.warn("Failed to poll frequency inverter data", e);
             }
 
             try {

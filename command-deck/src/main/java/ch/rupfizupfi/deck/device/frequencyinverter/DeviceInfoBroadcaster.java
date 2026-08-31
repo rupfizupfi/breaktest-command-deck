@@ -1,4 +1,4 @@
-package ch.rupfizupfi.deck.device.frequencyconverter;
+package ch.rupfizupfi.deck.device.frequencyinverter;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
@@ -11,6 +11,6 @@ public class DeviceInfoBroadcaster implements InfoObserver {
 
     @Override
     public void update(Info info) {
-        template.convertAndSend("/topic/frequency-converter-info", info);
+        template.convertAndSend("/topic/frequency-inverter-info", info);
     }
 }
