@@ -88,6 +88,12 @@ public class CSVStoreService {
         return String.join(",", results);
     }
 
+    /**
+     * Peak force of one CSV in kN, or null for a file too short or malformed to trust.
+     *
+     * <p>Lines split on {@code \R}: the file is written by command-deck's {@code LoadCellThread}
+     * on the bench and may be read on a different OS, so both line endings must parse.
+     */
     protected String getPeakFromResultFile(long id, String path) {
         Path file = Paths.get(path);
         String data = this.readCSVDataForTestResult(id, file.getFileName().toString());
@@ -96,7 +102,7 @@ public class CSVStoreService {
             return null;
         }
 
-        List<String> lines = Arrays.asList(data.split(System.lineSeparator()));
+        List<String> lines = Arrays.asList(data.split("\\R"));
         if (lines.size() < 100) {
             return null;
         }
