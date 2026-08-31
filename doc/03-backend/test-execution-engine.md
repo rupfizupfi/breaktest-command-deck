@@ -67,7 +67,7 @@ sequenceDiagram
             LCT->>TC: sendSignal(PULL_SIGNAL)
         end
         TC-->>Test: handleSignal(sig)
-        Test->>CFW: cfw11Pull / cfw11Release / finish()
+        Test->>CFW: drivePull / driveRelease / finish()
         Test->>Topic: testLogger.log(...)
     end
 
@@ -184,7 +184,7 @@ single `execute() throws CheckFailedException`. Two implementations run today:
 To add a check: subclass `AbstractCheck` and return it from
 `TestRunnerFactory.getStartupChecks()`. There is **no** Spring `@Component`
 auto-discovery — the factory hand-instantiates them. Nothing yet checks that
-the frequency converter is present (OQ-44, see
+the frequency inverter is present (OQ-44, see
 [`hardware-integration.md`](hardware-integration.md)).
 
 ## Unrunnable parameter types fail silently

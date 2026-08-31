@@ -24,8 +24,8 @@ Frontend staleness indicators are live and verified on the simulated bench. Inde
 
 | Finding | Anchor |
 |---|---|
-| `Info` carries no timestamp; the only liveness tell is `idProvider`, rendered unlabelled as `Status: {info.id}` | `CFW11Device#readData`, `InfoBoard.tsx` |
-| After a tier-2 escalation the drive handle is intentionally null, so the poll loop throws and skips every round while subscribers keep rendering the last `Info` | `CFW11Device#readData`, `MotorSafetyController#stopWithFreshHandle` |
+| `Info` carries no timestamp; the only liveness tell is `idProvider`, rendered unlabelled as `Status: {info.id}` | `FrequencyInverterDevice#readData`, `InfoBoard.tsx` |
+| After a tier-2 escalation the drive handle is intentionally null, so the poll loop throws and skips every round while subscribers keep rendering the last `Info` | `FrequencyInverterDevice#readData`, `MotorSafetyController#stopWithFreshHandle` |
 | `ForceBroadcaster` only flushes when a *new* batch arrives, so the last ≤60 ms of a run is stranded and re-broadcast on the first sample of the next run | `ForceBroadcaster#update` |
 | Browser joining mid-test anchors its x-axis to `Date.now()`, presenting a four-minute-old run as starting at t=0 | `LiveTestResult.tsx` — `TestResultGraph` |
 | No test-state feed: the UI cannot distinguish running / finished / aborted / faulted | phase 3 |
@@ -36,7 +36,7 @@ Frontend staleness indicators are live and verified on the simulated bench. Inde
 |---|---|---|
 | `LoadCellThread` runs forever if `cleanup()` throws before `setRunning(false)` — `log()` can throw `MessageDeliveryException`, `stop()` has **no callers**, and nothing joins the thread | `AbstractTest#cleanup`, `LoadCellThread#stop` | One thread + one open CSV writer + a pinned load-cell reference, per occurrence |
 | Nothing joins an outgoing `LoadCellThread`, so whether a run pays a full load-cell USB close/re-enumerate is decided by a ~20–100 ms race | `AbstractTest#cleanup`, `TestRunnerThread#run` | Nondeterministic, not corrupting |
-| Poll thread abandoned by the bounded join can be resurrected by a later `tryStartThread()` — `isRunning` is one flag for what may be N threads, and `idProvider++` is a plain non-volatile `int` | `CFW11Device#tryStopThread`, `#readData` | Duplicate/regressing `info.id`; a stale frame can arrive after a fresh one |
+| Poll thread abandoned by the bounded join can be resurrected by a later `tryStartThread()` — `isRunning` is one flag for what may be N threads, and `idProvider++` is a plain non-volatile `int` | `FrequencyInverterDevice#tryStopThread`, `#readData` | Duplicate/regressing `info.id`; a stale frame can arrive after a fresh one |
 | `DeviceInfoService.isEnabled` is one process-global flag, not per-client | `DeviceInfoService` | One operator closing their dashboard starves every other tab |
 | `System.gc()` in `retryShutdownOnException` runs **between** nulling `test` and calling `safeStop` | `TestRunnerThread#retryShutdownOnException` | A stop-the-world pause inserted into the emergency stop |
 | `System.gc()` in `destroy()` is the only thing reclaiming the leaked `TestLogger` descriptors — removing it exposes that leak | `AbstractTest#destroy`, `TestRunnerThread#stopThread` | Fix `end()` first, then delete both |

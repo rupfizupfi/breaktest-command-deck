@@ -41,7 +41,7 @@ graph TD
     subgraph deck_pkgs["Defined in :command-deck"]
         deck_root["ch.rupfizupfi.deck<br/>Application.java<br/>(SAME PACKAGE as cms)"]
         deck_api["ch.rupfizupfi.deck.api.services<br/>(SAME PACKAGE as cms)"]
-        deck_device["ch.rupfizupfi.deck.device<br/>+ device.loadcell<br/>+ device.frequencyconverter<br/>+ device.relayswitch<br/>+ device.simulated"]
+        deck_device["ch.rupfizupfi.deck.device<br/>+ device.loadcell<br/>+ device.frequencyinverter<br/>+ device.relayswitch<br/>+ device.simulated"]
         deck_test["ch.rupfizupfi.deck.testrunner<br/>+ testrunner.cyclic<br/>+ testrunner.startup.check"]
     end
 
@@ -82,7 +82,7 @@ There is exactly one declared cross-module link: `command-deck/build.gradle:2` â
 | `ch.rupfizupfi.deck.filesystem` | cms | `StorageLocationService`, `CSVStoreService` |
 | `ch.rupfizupfi.deck.hilla.crud` | cms | `OwnerDataHelper` + Hilla CRUD plumbing |
 | `ch.rupfizupfi.deck.service` | cms | `FileService` |
-| `ch.rupfizupfi.deck.device` (+ `.loadcell`, `.frequencyconverter`, `.relayswitch`) | deck | hardware drivers + `DeviceService` |
+| `ch.rupfizupfi.deck.device` (+ `.loadcell`, `.frequencyinverter`, `.relayswitch`) | deck | hardware drivers + `DeviceService` |
 | `ch.rupfizupfi.deck.testrunner` (+ `.cyclic`, `.startup.check`) | deck | test-execution engine |
 
 Two packages are present in **both** module source trees: `ch.rupfizupfi.deck` and `ch.rupfizupfi.deck.api.services`. Because the FQNs of the classes inside them are unique (`Application` is in both modules but compiled into different JARs that are loaded one at a time per app; the `api/services` classes are disjoint), this is legal but worth being aware of when grepping.

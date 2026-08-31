@@ -27,7 +27,7 @@ beans — see
 - [Both drivers are Windows-only, and that decides the deployment](#both-drivers-are-windows-only-and-that-decides-the-deployment)
 - [The jar on the machine is checked at startup](#the-jar-on-the-machine-is-checked-at-startup)
 - [`dscusb.jar` — load cell](#dscusbjar--load-cell)
-- [`usbmodbus.jar` — frequency converter](#usbmodbusjar--frequency-converter)
+- [`usbmodbus.jar` — frequency inverter](#usbmodbusjar--frequency-inverter)
 - [Open questions](#open-questions)
 
 ## At a glance
@@ -36,9 +36,9 @@ beans — see
 |---|---|---|
 | Provides | `ch.rupfizupfi.dscusb.dscusb.CellValueStream`; `Measurement` and `CommandExecutionException` one level up | `ch.rupfizupfi.usbmodbus.Cfw11` |
 | Deck plugin package | `ch.rupfizupfi.dscusb.deck` — `CellValueStreamAdapter`, `DeckLoadCellAutoConfiguration` | `ch.rupfizupfi.usbmodbus.deck` — `Cfw11Drive`, `DeckDriveAutoConfiguration` |
-| In git | no — `lib/*.jar` is gitignored | no — gitignored, licence-restricted |
+| In git | no — `/drivers/*.jar` is gitignored | no — gitignored, licence-restricted |
 | Published | as `ch.rupfizupfi.dscusb:dscusb` on GitHub Packages — the mechanism is in place, the **first version lands when the driver PR merges** | **never** — may not be redistributed |
-| Reaches production via | `:command-deck:stageDrivers` → image at `/app/drivers` | host mount `docker/drivers-local/` → `/app/drivers-local` |
+| Reaches the bench via | copy into `drivers/` → `LOADER_PATH` | copy into `drivers/` → `LOADER_PATH` |
 | Sibling repo | `dscusb` | `usbmodbus` |
 | Buildable on this machine | yes, from a clean checkout | yes, from a clean checkout |
 | Reaches hardware via | jnr-ffi → `DSCUSBDrv64.dll`, by serial number | Thesycon `usbiojava_x64.dll` → USBIO kernel driver |
@@ -55,34 +55,34 @@ bench.** That is settled rather than open: the bench controller stays a Windows 
 and the deck runs natively on it
 ([`bench-deployment.md`](../05-ops/bench-deployment.md)). Rewriting the drivers onto
 serial to make a Linux deck possible is recorded as a future option only
-([`dscusb-serial-port`](../06-feature-work/dscusb-serial-port/README.md)); what OQ-79
-still tracks is just the fate of the now-unusable `docker` deck profile.
+([`dscusb-serial-port`](../06-feature-work/dscusb-serial-port/README.md)). The `docker`
+deck profile is not unusable but differently employed: **tests and simulations**, at
+`deck.hardware.mode=simulated`, with no driver in the image
+([`docker-and-profiles.md`](../05-ops/docker-and-profiles.md)).
 
 Each driver's auto-configuration therefore refuses to register off Windows and
-logs why. That is deliberate: registering and failing later would let
-`HardwareModeCheck` pass and put the `UnsatisfiedLinkError` in the middle of a
-run. Instead the deck refuses at startup and names the jar — with the driver's
-own warning just above it explaining that the jar is present and the *platform*
-is wrong. On the Windows bench nothing changes.
+logs why. Registering and failing later would let `HardwareModeCheck` pass and put
+the `UnsatisfiedLinkError` in the middle of a run; instead the deck refuses at
+startup and names the jar, with the driver's own warning just above it explaining
+that the jar is present and the *platform* is wrong.
 
-Both repos build on Gradle 9.7 / Kotlin 2.4.10 / gradleup shadow / JVM target 26, and both
-jars are reproducible from their committed source. Both repos
-`includeBuild("../breaktest-command-deck/device-api")` and implement the deck's
+Both repos build on Gradle 9.7 / Kotlin 2.4.10 / gradleup shadow / JVM target 26,
+are reproducible from their committed source, and
+`includeBuild("../breaktest-command-deck/device-api")` to implement the deck's
 contract in a `deck` package (`compileOnly` on the contract and on
-`spring-boot-autoconfigure`, so neither is bundled into the shadow jar — a copy
-of the contract classes inside a driver jar would shadow the deck's own).
-**Their compile against the live contract is the conformance guarantee**: a
-`device.api` change surfaces as a compile error on the next driver build. Without
-that sibling checkout each repo falls back to the published
-`ch.rupfizupfi.deck:device-api`, which pins a version rather than tracking the
-contract — so a build there proves nothing about drift.
+`spring-boot-autoconfigure`, so neither is bundled — contract classes inside a
+driver jar would shadow the deck's own). **Their compile against the live contract
+is the conformance guarantee**: a `device.api` change surfaces as a compile error
+on the next driver build. Without that sibling checkout each falls back to the
+published `ch.rupfizupfi.deck:device-api`, which pins a version rather than
+tracking the contract, so a build there proves nothing about drift.
 
 The deck loads them at launch from the `loader.path` directories
 ([gradle-build.md](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath)),
-so a missing jar is a *startup* failure, never a compile failure — and the fix is
-a restart, not a rebuild. For bench work, `lib/` plus
-`-PdeckDrivers=local` puts both on `bootRun`'s classpath instead; see
-[`lib/README.md`](../../lib/README.md).
+so a missing jar is a *startup* failure, never a compile failure, and the fix is a
+restart. On a dev or bench machine one directory serves every path — `drivers/`,
+read by `bootRun`, `run-bench.ps1` and `driverPluginTest` alike
+([`drivers/README.md`](../../drivers/README.md)).
 
 ## The jar on the machine is checked at startup
 
@@ -94,43 +94,49 @@ both versions. Mechanism and the compatibility rules:
 [`driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md#conformance-guarantee).
 The fix is a driver rebuild and a file copy, never an application rebuild.
 
+Living in the plugin, the check cannot catch **a jar that never calls it** — one
+built before the check existed loads clean and proves nothing.
+`./gradlew :command-deck:driverPluginTest` closes that: it requires the call
+before trusting its result, instantiates each auto-configuration so a skewed jar
+reports the driver's own message, and with both jars present boots the real
+context at `deck.hardware.mode=real` to assert the vendor providers displaced the
+simulators. It touches no hardware. Run it after copying a jar in; a stale jar
+looks exactly like a current one.
+
 ## `dscusb.jar` — load cell
 
 Published from the sibling repo as `ch.rupfizupfi.dscusb:dscusb` — by its CI on
-merge to `main` whenever `version` in its `gradle.properties` changes, or by
-hand with `./gradlew publish` there (needs `GITHUB_ACTOR` and a `write:packages`
-token). `0.2.0` shipped and is the fallback pin in `command-deck/build.gradle`;
-`0.3.0` follows OQ-74 (below). Where nothing resolves, `stageDrivers` warns and
-stages nothing unless the artifact is in the local `~/.m2`.
-`:command-deck:stageDrivers` resolves the pinned version into `build/drivers/`,
-and the deck image copies it to `/app/drivers`. Bump `-PdscusbVersion` here to
-move the deck onto a new driver build.
+merge to `main` whenever `version` in its `gradle.properties` changes, or by hand
+with `./gradlew publish` there (needs `GITHUB_ACTOR` and a `write:packages` token).
+`0.2.0` shipped; `0.3.0` follows OQ-74 (below). **Nothing in this repo resolves it
+any more:** the deck image carries no driver, being the simulation deployment, and
+the bench copies jars into `drivers/` by hand — so `stageDrivers`, its version pin
+and the GitHub Packages repository it needed are gone. Publishing now serves
+consumers with no sibling checkout: a second machine, or the driver's own CI.
 
-Publishing is the delivery path, **not** the conformance check — that is still
-the driver repo's own compile against the live contract. A version published
-from a stale checkout compiles against a stale contract, and nothing downstream
-catches it.
+Publishing is the delivery path, **not** the conformance check — that is still the
+driver repo's own compile against the live contract, so a version published from a
+stale checkout compiles against a stale one with nothing downstream to catch it.
 
 For bench work there is no need to publish: `./gradlew shadowJar` in the sibling
-repo and copy `build/libs/dscusb.jar` into `lib/`, or `publishToMavenLocal` there
-and let `stageDrivers` pick it up from `~/.m2` (listed ahead of GitHub Packages, and
-inert inside the docker build).
+repo and copy `build/libs/dscusb.jar` into `drivers/`. `publishToMavenLocal` is no
+longer part of this — `mavenLocal` was dropped once one directory served every
+launch path.
 
 **The package layout is split, and only part of it moved.** `CellValueStream`,
 `Connection`, `DSCUSB` and `DSCUSBDrv64` sit in `ch.rupfizupfi.dscusb.dscusb`,
-beside a `t24` sibling package for the wireless base station that the deck does not
-use. `Measurement` and `CommandExecutionException` are shared by both backends and
-stay one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in the
-`dscusb` repo's own `ch.rupfizupfi.dscusb.deck` package) imports from both, which
-is the whole blast radius of that move — the deck owns its own `Measurement`, so
-nothing over there sees it.
+beside a `t24` sibling package for the wireless base station the deck does not use.
+`Measurement` and `CommandExecutionException` are shared by both backends and stay
+one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in the `dscusb`
+repo's own `…dscusb.deck` package) imports from both, which is the whole blast
+radius of that move — the deck owns its own `Measurement`.
 
 **We load the optional DLL, not the COM-port one.** Mantracourt ship two:
 `MantraASCII2.DLL` over the FTDI virtual COM port, and `DSCUSBDrv.DLL` addressing
-modules directly by serial number — the manual's "preferred method", and the one the
-driver loads. Its only substantive gain is **up to 127 modules on one bus**; the bench
-has one cell, so the COM-port path would cost nothing we use, and it is what any
-non-Windows driver would have to speak. The device also has a **continuous output
+modules directly by serial number — the manual's "preferred method", and the one
+the driver loads. Its only substantive gain is **up to 127 modules on one bus**;
+the bench has one cell, so the COM-port path would cost nothing we use, and it is
+what any non-Windows driver would have to speak. The device also has a **continuous output
 mode** (`SOUT`, XON/XOFF-gated, ASCII protocol only) that would replace polling
 outright — unreachable through this DLL, so unexploited (OQ-80). Protocol, the
 `1781:0BAD` Linux enumeration blocker and the rest:
@@ -178,14 +184,13 @@ outright — unreachable through this DLL, so unexploited (OQ-80). Protocol, the
   reason — **diagnosis only**: what escalates is always the silence, so a sensor
   that dies without explanation trips identically.
 
-## `usbmodbus.jar` — frequency converter
+## `usbmodbus.jar` — frequency inverter
 
-Never committed, never published, never baked into an image — the licence does
-not permit redistribution. It reaches the tester as a host-mounted volume:
-build it in the sibling repo and copy `build/libs/usbmodbus.jar` into
-`docker/drivers-local/`, which compose mounts read-only at `/app/drivers-local`
-(see [`drivers-local/README.md`](../../docker/drivers-local/README.md)). A fresh
-clone builds and a fresh image builds without it; neither can drive the machine.
+Never committed, never published, never baked into an image — the licence does not
+permit redistribution. It reaches exactly one place: build it in the sibling repo
+and copy `build/libs/usbmodbus.jar` into `drivers/` on the bench machine. No image
+carries it and no host mount delivers it to a container. A fresh clone builds and a
+fresh image builds without it; neither can drive the machine.
 Vendor, licence holder and required version are recorded nowhere (OQ-43); only
 the project owner can close that.
 
@@ -215,7 +220,7 @@ that repo is private. Making it public would redistribute them.
   too; nothing here is fire-and-forget. Retries exist but are off
   (`maximumRetries` defaults to 0), leaving one attempt at a 100 ms timeout.
 - **That exception is not a `RuntimeException`**, and Kotlin lets it cross into Java
-  undeclared. `CFW11Device#readData` catches only `DriveUnavailableException` and
+  undeclared. `FrequencyInverterDevice#readData` catches only `DriveUnavailableException` and
   `RuntimeException`, so a comms error **escapes the poll loop and kills the
   info-polling thread**, leaving the dashboard on stale values. The safety paths are
   fine — `MotorSafetyController#verifyStopped` and `commandStop` catch `Throwable`.
@@ -232,9 +237,8 @@ dev at all, so the simulated provider declares its own identity for `Cfw11Check`
 path would need; nothing consumes it yet.
 
 Its `commandbus.CommandChain` is present and deliberately unused: it serialises
-writes only, is fire-and-forget, and cannot carry a return value or an
-exception, so it cannot back a stop that must know whether the motor stopped.
-Reasoning in
+writes only, is fire-and-forget, and cannot carry a return value or an exception,
+so it cannot back a stop that must know whether the motor stopped. Reasoning in
 [`hardware-layer-redesign`](../06-feature-work/hardware-layer-redesign/README.md#what-stays-unchanged-deliberately).
 
 ## Open questions
@@ -243,5 +247,4 @@ Reasoning in
 |---|---|
 | OQ-43 | `usbmodbus.jar` provenance — owner-owed |
 | OQ-81 | Only *consecutive* driver faults are budgeted — nothing bounds a run's total dropped fraction |
-| OQ-79 | Native Windows is decided; only the fate of the unusable `docker` deck profile is open |
 | OQ-80 | Continuous output mode would remove load-cell polling — unexploited, unverified on this variant |

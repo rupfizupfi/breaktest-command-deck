@@ -35,7 +35,7 @@ a `<millis>_gaps.json` sidecar, and `TestResult.runStatus` = `COMPLETED_WITH_GAP
 
 ### [ ] OQ-44 · Add `Cfw11Check`
 - **Path:** `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/startup/check/`
-- **Change:** an `AbstractCheck` subclass that probes the frequency converter and fails with a clear message; register it in `TestRunnerFactory.getStartupChecks()` next to `FileSystemCheck` and `LoadCellCheck`, whose shape it should follow.
+- **Change:** an `AbstractCheck` subclass that probes the frequency inverter and fails with a clear message; register it in `TestRunnerFactory.getStartupChecks()` next to `FileSystemCheck` and `LoadCellCheck`, whose shape it should follow.
 - **Design together with the simulator (OQ-62):** a simulated device must return a *distinguishable* identity, or the check passes against a fake.
 
 ### [ ] OQ-50 · Investigate the dual `Cfw11` handle

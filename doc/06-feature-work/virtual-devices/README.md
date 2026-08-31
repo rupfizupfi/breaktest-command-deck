@@ -97,7 +97,7 @@ Two silent-corruption traps beyond the watchdogs:
 
 The load-cell fake and the drive fake **cannot be independent**. `CyclicTest`
 closes a loop through the hardware: force crosses the upper limit →
-`RELEASE_SIGNAL` → `cfw11Release()` flips direction → force must actually *fall*
+`RELEASE_SIGNAL` → `driveRelease()` flips direction → force must actually *fall*
 → `PULL_SIGNAL` → cycle count decrements (`CyclicTest.java:65` reads direction
 back off the drive). An independent force generator either never crosses the
 thresholds or crosses them regardless of the motor; both leave the cycle logic
@@ -205,7 +205,7 @@ the bench models; it is the weakest of the three test types to simulate.
 | Result-root redirect | `command-deck/src/main/java/ch/rupfizupfi/deck/filesystem/SimulatedStorageLocationService.java` |
 | Per-run annunciation | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/TestRunnerThread.java` |
 | Load-cell stream seam | `command-deck/src/main/java/ch/rupfizupfi/deck/device/loadcell/LoadCellDevice.java:46` |
-| Drive seam + drive lock | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyconverter/CFW11Device.java:63` |
+| Drive seam + drive lock | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyinverter/FrequencyInverterDevice.java:46` |
 | Stop verification the fake must satisfy | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/MotorSafetyController.java:400` |
 | Watchdog constants the fake must respect | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/LoadCellThread.java:37` |
 | Closed loop the bench must close | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/CyclicTest.java:59` |

@@ -27,7 +27,7 @@ flowchart TB
         SYS["Two Spring Boot deployments, two hosts<br/>cms in the cloud · deck on the tester<br/>one shared schema, one shared DB intended (OQ-61)"]
     end
 
-    HW["Test bench<br/>(electric motor + load cell<br/>+ frequency converter + relays)"]:::external
+    HW["Test bench<br/>(electric motor + load cell<br/>+ frequency inverter + relays)"]:::external
     BR["Browser<br/>(React UI over HTTPS/WSS)"]:::external
 
     OP -->|operates test, watches live charts| BR
@@ -67,13 +67,13 @@ flowchart LR
 
     subgraph HW["Hardware (USB / RS232)"]
         LC["DSCUSB load cell<br/>(dscusb.jar)"]:::hw
-        CFW["WEG CFW11 freq converter<br/>(usbmodbus.jar)"]:::hw
+        CFW["WEG CFW11 freq inverter<br/>(usbmodbus.jar)"]:::hw
         REL["4-way relay CH9102<br/>(jSerialComm)"]:::hw
     end
 
     BR -- "HTTPS Hilla RPC<br/>(generated TS clients)" --> DECK
     BR -- "HTTPS Hilla RPC" --> CMS
-    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-converter-info<br/>/topic/status, /topic/logs" .-> DECK
+    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-inverter-info<br/>/topic/status, /topic/logs" .-> DECK
 
     DECK -- "implementation project(':cms')<br/>shared package ch.rupfizupfi.deck" --> CMS
     DECK -- "JDBC" --> H2
@@ -128,8 +128,9 @@ Run **one at a time**: both open the same H2 file
 
 A fresh clone builds without the driver jars and dev needs none —
 `application-dev.properties` runs `deck.hardware.mode=simulated`. Driving real
-hardware from a dev machine means putting both jars in `lib/` and running
-`bootRun -PdeckDrivers=local`; `usbmodbus.jar` is licence-restricted and must be
+hardware from a dev machine means putting both jars in `drivers/` and running
+`bootRun --args='--deck.hardware.mode=real'` — one directory, and the runtime
+property as the only switch; `usbmodbus.jar` is licence-restricted and must be
 obtained separately, its procurement source still unrecorded (OQ-43). In
 production neither jar comes from the build at all — see
 [`03-backend/driver-jars.md`](../03-backend/driver-jars.md).
@@ -146,4 +147,4 @@ For Docker: [`05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
 | Cross-module dep | `command-deck/build.gradle:2` (`implementation project(':cms')`) |
 | Profiles | `cms/src/main/resources/application{,-dev,-docker}.properties` (and byte-identical command-deck copies) |
 | Compose | `docker/docker-compose.yaml`, `docker/.env.example` (copy to the gitignored `docker/.env`) |
-| Driver plugin wiring | `command-deck/build.gradle` (`stageDrivers`, `-PdeckDrivers=local`, the `PropertiesLauncher` manifest), `command-deck/Dockerfile` (`LOADER_PATH`); both jars gitignored |
+| Driver plugin wiring | `command-deck/build.gradle` (the `drivers/` `developmentOnly` tree, `driverPluginTest`, the `PropertiesLauncher` manifest), `script/run-bench.ps1` (`LOADER_PATH`); both jars gitignored, no image carries one |

@@ -34,7 +34,7 @@ implements `SignalListener` and exposes:
   — see [below](#finishtestexception-and-the-double-cleanup). Subclasses
   override but must always call `super.cleanup()`.
 * `destroy()` — disconnect the CFW11 device and null out fields.
-* `cfw11Pull()` / `cfw11Release()` — direction helpers.
+* `drivePull()` / `driveRelease()` — direction helpers.
 
 ## The three subclasses
 

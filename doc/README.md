@@ -230,9 +230,10 @@ wrong line of the right file.
 holds evaluations of *external* tooling — test harnesses, device simulators,
 agent configuration — considered for future adoption. **Assume nothing it
 verification gates are the one exception. Do not infer from it that this project
-uses Playwright, Testcontainers, or any other tool it names; the repo still has
-no tests and no hardware abstraction layer. (CI does now exist — see
+uses Playwright or pymodbus; the repo still has
+no hardware abstraction layer. (CI — see
 [`02-modules/gradle-build.md`](02-modules/gradle-build.md#continuous-integration) —
+plus JUnit, Testcontainers and Vitest test layers now exist; the test-harness
 
 The caveat is about **adoption, not subject matter**. Several of its findings are
 owns them until the work they inform lands, at which point they move into the

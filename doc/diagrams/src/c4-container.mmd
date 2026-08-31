@@ -17,13 +17,13 @@ flowchart LR
 
     subgraph HW["Hardware (USB / RS232)"]
         LC["DSCUSB load cell<br/>(dscusb.jar)"]:::hw
-        CFW["WEG CFW11 freq converter<br/>(usbmodbus.jar)"]:::hw
+        CFW["WEG CFW11 freq inverter<br/>(usbmodbus.jar)"]:::hw
         REL["4-way relay CH9102<br/>(jSerialComm)"]:::hw
     end
 
     BR -- "HTTPS Hilla RPC<br/>(generated TS clients)" --> DECK
     BR -- "HTTPS Hilla RPC" --> CMS
-    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-converter-info<br/>/topic/status, /topic/logs" .-> DECK
+    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-inverter-info<br/>/topic/status, /topic/logs" .-> DECK
 
     DECK -- "implementation project(':cms')<br/>shared package ch.rupfizupfi.deck" --> CMS
     DECK -- "JDBC" --> H2

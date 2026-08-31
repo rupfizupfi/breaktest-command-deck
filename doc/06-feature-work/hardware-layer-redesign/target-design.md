@@ -31,7 +31,7 @@ public interface Drive {
 ```
 
 `Cfw11Drive implements Drive` becomes the **only** file naming `Cfw11` — three do today
-(`CFW11Device`, `MotorSafetyController`, `AbstractTest`). Same 12-method 1:1 mapping that
+(`FrequencyInverterDevice`, `MotorSafetyController`, `AbstractTest`). Same 12-method 1:1 mapping that
 [`../virtual-devices/README.md`](../virtual-devices/README.md) already scoped, so a
 `SimulatedDrive` costs nothing extra once this exists.
 
@@ -71,7 +71,7 @@ Two consequences, and they are the reason this type exists:
 - Refcounting happens **under `wire`**, not under a separate instance monitor. There is then only
   one lock on the path, so the monitor-before-`driveLock` rule has nothing left to order. Today
   that rule is prose in three places and a deadlock the moment a new caller misreads it.
-- `Lease.revoke()` converts *"don't stash the reference"* from `CFW11Device`'s javadoc plea into
+- `Lease.revoke()` converts *"don't stash the reference"* from `FrequencyInverterDevice`'s javadoc plea into
   ~15 lines that fail loudly. (`getHardwareComponent()` has already gone from the base class.)
 
 `useFresh` keeps `MotorSafetyController.java:242`'s behaviour exactly, including the dual-handle

@@ -81,7 +81,7 @@ are *almost identical*. Both:
   `state.user`.
 
 The deck-side layout adds **one** extra element: an `<InfoBoard/>` mounted
-inside the drawer, showing live frequency-converter telemetry
+inside the drawer, showing live frequency-inverter telemetry
 (`command-deck/.../views/@layout.tsx:8` import,
 `@layout.tsx:42` mount). cms does not have InfoBoard because it has no
 hardware to talk to.

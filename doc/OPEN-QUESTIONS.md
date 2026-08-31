@@ -45,9 +45,12 @@ touching those files twice.
 
 One gate sits above the list and is **owner-owed**, not codeable:
 
-- **Does this repo get tests?** OQ-32 and OQ-17 both block on it, as does the
-  ArchUnit check the redesign needs to make its layering rule real. One
-  decision, four dependants.
+- **Does this repo get tests? Decided yes (2026-08-30):** a plain-JUnit unit
+  suite over the testrunner safety logic, a Testcontainers/Postgres
+  `@DataJpaTest` slice in cms (answers OQ-32), per-module context tests (which
+  override the datasource to in-memory H2 — the default `dev` profile's
+  file-backed H2 must never be opened by a test), and a node-env Vitest rung
+  for frontend logic. Still open: the ArchUnit check the redesign needs.
 
 The resume-policy gate is **answered** (2026-08-29). The owner's numbers replaced
 the invented ones and are configurable under `deck.testrunner.recovery` — table in
@@ -132,5 +135,5 @@ Zero-risk, no decision left in them.
 | **OQ-79** | Both drivers are Windows-only, so the `docker` deck profile can never drive the bench: `DSCUSBDrv64.dll` and `usbiojava_x64.dll` have no Linux build, the image base is `eclipse-temurin:26-jre`, and each driver's auto-configuration now refuses to register off Windows rather than throwing mid-run — detail in [driver-jars](03-backend/driver-jars.md#both-drivers-are-windows-only-and-that-decides-the-deployment). **The fix is decided (2026-08-29): the hardware controller stays a Windows PC** and `command-deck` runs natively on it ([bench-deployment](05-ops/bench-deployment.md)). The serial rewrite is no longer a pending choice — it survives as a documented future option, [dscusb-serial-port](06-feature-work/dscusb-serial-port/README.md), which also carries the drive-side findings (RS485 rewiring; the bundled 2015 `purejavacomm` calls `Native.setPreserveLastError`, removed in JNA 5.x, so it would `NoSuchMethodError` against the pinned JNA 5.19.1). What is left is narrower: the compose file still has a **deck** profile and `stageDrivers` still bakes a driver into a Linux image that can never use it. Retire that profile, or keep it for a future Linux host? | **Undecided, not blocking.** Nothing depends on it now that the bench path works. Interacts with OQ-61 — the deck uses the cloud database either way. |
 | **OQ-64** | Whether to adopt the hardware/test-runner layer redesign — one lock per resource, `Drive` seam, per-run safety state, declarative test programs. Design in [hardware-layer-redesign](06-feature-work/hardware-layer-redesign/README.md). | **Owner-owed.** It restructures the safety path. Its step 3 is now exercisable: OQ-62's simulator and fault switches can drive all three safe-stop tiers on demand. |
 | **OQ-81** | **Nothing bounds the total dropped fraction of a run.** `dscusb`'s drop budget (80 ms) is spent only on *consecutive* faults — one good reading clears it — so a cell failing alternate frames forever runs a test to completion at half sample rate, and the deck's no-data watchdog never fires because data keeps flowing. `LoadCellStream.droppedSampleCount()` is the only signal, and nothing acts on it. A session-total or rate cap was **deliberately not added**: it is another policy number, and picking one blind would trade a silent half-rate run for arbitrary aborts on a healthy bench. | **Needs the bench.** The cap can only be chosen from a real cell's fault rate, and this failure mode has never been observed. Residual risk of OQ-74's drop-and-continue. |
-| **OQ-32** | Verify `TestResult.files` cascade + orphan-removal behaviour. | Needs a test suite; the repo has none and adopting one isn't decided. |
+| **OQ-32** | Verify `TestResult.files` cascade + orphan-removal behaviour. | **Answered 2026-08-30** by cms `TestResultPersistenceTest` (Testcontainers, real Postgres): cascade insert, delete-cascade and orphan removal all behave as annotated, and the recovery finder round-trips `RunStatus` by name. Closable. |
 | **OQ-18** | Whether to point external tooling at Hilla's `dev/hilla/openapi.json` for a non-Hilla client. | No consumer needs it yet. Left open rather than closed. |

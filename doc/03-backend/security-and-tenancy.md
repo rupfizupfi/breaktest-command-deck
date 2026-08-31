@@ -231,7 +231,7 @@ to the same organisation, so owner-scoped records (projects, samples, test
 parameters, results) must not leak between them.
 
 Live hardware telemetry is the exception. The `deck` deployment drives one
-physical tester, so `/topic/load-cell`, `/topic/frequency-converter-info`
+physical tester, so `/topic/load-cell`, `/topic/frequency-inverter-info`
 and `/topic/logs` are inherently shared: every operator watching that
 machine sees the same force readings, and per-user filtering on those
 topics would be meaningless. Per-user filtering on those topics is

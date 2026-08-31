@@ -8,10 +8,11 @@ When something fails, what's the fastest path to a fix? One problem ->
 one diagnostic -> one fix per entry. No theory, no diagrams. Cross-link
 to the deeper docs for the *why*.
 
-> (`./gradlew check` skips a test task that does not exist). The two
-> verification gates are `./script/typecheck.ps1` and the `/deck-run`
-> smoke test; beyond those, verification is manual and this runbook is the
-> primary safety net.
+> **Tests exist; only `/deck-run` exercises the running app.** The verification
+> gates are `./gradlew :cms:test :command-deck:test` (unit + Testcontainers +
+> context tests), `pnpm --dir cms test` (frontend logic),
+> `./script/typecheck.ps1`, and the `/deck-run` smoke test; beyond those,
+> verification is manual and this runbook is the primary safety net.
 
 ## Contents
 

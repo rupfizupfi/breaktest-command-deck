@@ -211,7 +211,7 @@ from "connection to machine lost" (amber). Safety never depends on the browser.
 
 Dead sensor at start (fresh-data gate, refcount fix); loss during ramp-up (general-enable-first);
 flapping link (backoff, gate hysteresis, `maxLossesPerRun`); loss while in SAFE_HOLD or during
-RESUMING (`RESUMING → SENSOR_LOST` edge); simultaneous converter + cell loss (tier 2/3, then
+RESUMING (`RESUMING → SENSOR_LOST` edge); simultaneous inverter + cell loss (tier 2/3, then
 `isDriveAvailable()` refuses resume); app restart mid-incident (`StartupRecoveryRunner`); operator
 Stop during hold (signal-0 exemption, serialized via `withDrive`); break at the same instant as
 disconnect (indistinguishable — both de-energize; no `SuckJob`); garbage after reconnect (drift

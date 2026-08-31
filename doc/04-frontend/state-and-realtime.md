@@ -108,13 +108,13 @@ Three topics are pushed today:
 | Topic | Producer | Frame body |
 |---|---|---|
 | `/topic/load-cell` | `device/loadcell/ForceBroadcaster.java` | JSON array of `{timestamp, force}` measurements, flushed once the buffer's oldest sample passes 60 ms (tested on the 20 ms reader tick, so not a fixed rate) |
-| `/topic/frequency-converter-info` | `device/frequencyconverter/DeviceInfoBroadcaster.java` | JSON `Info` object (speed, motor current/voltage/torque, ...) |
+| `/topic/frequency-inverter-info` | `device/frequencyinverter/DeviceInfoBroadcaster.java` | JSON `Info` object (speed, motor current/voltage/torque, ...) |
 | `/topic/logs` | `testrunner/TestLogger.java` (subscribed to via `Status.logObservable`) | plain string per log line |
 
 The frontend's STOMP singleton is `command-deck/src/main/frontend/service/StatusService.ts`
 — a hand-written wrapper around `@stomp/rx-stomp`'s `RxStomp`. It exposes
 three rxjs `Observable<IMessage>`s (`loadCellObservable`,
-`frequencyConverterInfoObservable`, `logObservable`) and a refcount
+`frequencyInverterInfoObservable`, `logObservable`) and a refcount
 (`connectComponent` / `disconnectComponent`) that activates the underlying
 WebSocket only while at least one component cares. It also publishes a
 `liveStatus` observable — socket state plus a per-topic staleness deadline, so
@@ -183,7 +183,7 @@ RPC and the WebSocket lifecycle.
 ## Where to look in the code
 - `command-deck/src/main/frontend/views/run.tsx:25-104`
 - `command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx:32-171`
-- `command-deck/src/main/frontend/components/dashboard/InfoBoard.tsx:34-61` (`/topic/frequency-converter-info` consumer)
+- `command-deck/src/main/frontend/components/dashboard/InfoBoard.tsx:34-61` (`/topic/frequency-inverter-info` consumer)
 - `command-deck/src/main/frontend/service/StatusService.ts:1-239`
 - `command-deck/src/main/java/.../api/services/TestRunnerService.java:11-44`
 - `command-deck/src/main/java/.../testrunner/TestRunnerThread.java:23-78`

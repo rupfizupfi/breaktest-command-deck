@@ -21,7 +21,7 @@ Paths relative to repo root; `deck/` = `command-deck/src/main/java/ch/rupfizupfi
 | H3 | `startThread` check-then-act race: concurrent `start()` calls can spawn two motor-driving tests | `deck/testrunner/TestRunnerThread.java:65` |
 | H4 | Mid-`setup()` failure cascades: `cleanup()` NPEs on null `cfw11`, refcount corruption, orphaned `LoadCellThread` holding the CSV file | `deck/testrunner/TestRunnerThread.java:51`, `deck/testrunner/AbstractTest.java:57` |
 | H5 | Stop commands fire-and-forget — no read-back verification of motor state anywhere | `deck/testrunner/AbstractTest.java:52` |
-| H6 | `Cfw11` driven concurrently by info-broadcast polling thread and test thread with no locking; `DeviceInfoService` disable race can close the CFW11 USB connection mid-test | `deck/device/frequencyconverter/CFW11Device.java:76`, `deck/api/services/DeviceInfoService.java:31` |
+| H6 | `Cfw11` driven concurrently by info-broadcast polling thread and test thread with no locking; `DeviceInfoService` disable race can close the CFW11 USB connection mid-test | `deck/device/frequencyinverter/FrequencyInverterDevice.java:249`, `deck/api/services/DeviceInfoService.java:31` |
 | H7 | `sendSignal` dedup + direction-guarded handling can permanently swallow a limit crossing in cyclic mode | `deck/testrunner/TestContext.java:45` |
 | H8 | No validation of configured limits/speed (null, inverted, beyond machine rating go straight to the drive) | `cms .../data/TestParameter.java` |
 | H9 | `start()`/`stop()` are `@PermitAll` with no ownership or role check on the `TestResult`; `start()` returns void success even when checks fail | `deck/api/services/TestRunnerService.java:22` |

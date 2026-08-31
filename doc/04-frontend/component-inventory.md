@@ -47,7 +47,7 @@ Plus shared utilities at the top level (used by both modules via the alias):
 
 | Domain | Component | File | Used by |
 |---|---|---|---|
-| Charts / dashboard | `InfoBoard` | `components/dashboard/InfoBoard.tsx` | Mounted in `views/@layout.tsx:42` — live frequency-converter telemetry in the drawer |
+| Charts / dashboard | `InfoBoard` | `components/dashboard/InfoBoard.tsx` | Mounted in `views/@layout.tsx:42` — live frequency-inverter telemetry in the drawer |
 | Charts / dashboard | `LiveTestResult` (incl. inner `TestResultGraph`) | `components/dashboard/LiveTestResult.tsx` | The chart in `views/run.tsx`. See [`state-and-realtime.md`](./state-and-realtime.md). |
 | Webcam / tracking *(provisional)* | `DistanceMeasureCam` | `components/webcam/DistanceMeasureCam.tsx` | `views/result/{resultId}/tracking.tsx` |
 | Webcam / tracking *(provisional)* | `CamShiftTracking` factory | `components/webcam/tracking/CamShiftTracking.tsx` | Used by `DistanceMeasureCam` |

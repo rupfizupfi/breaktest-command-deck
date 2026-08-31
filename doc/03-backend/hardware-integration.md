@@ -17,7 +17,7 @@ which thread polls it, which broadcaster publishes it. All hardware code lives i
   - [The `Device` base class](#the-device-base-class)
   - [`DeviceService` — singleton coordinator](#deviceservice--singleton-coordinator)
   - [Load cell — `DSCUSB` over USB](#load-cell--dscusb-over-usb)
-  - [Frequency converter — `CFW11` over USB Modbus](#frequency-converter--cfw11-over-usb-modbus)
+  - [Frequency inverter — `CFW11` over USB Modbus](#frequency-inverter--cfw11-over-usb-modbus)
   - [4-way relay — serial via `jSerialComm`](#4-way-relay--serial-via-jserialcomm)
   - [Pre-test checks](#pre-test-checks)
   - [Topic summary](#topic-summary)
@@ -30,7 +30,7 @@ which thread polls it, which broadcaster publishes it. All hardware code lives i
 flowchart LR
     subgraph Hardware["Physical hardware (real mode only)"]
         DSC["DSCUSB load-cell (USB)"]
-        CFW["WEG CFW11 frequency converter (USB Modbus)"]
+        CFW["WEG CFW11 frequency inverter (USB Modbus)"]
         REL["4-way relay CH9102 (Serial)"]
     end
 
@@ -41,7 +41,7 @@ flowchart LR
 
     subgraph DeviceLayer["device/ - singleton DeviceService"]
         LCD["LoadCellDevice<br/>(extends Device)<br/>readData() loop, 20ms"]
-        CFD["CFW11Device<br/>(extends Device)<br/>readData() loop, 400ms"]
+        CFD["FrequencyInverterDevice<br/>(extends Device)<br/>readData() loop, 400ms"]
         FRS["FourWayRelaySwitch<br/>(plain object)"]
     end
 
@@ -52,7 +52,7 @@ flowchart LR
 
     subgraph Topics["STOMP topics"]
         T1["/topic/load-cell"]
-        T2["/topic/frequency-converter-info"]
+        T2["/topic/frequency-inverter-info"]
     end
 
     DSC --> VEND
@@ -109,7 +109,7 @@ is a thin reference-counted lifecycle wrapper:
 
 This lets multiple subsystems (a UI page, a test runner, the info
 broadcaster) share one physical USB session without manually coordinating.
-Both `LoadCellDevice` and `CFW11Device` extend it.
+Both `LoadCellDevice` and `FrequencyInverterDevice` extend it.
 `FourWayRelaySwitch` does not — relay calls are short-lived and connect /
 disconnect on each use.
 
@@ -117,13 +117,13 @@ disconnect on each use.
 
 `DeviceService`
 (`command-deck/.../device/DeviceService.java:13`) is `@Service @Scope("singleton")`.
-On construction it builds `CFW11Device`, `LoadCellDevice` and
+On construction it builds `FrequencyInverterDevice`, `LoadCellDevice` and
 `DeviceInfoBroadcaster` — passing each device its injected provider — and registers
 a `ForceBroadcaster` on the load cell so its data streams to `/topic/load-cell`.
 
 `enableInfoBroadcasting()` is the entry point used by `DeviceInfoService`
 (Hilla service called by the *Control* React view); it connects both devices
-and registers the `DeviceInfoBroadcaster` to the frequency-converter.
+and registers the `DeviceInfoBroadcaster` to the frequency-inverter.
 `disableInfoBroadcasting()` reverses the steps — when the last view leaves,
 USB sessions close.
 
@@ -156,22 +156,22 @@ USB sessions close.
   force-threshold checks back via `TestContext` — see
   [`test-types.md`](test-types.md).
 
-### Frequency converter — `CFW11` over USB Modbus
+### Frequency inverter — `CFW11` over USB Modbus
 
 * Driver: the `usbmodbus` plugin jar, reached only through its own `Cfw11Drive`.
   Never committed or published (licence), supplied as a host mount, rebuildable
   from its sibling repo — see [`driver-jars.md`](driver-jars.md).
-* Wrapper: `CFW11Device`
-  (`command-deck/.../device/frequencyconverter/CFW11Device.java:9`). Polls
+* Wrapper: `FrequencyInverterDevice`
+  (`command-deck/.../device/frequencyinverter/FrequencyInverterDevice.java:40`). Polls
   motor data + control parameters every 400 ms while at least one observer
   is registered. The `idProvider` field assigns a monotonic id to each
   `Info` snapshot so consumers can detect dropped frames.
-* `Info` DTO — `command-deck/.../device/frequencyconverter/Info.java`: `id, speed,
+* `Info` DTO — `command-deck/.../device/frequencyinverter/Info.java`: `id, speed,
   start, generalEnable, useSecondRamp, directionIsForward, motorCurrent,
   motorVoltage, motorTorque`.
 * Broadcaster: `DeviceInfoBroadcaster`
-  (`command-deck/.../device/frequencyconverter/DeviceInfoBroadcaster.java:5`)
-  → `/topic/frequency-converter-info`.
+  (`command-deck/.../device/frequencyinverter/DeviceInfoBroadcaster.java:5`)
+  → `/topic/frequency-inverter-info`.
 
 The CFW11 is also used as an *actuator*: `AbstractTest` and its subclasses
 (`DestructiveTest`, `CyclicTest`, `TimeCyclicTest`) drive it through
@@ -207,7 +207,7 @@ has no equivalent check (OQ-44). Mechanism and full check list:
 | Topic | Producer | Payload |
 |---|---|---|
 | `/topic/load-cell` | `ForceBroadcaster` | `List<Measurement>` (timestamp + force) |
-| `/topic/frequency-converter-info` | `DeviceInfoBroadcaster` | `Info` snapshot |
+| `/topic/frequency-inverter-info` | `DeviceInfoBroadcaster` | `Info` snapshot |
 | `/topic/logs` | `TestLogger.log` | `String` lines (also written to disk) |
 | `/topic/status` | `TestRunnerService` (indirectly via TestLogger / future) | run state — endpoint declared in `WebSocketConfig` |
 
@@ -228,8 +228,8 @@ appliance and not horizontally scalable.
 | Singleton coordinator | `command-deck/src/main/java/ch/rupfizupfi/deck/device/DeviceService.java:13` |
 | Load cell driver wrapper | `command-deck/src/main/java/ch/rupfizupfi/deck/device/loadcell/LoadCellDevice.java:14` |
 | Load cell broadcaster | `command-deck/src/main/java/ch/rupfizupfi/deck/device/loadcell/ForceBroadcaster.java:9` |
-| Frequency converter wrapper | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyconverter/CFW11Device.java:9` |
-| Freq converter broadcaster | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyconverter/DeviceInfoBroadcaster.java:5` |
+| Frequency inverter wrapper | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyinverter/FrequencyInverterDevice.java:40` |
+| Freq inverter broadcaster | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyinverter/DeviceInfoBroadcaster.java:5` |
 | Relay switch | `command-deck/src/main/java/ch/rupfizupfi/deck/device/relayswitch/FourWayRelaySwitch.java:5` |
 | Test runner load-cell consumer | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/LoadCellThread.java:15` |
 | WebSocket config | `cms/src/main/java/ch/rupfizupfi/deck/messaging/WebSocketConfig.java:11` |
@@ -242,7 +242,7 @@ page names what it doesn't cover.
 
 | OQ | Topic |
 |---|---|
-| OQ-44 | No presence check for the CFW11 — a missing converter surfaces only once `setup()` throws. `Cfw11Check` should follow `LoadCellCheck` |
+| OQ-44 | No presence check for the CFW11 — a missing inverter surfaces only once `setup()` throws. `Cfw11Check` should follow `LoadCellCheck` |
 | OQ-81 | Only *consecutive* driver faults are budgeted, so nothing bounds a run's total dropped fraction — the residual risk of OQ-74's answer |
 | OQ-46 | `FourWayRelaySwitch.java:19` matches the `CH9102` literal — move it to configuration |
 | OQ-62 | The seam exists; the simulated providers do not, so no test can yet run without hardware. Decided: [simulated devices](../06-feature-work/virtual-devices/README.md), `dev` only |

@@ -6,7 +6,7 @@
 
 **Breaktest Command Deck** is the control software for an electric-motor-driven
 material-testing apparatus. The bench applies tensile force to a sample via a
-motor (a WEG CFW11 frequency converter) and measures the reaction force with a
+motor (a WEG CFW11 frequency inverter) and measures the reaction force with a
 DSCUSB load cell. Two test families are first-class:
 
 - **Destructive test** — pull the sample until it breaks; record the force

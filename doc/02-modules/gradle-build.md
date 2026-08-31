@@ -158,7 +158,7 @@ Two workflows, both on pull requests and pushes to `main`:
 
 | Workflow | Runs | Publishes |
 |---|---|---|
-| [`build.yml`](../../.github/workflows/build.yml) | `./gradlew build -x test`, then [`script/typecheck.ps1`](../../script/typecheck.ps1) under ubuntu's pwsh | nothing |
+| [`build.yml`](../../.github/workflows/build.yml) | `./gradlew build -Pvaadin.productionMode=true` (the unit suites run inside `build`), then [`script/typecheck.ps1`](../../script/typecheck.ps1) under ubuntu's pwsh | nothing |
 | [`device-api.yml`](../../.github/workflows/device-api.yml) | `./gradlew -p device-api build` | the contract, when its version changed |
 
 Three things `build.yml` depends on:
