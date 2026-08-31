@@ -187,8 +187,12 @@ export const rpcErrorPolicy: Middleware = async (
     return response;
   }
 
-  if (response.status === 401 && context.endpoint !== AUTH_ENDPOINT) {
-    recoverFromLostSession();
+  if (response.status === 401) {
+    if (context.endpoint !== AUTH_ENDPOINT) {
+      recoverFromLostSession();
+    }
+    // An AUTH_ENDPOINT 401 is the mount-time auth probe seeing a normal anonymous state, not a
+    // failure: no recovery, and no report() either — fully silent.
     return response;
   }
 
