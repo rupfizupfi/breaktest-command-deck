@@ -66,6 +66,13 @@ jobs:
         working-directory: command-deck
         run: pnpm install --frozen-lockfile
 
+      # Runs before the Gradle build on purpose: vitest needs only node_modules, and the Vaadin
+      # frontend tasks inside `build` can rewrite pnpm-lock.yaml, which would poison anything
+      # lockfile-sensitive that ran after them. Node env only - no browser download.
+      - name: Frontend logic tests (Vitest)
+        working-directory: cms
+        run: pnpm test
+
       # productionMode is what makes this a *complete* frontend build, and the typecheck below
       # cannot pass without one. The Vaadin scaffolding its generated client imports -
       # generated-flow-imports.js, app-shell-imports.js, vaadin-react.js - is untracked and is
@@ -78,12 +85,11 @@ jobs:
       # change. In CI the checkout is discarded, so the cost is nil - and this exercises the same
       # production path the Docker images build.
       #
-      # -x test states that this repo has no tests rather than leaving it inferred - both src/test
-      # trees are empty. Runs with no credentials on purpose: the GitHub Packages repository is
+      # The unit suites run inside `build` (plain JUnit, no Spring context, no hardware - see
       # content-filtered to stageDrivers, which `build` never invokes, so no driver jar is fetched
       # or needed. A driver is a launch-time plugin, so its absence cannot fail a build.
       - name: Build
-        run: ./gradlew build -x test -Pvaadin.productionMode=true --no-daemon
+        run: ./gradlew build -Pvaadin.productionMode=true --no-daemon
 
       # The real gate, shelled out to rather than inlined. script/typecheck.ps1 carries knowledge
       # that a YAML copy would drift away from: hillaGenerate silently *deletes* the generated

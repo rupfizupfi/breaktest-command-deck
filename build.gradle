@@ -62,6 +62,10 @@ subprojects {
 		}
 	}
 
+	tasks.named('test') {
+		useJUnitPlatform()
+	}
+
 	vaadin {
 		productionMode = false
 		optimizeBundle = false

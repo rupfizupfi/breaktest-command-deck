@@ -3,6 +3,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:generate": "powershell -NoProfile -ExecutionPolicy Bypass -File ../script/typecheck.ps1",
     "typecheck:all": "powershell -NoProfile -ExecutionPolicy Bypass -File ../script/typecheck.ps1 -SkipGenerate"
@@ -63,7 +64,8 @@
     "transform-ast": "2.4.4",
     "typescript": "6.0.3",
     "vite": "8.0.16",
-    "vite-plugin-checker": "0.14.5"
+    "vite-plugin-checker": "0.14.5",
+    "vitest": "4.1.11"
   },
   "vaadin": {
     "dependencies": {

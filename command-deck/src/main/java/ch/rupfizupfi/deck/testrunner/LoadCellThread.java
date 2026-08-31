@@ -189,6 +189,15 @@ public class LoadCellThread implements MeasurementObserver {
         this.running = running;
     }
 
+    /**
+     * The measurement loop's thread, null before {@link #start()}. Package-private for tests, same
+     * widening as {@link #inspectSample}: {@link #stop()} joins only 100 ms, so a teardown that must
+     * prove the loop actually died needs the thread itself to join on.
+     */
+    Thread loopThread() {
+        return thread;
+    }
+
     public float getMaxValue() {
         return maxValue;
     }
@@ -436,7 +445,8 @@ public class LoadCellThread implements MeasurementObserver {
      *
      * @return the trip reason, or null when the sample is acceptable
      */
-    private String inspectSample(float force) {
+    // Package-private: production code must only call this from the measurement loop.
+    String inspectSample(float force) {
         String reason = null;
 
         // Raw bits, not ==: == says 0.0f equals -0.0f (two readings the hardware genuinely produces)
@@ -701,7 +711,8 @@ public class LoadCellThread implements MeasurementObserver {
      * One sample's verdict inside the gate. Any failing criterion resets the continuity timer, so the
      * gate measures an unbroken run of good samples rather than a good average.
      */
-    private void scoreGateSample(float force) {
+    // Package-private: production code must only call this from the measurement loop.
+    void scoreGateSample(float force) {
         if (gateFuture == null) {
             return;
         }

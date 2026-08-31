@@ -1,0 +1,10 @@
+// Typechecks the frontend unit tests WITHOUT touching the typecheck gate: the root
+// tsconfig.json includes only src/main/frontend/** and types.d.ts, so the gate's
+// `tsc --noEmit -p tsconfig.json` (script/typecheck.ps1) never compiles these files or
+// vitest's types. Sources under test are reached by import-following. Verify tests with:
+//   pnpm exec tsc --noEmit -p src/test/frontend/tsconfig.json   (from cms/)
+// The IDE picks this config up automatically for files under src/test/frontend/.
+{
+  "extends": "../../../tsconfig.json",
+  "include": ["./**/*.ts"]
+}
