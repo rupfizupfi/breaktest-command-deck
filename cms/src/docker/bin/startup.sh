@@ -1,10 +1,11 @@
 #!/bin/bash
+# Entrypoint for both images (docker/Dockerfile). Two runtime fixups, then exec the app.
+
+# -e so a failed keytool stops the container instead of starting one that cannot serve HTTPS.
+set -eu
 
 # Set default password if not provided
 KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD:-changeit}
-
-# Create directory for keystore if it doesn't exist
-mkdir -p "/home/appuser/rupfizupfi"
 
 if [ ! -f "/home/appuser/keystore/rupfizupfi.p12" ]; then
   echo "Keystore not found. Creating a new keystore at /home/appuser/keystore/rupfizupfi.p12..."
@@ -16,20 +17,17 @@ else
   echo "Keystore already exists at /home/appuser/keystore/rupfizupfi.p12."
 fi
 
-# Check if DB_PASSWORD_FILE is set
-if [ -z "$DB_PASSWORD_FILE" ]; then
-  echo "ERROR: DB_PASSWORD_FILE environment variable is not set"
+# The one real secret: the database password, supplied as a compose secret file. One check for one
+# requirement - the printed value distinguishes "not set" from "set but unreadable" without a second
+# branch to say so.
+if [ ! -r "${DB_PASSWORD_FILE:-}" ]; then
+  echo "ERROR: DB_PASSWORD_FILE must name a readable file holding the database password; got '${DB_PASSWORD_FILE:-<unset>}'." >&2
+  echo "Compose mounts it at /run/secrets/db-password from .secrets/db-password.txt." >&2
   exit 1
 fi
-
-# Read DB password from secret file
-if [ -f "$DB_PASSWORD_FILE" ]; then
-  export DB_PASSWORD=$(cat "$DB_PASSWORD_FILE")
-  echo "Database password loaded from secret file."
-else
-  echo "ERROR: Database password secret file not found at $DB_PASSWORD_FILE!"
-  exit 1
-fi
+export DB_PASSWORD
+DB_PASSWORD=$(cat "$DB_PASSWORD_FILE")
+echo "Database password loaded from secret file."
 
 # Execute the passed command (typically the Java application)
 exec "$@"

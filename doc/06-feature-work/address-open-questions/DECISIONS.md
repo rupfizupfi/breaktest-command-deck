@@ -54,7 +54,7 @@ differently because of it:
 | Decision | Cost accepted |
 |---|---|
 | Keep `ddl-auto=update` | Manual schema surgery on the live database. Hibernate adds columns but never removes or renames. |
-| Keep `lib/usbmodbus.jar` out of the repo | Licence forbids redistribution. A fresh clone builds without it but cannot drive the machine; mitigation is documentation, still owed (OQ-43). |
+| Keep `drivers/usbmodbus.jar` out of the repo | Licence forbids redistribution. A fresh clone builds without it but cannot drive the machine; mitigation is documentation, still owed (OQ-43). |
 | Fully untrack `generated/` | Anything building the frontend must run the Hilla generator first, including CI. |
 | Reconnect rather than abort on load-cell loss | A test can now contain a gap in its data. The window and the gap's representation are settled: `deck.testrunner.recovery` gates, snapshotted per run, plus `runStatus` = `COMPLETED_WITH_GAPS` and a `<millis>_gaps.json` sidecar. The force CSV stays byte-identical, so external tools see only a timestamp discontinuity. |
 | Drop a transient driver fault rather than end the stream (OQ-74) | A run survives a load-cell glitch, at the price of a hole in the data no watchdog sees. Bounded per burst (80 ms) but not per session — OQ-81. |

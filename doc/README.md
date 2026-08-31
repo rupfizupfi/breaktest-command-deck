@@ -144,7 +144,7 @@ docs may touch the topic but defer there.
 | `DataWithOwner` + AOP ownership check | [`03-backend/security-and-tenancy.md`](03-backend/security-and-tenancy.md) |
 | `@BrowserCallable` catalogue | [`03-backend/hilla-services.md`](03-backend/hilla-services.md) |
 | Load cell, CFW11, relay drivers | [`03-backend/hardware-integration.md`](03-backend/hardware-integration.md) |
-| `lib/*.jar` provenance, driver contracts, sibling-repo builds | [`03-backend/driver-jars.md`](03-backend/driver-jars.md) |
+| `drivers/*.jar` provenance, driver contracts, sibling-repo builds | [`03-backend/driver-jars.md`](03-backend/driver-jars.md) |
 | Running a test with no hardware (simulated devices) | [`06-feature-work/virtual-devices/README.md`](06-feature-work/virtual-devices/README.md) |
 | Building without the vendor jars, deck-owned device API | [`06-feature-work/virtual-devices/driver-api-extraction.md`](06-feature-work/virtual-devices/driver-api-extraction.md) |
 | Tripping the watchdogs and the safe-stop tiers on demand | [`06-feature-work/virtual-devices/fault-injection.md`](06-feature-work/virtual-devices/fault-injection.md) |

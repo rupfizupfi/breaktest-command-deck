@@ -86,7 +86,7 @@ jobs:
       # production path the Docker images build.
       #
       # The unit suites run inside `build` (plain JUnit, no Spring context, no hardware - see
-      # content-filtered to stageDrivers, which `build` never invokes, so no driver jar is fetched
+      # not consulted by anything any more — no task resolves a driver, so none is fetched
       # or needed. A driver is a launch-time plugin, so its absence cannot fail a build.
       - name: Build
         run: ./gradlew build -Pvaadin.productionMode=true --no-daemon

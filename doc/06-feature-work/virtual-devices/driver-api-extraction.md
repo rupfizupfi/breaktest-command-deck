@@ -59,10 +59,10 @@ rebuilding the application. Step 3 moved loading to launch time.
 | Decision | Why |
 |---|---|
 | `PropertiesLauncher` + `LOADER_PATH`, not the classpath | present = loaded, absent = not, and absence stays the same named startup failure. Swapping a driver is now a file copy plus a restart |
-| `dscusb` published to GitHub Packages, staged by `stageDrivers` | makes "the prod image automatically carries the public driver" mechanical rather than a manual copy someone forgets. `mavenLocal` is consulted first so an unpublished build can still be exercised |
+| `dscusb` published to GitHub Packages, staged by `stageDrivers` | ~~makes "the prod image automatically carries the public driver" mechanical~~ — **superseded 2026-08-31.** The image that was to carry it is the simulation deployment and wants no driver, so `stageDrivers`, the repository and the build token are gone. Publishing remains for consumers with no sibling checkout; the bench copies jars into `drivers/` |
 | `usbmodbus.jar` supplied as a read-only host mount | the only way the restricted jar reaches a container without being redistributable in an image layer |
-| Both jars untracked (`lib/*.jar` gitignored) | `dscusb.jar` was tracked binary churn once a published artifact existed, and a stale tracked copy silently diverging is worse than none |
-| An unstageable driver **warns**, it does not fail the build | "never a build failure" holds for the image build too — an unreachable artifact repository is not a reason to be unable to build the application. `stageDrivers` resolves leniently, warns, and leaves the staging directory empty; the container then refuses to start in real mode and names the missing provider. The build-time signal is the warning, the enforcement is `HardwareModeCheck` |
+| Both jars untracked (`/drivers/*.jar` gitignored) | `dscusb.jar` was tracked binary churn once a published artifact existed, and a stale tracked copy silently diverging is worse than none |
+| An unstageable driver **warns**, it does not fail the build | ~~lenient resolution plus a warning~~ — **moot 2026-08-31.** No build resolves a driver at all now, so there is nothing to be lenient about; the rule it protected ("never a build failure") holds trivially. Enforcement was always `HardwareModeCheck` |
 
 Verified on the built artifact: `Main-Class` is
 `org.springframework.boot.loader.launch.PropertiesLauncher`, `BOOT-INF/lib` holds
@@ -224,9 +224,11 @@ declaring it — a standalone `hillaGenerate` fails otherwise.
 | `Measurement`'s JSON keys must stay `force` / `timestamp` | `ForceBroadcaster.java:21` sends it to `/topic/load-cell`, consumed by an **untyped** `rxStomp.watch()` at `StatusService.ts:77` and read as `item.force` / `item.timestamp` at `control.tsx:22` and `LiveTestResult.tsx:81`. `typecheck.ps1` cannot see this |
 | `device-api` stays dependency-free | it lands on every consumer's classpath: the deck, both driver repos, and the boot jar |
 | Adapters stay pure delegation, now in the driver repos | they are the only code the simulated path never runs |
-| No build ever packs a driver | a missing jar must stay a startup failure named by `HardwareModeCheck`, never a build failure — and the licence-restricted `usbmodbus.jar` must not be redistributable by accident. `-PdeckDrivers=local` is `developmentOnly`, so it reaches `bootRun` and never `bootJar` |
+| No build ever packs a driver | a missing jar must stay a startup failure named by `HardwareModeCheck`, never a build failure — and the licence-restricted `usbmodbus.jar` must not be redistributable by accident. `drivers/*.jar` enters as `developmentOnly`, which the Spring Boot plugin excludes from `bootJar`, so it reaches `bootRun` and never an artifact |
+| One plugin directory, and `deck.hardware.mode` as the only switch | the build flag that used to gate `bootRun`'s driver classpath could only ever agree or disagree with the property that actually governs, since both driver auto-configurations are conditional on it exactly as the simulated pair is. `drivers/` is now read by `bootRun`, `driverPluginTest` and `run-bench.ps1` alike |
+| The jars in `drivers/` are themselves tested (`driverPluginTest`) | the plugin's own skew check cannot catch a plugin that never calls it, and a jar built before that check existed loads clean and proves nothing. Verified against the real jars: each must make the call, satisfy the contract and register a provider, and with both present the real context must boot at `deck.hardware.mode=real` with the simulators displaced |
 | Driver builds want the deck as a sibling checkout | their compile against `device-api` *is* the conformance check. They fall back to the published contract without one, but that pins a version instead of tracking it, so drift then waits until the deck's startup. Publishing `dscusb` did **not** change this either: a version published from a stale checkout compiles against a stale contract and nothing downstream catches it |
-| `usbmodbus.jar` is never published | licence. It reaches the tester as a host mount (`docker/drivers-local/`), which is also what keeps it out of the image |
+| `usbmodbus.jar` is never published | licence. It reaches the bench as a file in `drivers/` and reaches no image at all, since no image carries a driver |
 | `LoadCellCheck` and a future `Cfw11Check` probe through the API | with no vendor code loaded in dev, a simulated provider must declare its own distinguishable identity — this forces **OQ-44** rather than deferring it |
 
 ## Open questions

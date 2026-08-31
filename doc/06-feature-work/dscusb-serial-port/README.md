@@ -206,4 +206,4 @@ behaves on the **USB** variant as the DCell & DSC manual describes.
 | OQ | Topic |
 |---|---|
 | OQ-80 | Continuous output mode would remove polling — unexploited, and unverified on the USB variant |
-| OQ-79 | The deck `docker` profile can never drive the bench; whether it is retired is open |
+| — | The deck `docker` profile can never drive the bench, and no longer tries: it is the tests-and-simulations deployment (ex-OQ-79, closed 2026-08-31) |

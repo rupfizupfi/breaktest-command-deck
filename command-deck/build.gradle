@@ -1,8 +1,8 @@
-import javax.inject.Inject
-
 dependencies {
     implementation project(':cms')
-    // Resolved by the device-api included build (root settings.gradle), never from a repository.
+    // Resolved by the device-api included build (root settings.gradle), never from a repository -
+    // substitution matches on group:name, so the version here is inert and deliberately not chased
+    // when the contract is bumped. What ships is whatever device-api/build.gradle says.
     implementation 'ch.rupfizupfi.deck:device-api:1.0.0'
 }
 
@@ -14,81 +14,32 @@ dependencies {
 // The boot jar therefore contains NO driver, in any build: bootJar runs through PropertiesLauncher
 // (see the manifest below) and the drivers come from the loader.path directories at launch. A jar
 // present there is loaded, a jar absent is not, and absence stays a *startup* failure named by
-// HardwareModeCheck — put the jar in place and restart, no rebuild. That is also what keeps the
-// licence-restricted usbmodbus.jar out of the docker image: it is only ever a host mount.
+// HardwareModeCheck — put the jar in place and restart, no rebuild.
 //
-// deckDrivers=local is the bench escape hatch for driving real hardware from `bootRun`, which runs
-// off the classpath rather than the jar. developmentOnly is deliberate — the Spring Boot plugin
-// excludes it from bootJar, so even a jar built with -PdeckDrivers=local stays driver-free.
-def deckDrivers = providers.gradleProperty('deckDrivers').getOrElse('off')
-if (!(deckDrivers in ['off', 'local'])) {
-    throw new GradleException("deckDrivers=${deckDrivers} is not valid. Valid values: off, local. "
-            + "('auto' is gone: drivers load at runtime from loader.path, not from the build.)")
-}
-
-if (deckDrivers == 'local') {
-    def driverJars = fileTree("${rootProject.projectDir}/lib") { include '*.jar' }
-    dependencies {
-        developmentOnly driverJars
-    }
-    def names = driverJars.files.collect { it.name }.sort()
-    logger.lifecycle(":command-deck: deckDrivers=local - bootRun loads driver plugins from lib/: "
-            + (names ? names.join(', ') : "none - deck.hardware.mode=real will refuse to start"))
-}
-
-// The PUBLIC driver plugin, staged into the docker image by stageDrivers below. Resolved only by
-// that task: `build`, `bootRun` and `hillaGenerate` never touch this repository, so a fresh clone
-// builds with no credentials — GitHub Packages demands a token even for public reads.
-// mavenLocal is listed ahead of GitHub Packages on purpose: `publishToMavenLocal` in ../dscusb is
-// how an unpublished driver gets exercised through the real loader.path, and it is inert inside the
-// docker build, which has no ~/.m2. (Only ahead of *these two* - the root build.gradle's
-// subprojects repositories are declared first and are unfiltered, so they get asked first and 404.)
-// stageDrivers logs each staged jar with the absolute path it resolved from, so a ~/.m2 build and a
-// GitHub Packages build are told apart in the log instead of looking identical.
-repositories {
-    mavenLocal {
-        content { includeGroup 'ch.rupfizupfi.dscusb' }
-    }
-    maven {
-        name = 'GitHubPackagesDscusb'
-        url = uri('https://maven.pkg.github.com/rupfizupfi/dscusb')
-        credentials {
-            username = providers.environmentVariable('GITHUB_ACTOR').getOrElse('')
-            password = providers.environmentVariable('GITHUB_TOKEN').getOrElse('')
-        }
-        content { includeGroup 'ch.rupfizupfi.dscusb' }
-    }
-}
-
-// Gradle 9 role-locked configurations: dependencies are declared against the dependencyScope and
-// resolved through the resolvable one. Declaring them on the resolvable configuration is an error.
-configurations {
-    dependencyScope('driverPlugins')
-    resolvable('deckDriver') {
-        extendsFrom driverPlugins
-        // Defensive: the published pom has no dependencies, and a driver plugin's own deps are
-        // already inside its shadow jar. Nothing else may ride along into the plugin directory.
-        transitive = false
-    }
-}
+// Only one deployment ever supplies a driver: the native Windows bench, via run-bench.ps1. The deck
+// container runs simulated (deck.hardware.mode=simulated, Linux, where both drivers refuse to
+// register anyway), so nothing here fetches, stages or packages a driver for an image — and the
+// licence-restricted usbmodbus.jar reaches no artifact by any route.
+//
+// drivers/ is the one place a plugin jar goes on this machine, and everything that consumes a
+// driver reads it: bootRun below, driverPluginTest further down, and script/run-bench.ps1 through
+// LOADER_PATH. An absent or empty directory contributes nothing and every task still runs.
+//
+// Unconditional, replacing an earlier -PdeckDrivers flag. Which provider a run gets is decided by
+// deck.hardware.mode at startup, never by the build: both driver auto-configurations are
+// @ConditionalOnProperty(deck.hardware.mode=real), mirroring this module's simulated providers, so
+// under dev's default `simulated` the jars sit on the classpath inert. A build-time gate for a
+// runtime-gated thing could only disagree with the property that actually governs, and it hid that
+// property behind a second switch — `bootRun --args='--deck.hardware.mode=real'` is the whole
+// interface now.
+//
+// developmentOnly is load-bearing: the Spring Boot plugin excludes it from bootJar, so no build can
+// pack a driver. That is what keeps the licence-restricted usbmodbus.jar out of every artifact.
+def driverPluginDir = "${rootProject.projectDir}/drivers"
+def driverPluginJars = fileTree(driverPluginDir) { include '*.jar' }
 
 dependencies {
-    driverPlugins "ch.rupfizupfi.dscusb:dscusb:${providers.gradleProperty('dscusbVersion').getOrElse('0.2.0')}"
-}
-
-tasks.register('stageDrivers', StageDriverPlugins) {
-    group = 'distribution'
-    description = 'Resolves the public driver plugins into build/drivers for the docker image.'
-    // lenient: a driver that cannot be resolved - no token, offline, version not published yet -
-    // must NOT fail the build. A missing driver is a *startup* failure named by HardwareModeCheck,
-    // and that rule holds for the image build too: an unreachable artifact repository is not a
-    // reason to be unable to build the application. The task warns instead.
-    plugins.from(configurations.deckDriver.incoming.artifactView { lenient = true }.files)
-    stagingDir = layout.buildDirectory.dir('drivers')
-    // Never up-to-date: with nothing resolved both the inputs and the output directory are empty,
-    // which is a textbook UP-TO-DATE and would swallow the warning that a driver is missing. That
-    // warning is the only build-time signal there is, so it has to print every run.
-    outputs.upToDateWhen { false }
+    developmentOnly driverPluginJars
 }
 
 // The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
@@ -124,47 +75,44 @@ jar {
     enabled = true
 }
 
-/**
- * Syncs the resolved driver plugins into the staging directory the docker image copies.
- *
- * A plain Sync task cannot do this job: with nothing resolved its source is empty, Gradle reports
- * NO-SOURCE and skips it entirely — leaving no directory for the Dockerfile to COPY (which would
- * fail the image build) and no warning that the driver is missing. This always runs, and its
- * @OutputDirectory guarantees the directory exists even when empty.
- *
- * Sync semantics, not copy: a version bump must remove the jar it replaces, or loader.path would
- * offer both and the older one could win.
- */
-abstract class StageDriverPlugins extends DefaultTask {
+// The driver plugins are verified rather than assumed, and in a task of their own so `test` stays
+// hermetic: dropping a jar into drivers/ must not change what the ordinary suite compiles against
+// or runs. Tagged rather than a separate source set, so the driver tests sit beside the context
+// test they mirror.
+//
+// This is the only automated check that the plugin contract holds end to end. Both facts it pins
+// are invisible to every compiler: the jar on the machine is whatever was last copied there, so
+// whether it registers its provider under deck.hardware.mode=real, and whether the device-api
+// version javac inlined into it still satisfies DeviceApi's skew check, are properties of a file -
+// not of this build. The driver repos' own compile checks the contract they were BUILT against;
+// this checks the one they will RUN against.
+def driverPluginTag = 'driver-plugin'
 
-    @InputFiles
-    abstract ConfigurableFileCollection getPlugins()
-
-    @OutputDirectory
-    abstract DirectoryProperty getStagingDir()
-
-    @Inject
-    abstract FileSystemOperations getFs()
-
-    @TaskAction
-    void stage() {
-        fs.sync {
-            it.from(plugins)
-            it.into(stagingDir)
-        }
-
-        // Log the resolved source, not the staged copy: filename alone names the version but not
-        // whether mavenLocal or GitHub Packages answered, which is exactly how version skew hides.
-        def sources = plugins.files.sort { it.name }
-        if (sources) {
-            logger.lifecycle(":command-deck: staged driver plugins:")
-            sources.each { logger.lifecycle(":command-deck:   " + it.name + " <- " + it.absolutePath) }
-        } else {
-            logger.warn(":command-deck: WARNING - no driver plugin could be staged. The artifact is "
-                    + "unreachable (no GITHUB_TOKEN, offline, or the pinned version is not "
-                    + "published). This is deliberately not a build failure - the jar that comes "
-                    + "out is valid. But with deck.hardware.mode=real it will refuse to start and "
-                    + "name the missing provider. See doc/03-backend/driver-jars.md.")
-        }
+tasks.named('test') {
+    // Vendor jars are driverPluginTest's business. A machine with no driver must still go green.
+    useJUnitPlatform {
+        excludeTags driverPluginTag
     }
+}
+
+tasks.register('driverPluginTest', Test) {
+    group = 'verification'
+    description = 'Boots the deck against the real driver plugins in drivers/ and asserts they register.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    // The app's own classpath first, the plugins appended - the same precedence loader.path gives
+    // them at launch, so device-api resolves to this build's copy and not to anything a jar carries.
+    classpath = sourceSets.test.runtimeClasspath + driverPluginJars
+    useJUnitPlatform {
+        includeTags driverPluginTag
+    }
+    // The tests locate the jars themselves to report which ones they checked, and to skip with a
+    // reason when there are none. Handed over explicitly rather than resolved from a working
+    // directory the task does not otherwise promise.
+    systemProperty 'deck.driverPluginDir', driverPluginDir
+    // The jars decide the outcome, so a swapped jar has to re-run this - the classpath alone would
+    // catch that, but the directory may also gain or lose a file the classpath was built without.
+    inputs.dir(driverPluginDir)
+            .withPropertyName('driverPlugins')
+            .optional()
+            .withPathSensitivity(PathSensitivity.RELATIVE)
 }

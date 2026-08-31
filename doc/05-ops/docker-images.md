@@ -4,64 +4,59 @@
 
 ## Purpose
 
-How the two container images are built and what happens between container
-start and the JVM. Where those images get deployed, and the compose/profile
-configuration around them, is
-[`docker-and-profiles.md`](docker-and-profiles.md).
+How the container image is built and what happens between container start and
+the JVM. Where the images get deployed, and the compose/profile configuration
+around them, is [`docker-and-profiles.md`](docker-and-profiles.md).
 
-## Two-stage Dockerfile pattern
+## One Dockerfile, two modules
 
-Both `cms/Dockerfile` and `command-deck/Dockerfile` follow the same shape:
+`docker/Dockerfile` builds both images; `MODULE` is the only difference, and
+compose supplies it per service:
 
 ```dockerfile
 FROM gradle:9.7.0-jdk26-corretto AS build-image
+ARG MODULE
 COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
-RUN gradle clean :<module>:bootJar --no-daemon -Pvaadin.productionMode=true
+RUN gradle clean :${MODULE}:bootJar --no-daemon -Pvaadin.productionMode=true
 
 FROM eclipse-temurin:26-jre AS app-image
+ARG MODULE
 RUN adduser ... appuser
-EXPOSE 8080
-COPY --from=build-image /home/gradle/src/<module>/build/libs/*.jar /app/<module>.jar
+EXPOSE 443
+COPY --from=build-image /home/gradle/src/${MODULE}/build/libs/*-application.jar /app/app.jar
 COPY cms/src/docker/bin/startup.sh /usr/local/bin/startup.sh
 ENTRYPOINT ["/usr/local/bin/startup.sh"]
-CMD ["java", "-jar", "/app/<module>.jar"]
+CMD ["java", "-jar", "/app/app.jar"]
 ```
 
-Three details that surprise people:
+**There were two copies of this until 2026-08-31.** They were identical except for
+the module name plus a block of deck-only directives that existed solely to deliver
+a driver plugin into the image — and since the deck container is a simulation
+deployment on Linux, where both Windows-only drivers refuse to register, that block
+delivered something unusable. Removing it made the two files identical, so they
+became one. What went with it: a BuildKit secret mount for a GitHub Packages
+token, `ARG GITHUB_ACTOR`, `:command-deck:stageDrivers`, a `COPY` of the staged
+plugin, `mkdir /app/drivers-local`, and `ENV LOADER_PATH`. **The image build now
+needs no credentials at all.**
 
-* **The `*.jar` glob is safe, but only because of the build command.** The
-  build stage runs `:MODULE:bootJar`, and `bootJar` does not depend on `jar`,
-  so `build/libs/` holds exactly one artefact at `COPY` time. Change that
-  command to `assemble` or `build` and the glob matches two jars, breaking
-  the image. See
-  [`../02-modules/module-layout.md`](../02-modules/module-layout.md).
-* **`EXPOSE 8080` is documentation only.** The container listens on `443`
-  because `application-docker.properties` sets `server.port=${PORT:443}`;
-  compose maps host `8043` to that.
-* **The deck image reads `startup.sh` out of the cms tree.** Accepted as
-  deliberate (2026-08-16) — `:cms` is already a hard Gradle dependency of
-  `:command-deck`, so one shared entrypoint matches the module relationship.
-  Anyone moving or deleting that file must rebuild both images.
+Details worth knowing:
 
-### Where the deck image diverges: driver plugins
-
-`command-deck/Dockerfile` adds a handful of directives the cms image has no use for, all
-serving one rule — **the licence-restricted `usbmodbus.jar` is never in an
-image**, and `lib/` is excluded by `.dockerignore` so it never even reaches the
-build context:
-
-| Addition | Why |
-|---|---|
-| `--mount=type=secret,id=github-token,required=false,uid=1000` on the build `RUN`, plus `:command-deck:stageDrivers` in the same command | Resolves the **public** `dscusb` driver plugin from GitHub Packages, which demands a token even for public reads. A secret mount keeps it out of every layer; `uid=1000` because a mount defaults to uid 0 mode 0400 and a non-root build stage would fail the read silently. Optional by design: no token means a warning and an empty `/app/drivers`, not a failed build. Needs BuildKit — the default in current Docker, but not in engines old enough to lack it. |
-| `COPY --from=build-image .../build/drivers/ /app/drivers/` | The staged public plugin. Filenames keep their version, so `ls /app/drivers` in a running container identifies the driver build. Verified that an **empty** staging directory copies fine and yields an empty `/app/drivers` — that is what keeps an unreachable driver from failing the image build. |
-| `RUN mkdir -p /app/drivers-local` | Mount point for the restricted plugin, supplied by the tester as a read-only bind mount. Empty is valid; the app then refuses to start in real mode and names what is missing. |
-| `ENV LOADER_PATH=/app/drivers,/app/drivers-local` | `PropertiesLauncher` extends the classpath with these at launch. Earlier entries win on collisions. |
-
-Consequence worth knowing: a driver is swapped by replacing a file and
-restarting the container — no rebuild. Owned by
-[`../03-backend/driver-jars.md`](../03-backend/driver-jars.md); build side in
-[`../02-modules/gradle-build.md`](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath).
+* **The jar is matched by suffix, not by a bare `*.jar` glob.** Both modules set
+  `archiveBaseName`, so the boot jar is `<module>-application.jar`. The old glob was
+  safe only because `bootJar` does not depend on `jar`, leaving one artefact in
+  `build/libs/` — switch the build command to `assemble` and it matched two and
+  broke. Matching the suffix removes that trap.
+* **`EXPOSE 443` is documentation only**, and it used to say `8080`. The container
+  listens on `443` because `application-docker.properties` sets
+  `server.port=${PORT:443}`; compose maps host `8043` to that.
+* **The Dockerfile reads `startup.sh` out of the cms tree.** Accepted as deliberate
+  (2026-08-16) — `:cms` is already a hard Gradle dependency of `:command-deck`, so
+  one shared entrypoint matches the module relationship.
+* **`PropertiesLauncher` stays the boot jar's `Main-Class`** even though no
+  container sets `LOADER_PATH`. It is how the native bench extends the classpath
+  with `drivers/` at launch, and with the variable unset it extends nothing. One
+  artefact serves both deployments.
 
 ## `startup.sh` — runtime fixups
 
@@ -76,19 +71,21 @@ things before `exec "$@"`:
    trusted local network.
 2. Read `DB_PASSWORD_FILE` (the secret-mounted path) and re-export its
    contents as `DB_PASSWORD`, so the `${DB_PASSWORD}` placeholder in
-   `application-docker.properties` resolves. The script exits non-zero if the
-   variable is unset or the file is missing.
+   `application-docker.properties` resolves. One readability check covers both
+   failures — unset and unreadable — and prints the value it got, so the message
+   still tells them apart. The script runs under `set -eu`, so a failed `keytool`
+   stops the container instead of starting one that cannot serve HTTPS.
 
 ## Where to look in the code
 
 | Concern | File |
 |---|---|
-| CMS image | `cms/Dockerfile` |
-| Deck image | `command-deck/Dockerfile` |
+| Both images | `docker/Dockerfile` (`MODULE` build arg) |
+| Which module each service builds | `docker/docker-compose.yaml` (`build.args`) |
 | Shared entrypoint | `cms/src/docker/bin/startup.sh` |
 | Jar naming | `cms/build.gradle`, `command-deck/build.gradle` |
 
 ## Open questions
 
-None of its own. Related: OQ-61 (deck should reach the cloud Postgres) in
+None of its own. Related: OQ-61 (the *bench* should reach the cloud Postgres) in
 [`docker-and-profiles.md`](docker-and-profiles.md).

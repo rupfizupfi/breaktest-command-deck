@@ -130,20 +130,23 @@ The build succeeds without the driver jars; running does not. The message
 names the missing jar.
 - **Diagnostic:** the error names each missing provider and its jar, and each
   jar registers independently — one missing jar disables only its own provider.
-  In the container: `docker compose exec server-deck ls /app/drivers
-  /app/drivers-local`. On a dev bench: `ls lib/`, and check that `bootRun` ran
-  with `-PdeckDrivers=local`.
-- **Fix (container):** the public `dscusb` plugin comes from the image
-  (`/app/drivers`); if it is missing, the image was built without a valid
-  `read:packages` token — see
-  [`docker-and-profiles.md`](docker-and-profiles.md#required-host-preparation).
-  `usbmodbus.jar` is the host mount: drop it in `docker/drivers-local/` and
-  restart the container. **No rebuild** — drivers load from `LOADER_PATH` at
-  launch.
-- **Fix (dev bench):** put the jars in `lib/` and restart `bootRun` with
-  `-PdeckDrivers=local`, or run the boot jar with `LOADER_PATH=lib`. Neither jar
-  is in git; both are built from sibling repos
-  ([`driver-jars.md`](../03-backend/driver-jars.md)).
+  `ls drivers/` on the bench machine: every launch path reads that one directory,
+  so there is no build option to check as well.
+- **In a container this is a misconfiguration, not a missing file.** The deck
+  container is the simulation and test deployment and carries no driver by
+  design; both drivers are Windows-only, so a Linux image could never use one.
+  Compose sets `DECK_HARDWARE_MODE=simulated`, and seeing this message there
+  means something overrode it. Fix the mode, not the jars.
+- **Fix (bench or dev machine):** put both jars in `drivers/`, then either
+  `script/run-bench.ps1` (which sets `LOADER_PATH` itself) or restart `bootRun`
+  with `--args='--deck.hardware.mode=real'`. Neither jar is in git; both are built from sibling repos
+  ([`driver-jars.md`](../03-backend/driver-jars.md)). Confirm the jars themselves
+  before blaming the app: `./gradlew :command-deck:driverPluginTest`.
+- **Fix (a jar is present and it still refuses):** the jar may be stale rather
+  than missing — a driver built against an incompatible `device-api` refuses to
+  register, and one built before the skew check existed registers nothing and
+  says nothing. `driverPluginTest` names which jar and why; the fix is a driver
+  rebuild (`./gradlew shadowJar` in the sibling repo) and a file copy.
 - **Not a fix:** there is no simulated fallback, deliberately — absent
   hardware must never look like working hardware. `deck.hardware.mode=simulated`
   is refused too, until the simulator exists.

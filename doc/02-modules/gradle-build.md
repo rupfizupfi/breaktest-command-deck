@@ -6,7 +6,7 @@ date: 2026-08-17
 # Gradle build
 
 ## Purpose
-Document how the Gradle multi-project build wires `:cms` and `:command-deck`, where the Vaadin / Hilla plugin plugs in, and how the optional `lib/*.jar` drivers reach the command-deck classpath. Spring-side configuration sits in [`spring-boot-setup.md`](spring-boot-setup.md); cross-module Java imports are listed in [`shared-code-strategy.md`](shared-code-strategy.md).
+Document how the Gradle multi-project build wires `:cms` and `:command-deck`, where the Vaadin / Hilla plugin plugs in, and how the `drivers/*.jar` plugins reach the command-deck classpath. Spring-side configuration sits in [`spring-boot-setup.md`](spring-boot-setup.md); cross-module Java imports are listed in [`shared-code-strategy.md`](shared-code-strategy.md).
 
 ## Contents
 
@@ -18,7 +18,7 @@ Document how the Gradle multi-project build wires `:cms` and `:command-deck`, wh
   - [`:command-deck/build.gradle`](#command-deckbuildgradle)
   - [Driver plugins: `loader.path`, not the classpath](#driver-plugins-loaderpath-not-the-classpath)
   - [Vaadin Gradle plugin](#vaadin-gradle-plugin)
-  - [Local JAR census (`lib/`)](#local-jar-census-lib)
+  - [The driver plugin directory (`drivers/`)](#the-driver-plugin-directory-drivers)
   - [Build outputs](#build-outputs)
   - [`gradle.properties`](#gradleproperties)
 - [Continuous integration](#continuous-integration)
@@ -74,7 +74,7 @@ The root build file applies *no* plugins to the root project — it only declare
   - Logging: `org.slf4j:slf4j-api` and `ch.qos.logback:logback-classic`, versions from the Spring Boot BOM.
 - The Vaadin BOM is imported into `dependencyManagement` (line 51) using `${vaadinVersion}` so all `com.vaadin:*` artefacts align to 25.2.6.
 - Java toolchain locked to **JDK 26** (`sourceCompatibility`, `targetCompatibility`, plus `toolchain.languageVersion`).
-- `vaadin { productionMode = false; optimizeBundle = false; pnpmEnable = true }` — defaults for dev. The Docker build flips production mode with `-Pvaadin.productionMode=true` (`cms/Dockerfile:5`, `command-deck/Dockerfile:5`). `pnpmEnable` must stay in sync with `vaadin.pnpm.enable=true` in `application.properties`, or dev mode and the Gradle build populate `node_modules` differently. `useGlobalPnpm` stays off — Vaadin fetches its own pinned pnpm. Why `optimizeBundle` is off is unrecorded (OQ-16).
+- `vaadin { productionMode = false; optimizeBundle = false; pnpmEnable = true }` — defaults for dev. The Docker build flips production mode with `-Pvaadin.productionMode=true` (`docker/Dockerfile:19`). `pnpmEnable` must stay in sync with `vaadin.pnpm.enable=true` in `application.properties`, or dev mode and the Gradle build populate `node_modules` differently. `useGlobalPnpm` stays off — Vaadin fetches its own pinned pnpm. Why `optimizeBundle` is off is unrecorded (OQ-16).
 
 ### `:cms/build.gradle` (cms-specific)
 Nine lines. Just renames the build outputs:
@@ -89,7 +89,7 @@ Two things on top of the root:
 
 1. `implementation project(':cms')` — pulls in the `cms-library-plain.jar` (the plain jar, **not** the Spring Boot fat jar — Spring Boot's Gradle plugin makes `project(':cms')` resolve to the regular jar artefact). This is the only declared cross-module link; everything else flows through Spring component scan at runtime.
 2. `implementation 'ch.rupfizupfi.deck:device-api:1.0.0'` — resolved by the `device-api` included build, never from a repository.
-3. The [driver plugin](#driver-plugins-loaderpath-not-the-classpath) wiring: a `stageDrivers` task and an opt-in `developmentOnly` edge. No configuration puts a driver on `bootJar`.
+3. The [driver plugin](#driver-plugins-loaderpath-not-the-classpath) wiring: a `developmentOnly` edge onto `drivers/` and the `driverPluginTest` task. No configuration puts a driver on `bootJar`, and nothing resolves one from a repository.
 4. An explicit `dependsOn` from the Vaadin/Hilla tasks onto the included build's `:jar`: the Vaadin plugin queries the runtime classpath mid-execution without declaring the dependency, so a standalone `hillaGenerate` (what `script/typecheck.ps1` runs) fails without it.
 
 Output JAR names follow the same pattern: `command-deck-application.jar` (boot) + `command-deck-library-plain.jar` (plain). The CMS Dockerfile assumes the `cms-application.jar` will be the only fat JAR copied; the command-deck Dockerfile makes the same assumption for its image.
@@ -100,15 +100,21 @@ Output JAR names follow the same pattern: `command-deck-application.jar` (boot) 
 
 Each jar is a self-contained deck plugin, built in its own sibling repo: it implements `ch.rupfizupfi.deck:device-api` (composite-included from `device-api/` here, so **the driver repo's compile is the contract-conformance check**) and ships a Spring Boot auto-configuration registered via `META-INF/spring/...AutoConfiguration.imports` — required because the driver packages sit outside the deck's `ch.rupfizupfi.deck` component-scan root. `PropertiesLauncher` puts `loader.path` jars in the same classloader as the app, so those imports files are found exactly as a nested `BOOT-INF/lib` jar's would be. Nothing in this repo names a driver class.
 
-Three build-side pieces, and that is all:
+Two build-side pieces, and that is all — there is **no repository, no credential
+and no staging task** anywhere in the driver path any more. Delivering the public
+`dscusb` plugin into the deck image needed all three, and the deck container turned
+out not to want a driver: it is the simulation and test deployment, on Linux, where
+both Windows-only drivers refuse to register. The bench, which does want
+drivers, has always taken them from `drivers/` by hand. So `stageDrivers`, its
+`StageDriverPlugins` task class, the `driverPlugins`/`deckDriver` configuration pair
+and the content-filtered GitHub Packages repository are all gone:
 
 | Piece | Does what |
 |---|---|
-| `stageDrivers` (custom `StageDriverPlugins`) | Resolves the **public** driver `ch.rupfizupfi.dscusb:dscusb` into `build/drivers/` for the docker image to copy, with sync semantics so a version bump deletes the jar it replaces. Not a plain `Sync` task: with nothing resolved that reports `NO-SOURCE` and is skipped, leaving no directory for the Dockerfile to `COPY` and no warning. Never up-to-date, so the warning prints every run. The version stays in the filename so `ls /app/drivers` identifies the driver build. Pin with `-PdscusbVersion=`. |
-| `-PdeckDrivers=local` | Bench escape hatch: puts `lib/*.jar` on **`bootRun`'s** classpath as `developmentOnly`, which the Spring Boot plugin excludes from `bootJar` — so even a jar built with this option on stays driver-free. Default is `off`; those are the only two values. |
-| A content-filtered GitHub Packages repository | Resolved **only** by `stageDrivers`, because GitHub Packages demands a token even for public reads. `build`, `bootRun` and `hillaGenerate` never touch it, so a fresh clone builds with no credentials. `mavenLocal` is listed ahead of it so `publishToMavenLocal` in `../dscusb` can be exercised through the real `loader.path`; it is inert in the docker build, which has no `~/.m2`. |
+| `developmentOnly fileTree('drivers')` | Puts `drivers/*.jar` on **`bootRun`'s** classpath. Unconditional, because `developmentOnly` is what the Spring Boot plugin excludes from `bootJar` — so no build can pack a driver — and because an empty or absent directory contributes nothing. There is no build flag: both driver auto-configurations are `@ConditionalOnProperty(deck.hardware.mode=real)`, mirroring the simulated pair, so `deck.hardware.mode` is the only switch and a second build-time one could only disagree with it. |
+| `driverPluginTest` | Verification task over the jars actually in `drivers/`: each must call `DeviceApi.verifyPluginBuiltAgainst`, satisfy the current contract and register a `device-api` provider, and with both present the real context boots at `deck.hardware.mode=real` and the vendor providers must displace the simulators. Its classpath is the test runtime classpath **plus** those jars — the app first, the same precedence `loader.path` gives them — so `test` stays hermetic and a dropped-in jar never changes what the ordinary suite runs. Tagged `driver-plugin`, which `test` excludes. |
 
-Design rationale and history: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md); what fails at startup without the jars: [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode); how the container gets them: [`../05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
+Design rationale and history: [`../06-feature-work/virtual-devices/driver-api-extraction.md`](../06-feature-work/virtual-devices/driver-api-extraction.md); what fails at startup without the jars: [`spring-boot-setup.md`](spring-boot-setup.md#hardware-mode); why no container carries one: [`../05-ops/docker-and-profiles.md`](../05-ops/docker-and-profiles.md).
 
 ### Vaadin Gradle plugin
 Applied to **both** subprojects (root `build.gradle:19`). Gives each module:
@@ -125,10 +131,12 @@ Crucially, **the plugin runs independently per module**. Each module's `bootJar`
   - the `customFileSystemRouterPlugin` (file at `command-deck/customFileSystemRouterPlugin.ts`) which merges the cms `file-routes.json` into the deck's own at build start and on dev-time `fs-route-update` HMR events. It derives the cms path from the deck's by swapping the module segment, and the deck's own from the Vite config: `frontend/generated/` in dev mode, the build `outDir` in production (`command-deck/customFileSystemRouterPlugin.ts:114`). Neither copy is in git — `generated/` is untracked — so both exist only after a build has run;
   - a `rollupOptions.onwarn` filter that silences Rollup's `MIXED_EXPORTS` warning — likely arising from cross-module imports.
 
-### Local JAR census (`lib/`)
-**Nothing in `lib/` is tracked** — `.gitignore` excludes `lib/*.jar`, and only the directory's `README.md` is committed. It holds bench-local copies of `dscusb.jar` and `usbmodbus.jar` for driving real hardware from `bootRun` with `-PdeckDrivers=local`; production takes neither from here. Where each comes from and what its build needs: [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
+### The driver plugin directory (`drivers/`)
+**One plugin directory per machine, and everything reads it**: `bootRun` through `developmentOnly`, `driverPluginTest` through its own classpath, and `script/run-bench.ps1` through `LOADER_PATH`. That is the point of the name — the mechanism differs between a Gradle-launched classpath and a `PropertiesLauncher` one, but the file location a person has to know does not.
 
-The JARs are **not** available to `:cms`, which imports no driver code. Note for anyone tempted to add a `fileTree(dir: 'lib', ...)` to the root `subprojects` block: a *relative* directory there resolves per subproject, to `cms/lib/` and `command-deck/lib/`, neither of which exists — it would look like it grants both modules access and do nothing.
+**No jar in it is tracked** — `.gitignore` excludes `/drivers/*.jar` and the directory's `README.md` is committed. A tracked copy would silently diverge from the sibling repo it is built from. Where each jar comes from and what its build needs: [`../03-backend/driver-jars.md`](../03-backend/driver-jars.md).
+
+The JARs are **not** available to `:cms`, which imports no driver code. Note for anyone tempted to add a `fileTree(dir: 'drivers', ...)` to the root `subprojects` block: a *relative* directory there resolves per subproject, to `cms/drivers/` and `command-deck/drivers/`, neither of which exists — it would look like it grants both modules access and do nothing. `:command-deck` anchors its own on `rootProject.projectDir` for exactly that reason.
 
 ### Build outputs
 
@@ -163,7 +171,7 @@ Two workflows, both on pull requests and pushes to `main`:
 
 Three things `build.yml` depends on:
 
-- **No credentials.** `build` never invokes `stageDrivers`, the only task that resolves from GitHub Packages, so the job needs no token and stages no driver jar. A driver is a launch-time plugin; its absence cannot fail a build.
+- **No credentials.** Nothing in this build resolves from a private repository — not the Gradle build, not the image build. A driver is a launch-time plugin supplied by hand on the bench, so its absence cannot fail a build. `driverPluginTest` is deliberately not in CI: a Linux runner with no vendor jars can only report a skip.
 - **`pnpm install --frozen-lockfile` in each module**, so the gate can resolve `tsc`. It runs before Gradle: `build` in dev mode does not pull `vaadinPrepareFrontend` into the task graph, but a production-mode build would — and that task installs with npm and deletes `pnpm-lock.yaml`, which `--frozen-lockfile` afterwards could not survive (the same hazard `script/typecheck.ps1` steps around).
 - **The regenerated Hilla client is not diffed against what is committed.** It does not come back byte-identical — `generated-file-list.txt` reorders nondeterministically — so a drift check would fail on noise.
 
@@ -173,12 +181,13 @@ The driver repos run the mirror image: each composite-includes `device-api/` fro
 - `settings.gradle:1-21`
 - `build.gradle:1-73` (root)
 - `cms/build.gradle:1-11`
-- `command-deck/build.gradle:1-164`
+- `command-deck/build.gradle:1-118`
 - `device-api/settings.gradle:1-9` and `device-api/build.gradle:1-40` (the included build)
 - `gradle.properties:1-10`
-- `cms/Dockerfile:1-30` and `command-deck/Dockerfile:1-61`
+- `docker/Dockerfile:1-51` (one file for both images, `MODULE` build arg)
 - `command-deck/vite.config.ts:1-53` and `command-deck/customFileSystemRouterPlugin.ts:1-144`
-- `lib/README.md` (the directory's only tracked file — see [Local JAR census](#local-jar-census-lib))
+- `drivers/README.md` (the directory's only tracked file — see [The driver plugin directory](#the-driver-plugin-directory-drivers))
+- `command-deck/src/test/java/ch/rupfizupfi/deck/device/DriverPlugins.java` and `DriverPluginContractTest` / `DriverPluginBootTest` (what `driverPluginTest` runs)
 
 To see the resolved dependency graph for either module, run
 `./gradlew :command-deck:dependencies --configuration runtimeClasspath`
