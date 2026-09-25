@@ -1,5 +1,7 @@
 package ch.rupfizupfi.deck.data;
 
+import jakarta.annotation.Nullable;
+
 import java.lang.reflect.Type;
 
 public class Setting<T> {
@@ -17,7 +19,6 @@ public class Setting<T> {
                 case TESTRUNNER_SUCK -> Boolean.class;
                 case TESTRUNNER_SUCK_DURATION -> Integer.class;
                 case FILE_UPLOAD, FILE_RESULT_DATA -> String.class;
-                default -> throw new IllegalStateException("Unexpected value: " + this);
             };
         }
 
@@ -57,8 +58,9 @@ public class Setting<T> {
         return value;
     }
 
-    public String getType() {
-        return value.getClass().getName();
+    /** The value's runtime class name, driving the frontend's field renderer; null for a key with no value. */
+    public @Nullable String getType() {
+        return value == null ? null : value.getClass().getName();
     }
 
     public void setValue(T value) {
