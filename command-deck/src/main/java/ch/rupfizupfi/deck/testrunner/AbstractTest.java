@@ -29,7 +29,6 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
 
     protected TestRunnerThread runner;
     protected TestStateMachine stateMachine;
-    protected RecoveryProperties recovery;
     protected SensorReconnector reconnector;
     protected GapRecorder gapRecorder;
     protected RecoveryGates gates;
@@ -80,11 +79,6 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         this.gapRecorder = gapRecorder;
         this.runFiles = runFiles;
         this.gates = gates;
-        // Taken from the factory rather than passed in. The two can only diverge if the properties
-        // are rebound mid-run, which needs devtools - and a devtools reload restarts the context and
-        // takes the run with it. So the snapshot recorded in the audit log is the one that was in
-        // force; it is not a guarantee the type system makes, which is why this says so.
-        this.recovery = testRunnerFactory.recoveryProperties();
     }
 
     /**
@@ -116,7 +110,7 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
      * stopped for no stated reason.
      */
     protected void requireRecoveryWiring() {
-        if (stateMachine == null || recovery == null) {
+        if (stateMachine == null || gates == null) {
             throw new IllegalStateException(
                     "initRecovery(...) was not called before setup(), refusing to start a run whose"
                             + " sensor-loss path is not wired");
@@ -152,6 +146,11 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         try {
             lossCount++;
             lastGatePassed = false;
+            // Before the transition, so the SENSOR_LOST broadcast already reports this incident's
+            // own attempt count rather than the previous incident's.
+            if (runner != null) {
+                runner.beginIncident();
+            }
             stateMachine.transition(TestState.SENSOR_LOST, reason);
 
             TestContext context = testContext;
@@ -209,10 +208,10 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         }
 
         TestContext context = testContext;
-        // The gate's own floor (RecoveryProperties#minEnvelopeNewton) is applied by the gate; this is
-        // just the test's configured force envelope.
-        double envelope = context == null ? 0
+        double configured = context == null ? 0
                 : Math.max(Math.abs(context.getUpperLimit()), Math.abs(context.getLowerLimit()));
+        // Floored here, once; the gate treats the envelope as final.
+        double envelope = Math.max(configured, gates.minEnvelopeNewton());
 
         Thread worker = new Thread(() -> {
             try {
@@ -259,11 +258,6 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         context.sendSignal(0);
     }
 
-    /** For {@link TestStateMessage}: how many losses this run has already been through. */
-    public int getLossCount() {
-        return lossCount;
-    }
-
     /** Whether a sensor-loss hold of this test type may end in a resume rather than an abort. */
     protected boolean supportsResume() {
         return false;
@@ -280,17 +274,17 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
      * {@code TestStateMachine#compareAndTransition}'s guard, so it stays cheap and side-effect free.
      */
     public boolean canResume() {
-        if (recovery == null || !recovery.isResumeEnabled() || !supportsResume()) {
+        if (gates == null || !gates.resumeEnabled() || !supportsResume()) {
             return false;
         }
         if (!lastGatePassed) {
             return false;
         }
-        if (lossCount > recovery.getMaxLossesPerRun()) {
+        if (lossCount > gates.maxLossesPerRun()) {
             return false;
         }
         // holdEnteredAtMillis is 0 when no hold ever started, which makes this comfortably false.
-        if (System.currentTimeMillis() - holdEnteredAtMillis >= recovery.getMaxHoldForResumeMillis()) {
+        if (System.currentTimeMillis() - holdEnteredAtMillis >= gates.maxHoldForResumeMillis()) {
             return false;
         }
 
@@ -360,7 +354,6 @@ public abstract class AbstractTest implements SignalListener, SensorLossListener
         }
         loadCellThread = null;
         testContext = null;
-        System.gc();
     }
 
     void log(String message) {

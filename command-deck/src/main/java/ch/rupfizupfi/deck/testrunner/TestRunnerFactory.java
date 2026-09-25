@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.api.services.SuckService;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.device.DeviceService;
@@ -9,6 +10,7 @@ import ch.rupfizupfi.deck.filesystem.CSVStoreService;
 import ch.rupfizupfi.deck.filesystem.StorageLocationService;
 import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
 import ch.rupfizupfi.deck.testrunner.startup.check.FileSystemCheck;
+import ch.rupfizupfi.deck.testrunner.startup.check.FrequencyInverterCheck;
 import ch.rupfizupfi.deck.testrunner.startup.check.LoadCellCheck;
 import org.springframework.context.ApplicationContext;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -19,6 +21,7 @@ import java.lang.reflect.Constructor;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 @Service
@@ -41,13 +44,14 @@ public class TestRunnerFactory {
     @SuppressWarnings("unchecked")
     public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult, TestLogger testLogger) {
         try {
-            Constructor<T> constructor;
-            Constructor<?> firstConstructor = testRunnerClass.getConstructors()[0];
-            if (firstConstructor.getDeclaringClass().equals(testRunnerClass)) {
-                constructor = (Constructor<T>) firstConstructor;
-            } else {
-                throw new RuntimeException("Failed to found constructor for " + testRunnerClass.getName());
+            // Class#getConstructors defines no order, so a second public constructor would silently
+            // wire a different collaborator set into a motor-driving run.
+            Constructor<?>[] constructors = testRunnerClass.getConstructors();
+            if (constructors.length != 1) {
+                throw new IllegalStateException(testRunnerClass.getName()
+                        + " must declare exactly one public constructor, found " + constructors.length);
             }
+            Constructor<T> constructor = (Constructor<T>) constructors[0];
 
             Class<?>[] parameterTypes = constructor.getParameterTypes();
             Object[] parameters = new Object[parameterTypes.length];
@@ -60,11 +64,19 @@ public class TestRunnerFactory {
                 } else if (parameterTypes[i].equals(TestLogger.class)) {
                     parameters[i] = testLogger;
                 } else {
-                    parameters[i] = applicationContext.getBean(parameterTypes[i]);
+                    try {
+                        parameters[i] = applicationContext.getBean(parameterTypes[i]);
+                    } catch (Exception e) {
+                        throw new IllegalStateException("cannot resolve constructor parameter " + i
+                                + " (" + parameterTypes[i].getName() + ") of " + testRunnerClass.getName(), e);
+                    }
                 }
             }
 
             return constructor.newInstance(parameters);
+        } catch (IllegalStateException e) {
+            // Already names the class and the parameter it stumbled on; wrapping would bury that.
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create test runner instance", e);
         }
@@ -87,14 +99,14 @@ public class TestRunnerFactory {
     public LoadCellThread createLoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice,
                                                CSVStoreService.TestRunFiles runFiles,
                                                SensorLossListener lossListener,
-                                               RecoveryProperties recovery, GapRecorder gapRecorder) {
+                                               RecoveryGates gates, GapRecorder gapRecorder) {
         return new LoadCellThread(testContext, loadCellDevice, runFiles, getMotorSafetyController(),
-                lossListener, recovery, gapRecorder);
+                lossListener, gates, gapRecorder);
     }
 
     public SensorReconnector createReconnector(LoadCellDevice loadCellDevice, LoadCellThread loadCellThread,
-                                               RecoveryProperties recovery) {
-        return new SensorReconnector(loadCellDevice, loadCellThread, recovery);
+                                               RecoveryGates gates) {
+        return new SensorReconnector(loadCellDevice, loadCellThread, gates);
     }
 
     /**
@@ -112,10 +124,16 @@ public class TestRunnerFactory {
     }
 
     public TestResultStatusPersister createStatusPersister(long testResultId, Executor persistExecutor,
-                                                           RecoveryGates gates, IntSupplier gapCount) {
+                                                           RecoveryGates gates, IntSupplier gapCount,
+                                                           LongSupplier droppedSampleCount) {
         return new TestResultStatusPersister(testResultId,
                 applicationContext.getBean(TestResultRepository.class),
-                applicationContext.getBean(ObjectMapper.class), persistExecutor, gates, gapCount);
+                applicationContext.getBean(ObjectMapper.class), persistExecutor, gates, gapCount,
+                droppedSampleCount);
+    }
+
+    public SuckJob createSuckJob(int durationSeconds) {
+        return new SuckJob(durationSeconds, applicationContext.getBean(SuckService.class));
     }
 
     public TestLogger createLogger(TestResult testResult) {
@@ -125,7 +143,8 @@ public class TestRunnerFactory {
     public AbstractCheck[] getStartupChecks() {
         return new AbstractCheck[] {
             new FileSystemCheck(applicationContext.getBean(StorageLocationService.class)),
-            new LoadCellCheck(applicationContext.getBean(DeviceService.class))
+            new LoadCellCheck(applicationContext.getBean(DeviceService.class)),
+            new FrequencyInverterCheck(applicationContext.getBean(DeviceService.class).getFrequencyInverter())
         };
     }
 }

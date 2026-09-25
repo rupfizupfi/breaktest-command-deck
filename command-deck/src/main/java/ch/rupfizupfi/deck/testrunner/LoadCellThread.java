@@ -67,7 +67,7 @@ public class LoadCellThread implements MeasurementObserver {
     private final LoadCellDevice loadCellDevice;
     private final MotorSafetyController motorSafety;
     private final SensorLossListener sensorLossListener;
-    private final RecoveryProperties recovery;
+    private final RecoveryGates gates;
     private final GapRecorder gapRecorder;
     private final List<Measurement> measurementBuffer = new CopyOnWriteArrayList<>();
     private final Object lock = new Object();
@@ -147,14 +147,14 @@ public class LoadCellThread implements MeasurementObserver {
 
     LoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice,
                    CSVStoreService.TestRunFiles runFiles, MotorSafetyController motorSafety,
-                   SensorLossListener sensorLossListener, RecoveryProperties recovery,
+                   SensorLossListener sensorLossListener, RecoveryGates gates,
                    GapRecorder gapRecorder) {
         this.testContext = testContext;
         this.loadCellDevice = loadCellDevice;
         this.filePath = runFiles.forceCsvPath();
         this.motorSafety = motorSafety;
         this.sensorLossListener = sensorLossListener;
-        this.recovery = recovery;
+        this.gates = gates;
         this.gapRecorder = gapRecorder;
         minValue = (float) testContext.getLowerLimit();
         maxValue = (float) testContext.getUpperLimit();
@@ -293,6 +293,10 @@ public class LoadCellThread implements MeasurementObserver {
                 // First fault of the batch wins, but the whole batch is still written: the samples
                 // leading up to a sensor loss are the most interesting ones in the incident file.
                 String fault = null;
+                // Every sample of the drain is held against the limits and the earliest crossing
+                // decides, so one signal leaves per drain. 0 is no crossing: signal 0 is the
+                // operator stop and never a limit verdict.
+                int limitSignal = 0;
                 for (Measurement measurement : measurements) {
                     writeSample(measurement);
 
@@ -308,6 +312,19 @@ public class LoadCellThread implements MeasurementObserver {
                     if (gating) {
                         scoreGateSample(measurement.force());
                     }
+
+                    // A non-finite sample decides nothing: both comparisons are false for NaN, so
+                    // an unguarded check reads as inside both limits and skips a shut-off.
+                    if (!gating && limitSignal == 0) {
+                        float force = measurement.force();
+                        if (Float.isFinite(force)) {
+                            if (force > testContext.getUpperLimit()) {
+                                limitSignal = TestContext.RELEASE_SIGNAL;
+                            } else if (force < testContext.getLowerLimit()) {
+                                limitSignal = TestContext.PULL_SIGNAL;
+                            }
+                        }
+                    }
                 }
 
                 if (fault != null && running) {
@@ -321,17 +338,8 @@ public class LoadCellThread implements MeasurementObserver {
                     continue;
                 }
 
-                // Never decided from a non-finite sample. Both comparisons are false for NaN, so an
-                // unguarded check reads as "inside both limits" and silently skips a shut-off. The
-                // sample has already been counted toward the plausibility vote; the limit decision
-                // simply waits for the next batch, which is at most one 20 ms drain away.
-                float latest = measurements.getLast().force();
-                if (Float.isFinite(latest)) {
-                    if (latest > testContext.getUpperLimit()) {
-                        testContext.sendSignal(TestContext.RELEASE_SIGNAL);
-                    } else if (latest < testContext.getLowerLimit()) {
-                        testContext.sendSignal(TestContext.PULL_SIGNAL);
-                    }
+                if (limitSignal != 0) {
+                    testContext.sendSignal(limitSignal);
                 }
             }
             // Deliberately the first statement after the loop: an exception thrown from inside the
@@ -675,7 +683,7 @@ public class LoadCellThread implements MeasurementObserver {
         gateBaseline = lastKnownForce;
         gateEnvelope = envelopeNewton;
         gateDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
-                2 * recovery.getPlausibilityGateMillis() + GATE_DEADLINE_SLACK_MS);
+                2 * gates.plausibilityGateMillis() + GATE_DEADLINE_SLACK_MS);
         gateRunStartNanos = 0;
         gateFirstForce = Float.NaN;
         gateHasPreviousBits = false;
@@ -736,9 +744,9 @@ public class LoadCellThread implements MeasurementObserver {
                     + " consecutive bit-identical samples";
         } else {
             float drift = Math.abs(force - gateBaseline);
-            if (!(drift < recovery.getDriftFraction() * gateEnvelope)) {
+            if (!(drift < gates.driftFraction() * gateEnvelope)) {
                 failure = "drifted " + drift + " N from the last known " + gateBaseline
-                        + " N, more than " + recovery.getDriftFraction() + " of the "
+                        + " N, more than " + gates.driftFraction() + " of the "
                         + gateEnvelope + " N envelope";
             }
         }
@@ -753,9 +761,9 @@ public class LoadCellThread implements MeasurementObserver {
         if (gateRunStartNanos == 0) {
             gateRunStartNanos = now;
         }
-        if (now - gateRunStartNanos >= TimeUnit.MILLISECONDS.toNanos(recovery.getPlausibilityGateMillis())) {
+        if (now - gateRunStartNanos >= TimeUnit.MILLISECONDS.toNanos(gates.plausibilityGateMillis())) {
             completeGate(true, "the reconnected stream stayed plausible for "
-                    + recovery.getPlausibilityGateMillis() + " ms");
+                    + gates.plausibilityGateMillis() + " ms");
         }
     }
 

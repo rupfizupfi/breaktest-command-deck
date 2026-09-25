@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +50,7 @@ public class SensorReconnector {
 
     private final LoadCellDevice loadCellDevice;
     private final LoadCellThread loadCellThread;
-    private final RecoveryProperties recovery;
+    private final RecoveryGates gates;
 
     /**
      * The loop's own thread, and deliberately neither of the two threads that could otherwise host
@@ -63,15 +64,17 @@ public class SensorReconnector {
             Executors.newSingleThreadExecutor(r -> new Thread(r, "sensor-reconnector"));
 
     public SensorReconnector(LoadCellDevice loadCellDevice, LoadCellThread loadCellThread,
-                             RecoveryProperties recovery) {
+                             RecoveryGates gates) {
         this.loadCellDevice = loadCellDevice;
         this.loadCellThread = loadCellThread;
-        this.recovery = recovery;
+        this.gates = gates;
     }
 
     /**
      * Retries until the sensor delivers gated data or the reconnect window expires. Never throws:
-     * every failure is an {@link Outcome} whose {@code detail} is what the operator gets told.
+     * every failure is an {@link Outcome} whose {@code detail} is what the operator gets told. Never
+     * outlives the run either: the wait is bounded by {@link #verdictBoundMillis()}, and
+     * {@link #shutdownNow()} releases a caller whose attempt is still queued.
      *
      * @param envelopeNewton the test's force envelope, which the drift gate is a fraction of
      */
@@ -83,12 +86,20 @@ public class SensorReconnector {
             return new Outcome(false, 0, "the reconnector was already shut down", null);
         }
 
+        long verdictBound = verdictBoundMillis();
         try {
-            return pending.get();
+            return pending.get(verdictBound, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             pending.cancel(true);
             return new Outcome(false, 0, "recovery abandoned, the waiting thread was interrupted", null);
+        } catch (CancellationException e) {
+            return new Outcome(false, 0, "recovery abandoned, the run was torn down", null);
+        } catch (TimeoutException e) {
+            pending.cancel(true);
+            logger.error("load cell recovery produced no verdict within {} ms", verdictBound);
+            return new Outcome(false, 0, "recovery produced no verdict within " + verdictBound
+                    + " ms, the reconnect thread is wedged", null);
         } catch (ExecutionException e) {
             // runAttempts catches per attempt, so this is a defect rather than a hardware failure -
             // but the run still has to be told something instead of hanging on a lost verdict.
@@ -97,22 +108,38 @@ public class SensorReconnector {
         }
     }
 
-    /** Releases the reconnect thread; a reconnect in flight is interrupted. Call it from run teardown. */
+    /**
+     * Releases the reconnect thread; a reconnect in flight is interrupted and a queued attempt is
+     * cancelled, so its caller gets a verdict. Call it from run teardown.
+     */
     public void shutdownNow() {
-        executor.shutdownNow();
+        for (Runnable drained : executor.shutdownNow()) {
+            if (drained instanceof Future<?> queued) {
+                queued.cancel(false);
+            }
+        }
+    }
+
+    /**
+     * The window plus one attempt's worst case: a reset call allowed {@link #GATE_TIMEOUT_MARGIN_MS},
+     * one {@link #FRESH_DATA_SLICE_MS} wait for data, and one gate wait of its own margin.
+     */
+    private long verdictBoundMillis() {
+        return gates.reconnectWindowMillis() + FRESH_DATA_SLICE_MS + gates.plausibilityGateMillis()
+                + 2 * GATE_TIMEOUT_MARGIN_MS;
     }
 
     private Outcome runAttempts(String lossReason, float lastKnownForce, double envelopeNewton) {
         // nanoTime, never currentTimeMillis: an NTP step or a manual clock change on the bench
         // machine must not stretch or shorten a recovery window.
         long deadline = System.nanoTime()
-                + TimeUnit.MILLISECONDS.toNanos(recovery.getReconnectWindowMillis());
-        List<Long> backoff = recovery.getBackoffMillis();
+                + TimeUnit.MILLISECONDS.toNanos(gates.reconnectWindowMillis());
+        List<Long> backoff = gates.backoffMillis();
         int attempts = 0;
         String detail = "no fresh measurement before the reconnect window expired";
 
         logger.warn("load cell recovery started ({}), last known force {} N, window {} ms",
-                lossReason, lastKnownForce, recovery.getReconnectWindowMillis());
+                lossReason, lastKnownForce, gates.reconnectWindowMillis());
 
         while (true) {
             if (attempts > 0 && !sleepBeforeAttempt(backoff, attempts, deadline)) {
@@ -143,7 +170,7 @@ public class SensorReconnector {
             LoadCellThread.GateResult gate;
             try {
                 gate = loadCellThread.beginRecoveryGate(lastKnownForce, envelopeNewton)
-                        .get(recovery.getPlausibilityGateMillis() + GATE_TIMEOUT_MARGIN_MS,
+                        .get(gates.plausibilityGateMillis() + GATE_TIMEOUT_MARGIN_MS,
                                 TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

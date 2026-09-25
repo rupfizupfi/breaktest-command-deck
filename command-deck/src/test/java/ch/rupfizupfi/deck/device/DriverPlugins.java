@@ -13,11 +13,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 /**
@@ -131,6 +134,51 @@ final class DriverPlugins {
 
     static Set<Class<?>> requiredProviderTypes() {
         return PROVIDER_TYPES;
+    }
+
+    /**
+     * The jar's main-attribute {@code Implementation-Version}, or null when the jar carries no
+     * manifest or no such attribute. It is the only thing in a plugin jar that names the build it
+     * came from.
+     */
+    static String implementationVersion(Path jar) {
+        try (JarFile jarFile = new JarFile(jar.toFile())) {
+            Manifest manifest = jarFile.getManifest();
+            return manifest == null
+                    ? null
+                    : manifest.getMainAttributes().getValue("Implementation-Version");
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + jar, e);
+        }
+    }
+
+    /**
+     * Class entries carried by two or more of the jars with differing bytes, each mapped to the CRC
+     * every jar holding it declares. {@code META-INF/} is skipped: a multi-release jar keeps a
+     * per-library {@code module-info} there, and those differ by design.
+     */
+    static Map<String, Map<Path, Long>> conflictingSharedClasses(List<Path> jars) {
+        Map<String, Map<Path, Long>> byEntry = new LinkedHashMap<>();
+        for (Path jar : jars) {
+            try (JarFile jarFile = new JarFile(jar.toFile())) {
+                jarFile.stream()
+                        .filter(entry -> entry.getName().endsWith(".class")
+                                && !entry.getName().startsWith("META-INF/"))
+                        .forEach(entry -> byEntry
+                                .computeIfAbsent(entry.getName(), name -> new LinkedHashMap<>())
+                                .put(jar, entry.getCrc()));
+            } catch (IOException e) {
+                throw new UncheckedIOException("cannot read " + jar, e);
+            }
+        }
+
+        Map<String, Map<Path, Long>> conflicts = new LinkedHashMap<>();
+        byEntry.forEach((name, crcs) -> {
+            if (crcs.size() > 1 && Set.copyOf(crcs.values()).size() > 1) {
+                conflicts.put(name, crcs);
+            }
+        });
+        return conflicts;
     }
 
     /**

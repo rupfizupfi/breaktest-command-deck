@@ -35,8 +35,8 @@ public class TestRunnerService {
         this.testRunnerThread = testRunnerFactory.createTestRunnerThread();
     }
 
-    public void start(int testId) {
-        testRunnerThread.startThread(testResultRepository.findById((long) testId).orElseThrow(() -> new RuntimeException("Test not found")));
+    public void start(Long testId) {
+        testRunnerThread.startThread(testResultRepository.findById(testId).orElseThrow(() -> new RuntimeException("Test not found")));
     }
 
     /**

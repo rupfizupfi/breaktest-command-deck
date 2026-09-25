@@ -15,12 +15,14 @@ package ch.rupfizupfi.deck.testrunner;
 public record SafeStopResult(Tier tier, boolean verified, boolean driveResponsive,
                              boolean motorWasEnergized, Integer motorSpeedRpm, String detail) {
     public enum Tier {
-        EXISTING_HANDLE, FRESH_HANDLE, NONE
-    }
-
-    /** The motor was read back as standing still. */
-    public boolean stopped() {
-        return verified;
+        /** Tier 1 produced the verdict: the handle the run already held. */
+        EXISTING_HANDLE,
+        /** Tier 2 produced the verdict: a re-enumerated drive handle. */
+        FRESH_HANDLE,
+        /** Both software tiers ran and could not verify a stop; nothing is left to command. */
+        OPERATOR_ESCALATION,
+        /** No tier ran: the dispatch itself failed. */
+        NONE
     }
 
     /**
@@ -38,7 +40,7 @@ public record SafeStopResult(Tier tier, boolean verified, boolean driveResponsiv
      * telling the operator to use the E-stop.
      * <p>
      * A run that died before energizing anything - a failed startup check, a setup() that threw
-     * before its energize block - also reports {@code !stopped() && !coasting()}, because there was
+     * before its energize block - also reports {@code !verified() && !coasting()}, because there was
      * no handle to answer. That is bookkeeping, not an incident, and must stay out of the loud path.
      */
     public boolean needsOperatorAttention() {

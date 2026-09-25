@@ -32,7 +32,7 @@ public class DestructiveTest extends AbstractTest {
         testContext = new TestContext(testResult.getId(), testResult.testParameter.upperShutOffThreshold * 1000, testResult.testParameter.lowerShutOffThreshold * 1000);
         initContext();
         loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell(),
-                runFiles(), this, recovery, gapRecorder);
+                runFiles(), this, gates, gapRecorder);
         loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");
@@ -90,7 +90,8 @@ public class DestructiveTest extends AbstractTest {
             var settingsRepository = this.deviceService.getSettingRepository();
             try {
                 if (settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK)) {
-                    new SuckJob(settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK_DURATION)).start();
+                    testRunnerFactory.createSuckJob(
+                            settingsRepository.getSettingValue(Setting.Key.TESTRUNNER_SUCK_DURATION)).start();
                 }
             } catch (Exception e) {
                 log("could not start the suction job: " + e.getMessage());

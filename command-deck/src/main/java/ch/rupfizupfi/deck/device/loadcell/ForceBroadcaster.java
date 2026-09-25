@@ -48,4 +48,23 @@ public class ForceBroadcaster implements MeasurementObserver {
         // slow or wedged browser session must not hold up the thread that is collecting force.
         template.convertAndSend("/topic/load-cell", batch);
     }
+
+    /**
+     * Sends whatever is buffered regardless of its age, so the tail below {@code FLUSH_INTERVAL_MS}
+     * reaches the chart of the run that produced it rather than the next run's.
+     */
+    @Override
+    public void flush() {
+        List<Measurement> batch;
+        synchronized (this) {
+            if (wsMeasurements.isEmpty()) {
+                return;
+            }
+
+            batch = List.copyOf(wsMeasurements);
+            wsMeasurements.clear();
+        }
+
+        template.convertAndSend("/topic/load-cell", batch);
+    }
 }

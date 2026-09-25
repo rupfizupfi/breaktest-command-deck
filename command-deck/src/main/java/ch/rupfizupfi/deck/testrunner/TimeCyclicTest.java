@@ -39,7 +39,7 @@ public class TimeCyclicTest extends CyclicTest {
         targetUpperLimit = testContext.getUpperLimit();
 
         loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell(),
-                runFiles(), this, recovery, gapRecorder);
+                runFiles(), this, gates, gapRecorder);
         loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");

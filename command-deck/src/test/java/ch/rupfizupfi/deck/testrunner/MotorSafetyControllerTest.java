@@ -106,7 +106,7 @@ class MotorSafetyControllerTest {
         order.verify(drive).setSpeedReferenceValueAsRpm(0);
         order.verify(drive).setStart(false);
         order.verify(drive, atLeastOnce()).getMotorSpeedValueAsRpm();
-        assertThat(result.stopped()).isTrue();
+        assertThat(result.verified()).isTrue();
     }
 
     @Test
@@ -117,7 +117,7 @@ class MotorSafetyControllerTest {
 
         verify(drive).setSpeedReferenceValueAsRpm(0);
         verify(drive).setStart(false);
-        assertThat(result.stopped()).isTrue();
+        assertThat(result.verified()).isTrue();
     }
 
     @Test
@@ -128,7 +128,7 @@ class MotorSafetyControllerTest {
 
         SafeStopResult result = controller.safeStop("standstill must hold across a poll");
 
-        assertThat(result.stopped()).isTrue();
+        assertThat(result.verified()).isTrue();
         // Exactly 4 reads: the lone 0 before the 500 was not allowed to count toward the pair.
         verify(drive, times(4)).getMotorSpeedValueAsRpm();
     }
@@ -143,7 +143,7 @@ class MotorSafetyControllerTest {
 
         SafeStopResult result = controller.safeStop("shaft keeps turning");
 
-        assertThat(result.stopped()).isFalse();
+        assertThat(result.verified()).isFalse();
         assertThat(result.coasting()).isTrue();
         assertThat(result.tier()).isEqualTo(SafeStopResult.Tier.EXISTING_HANDLE);
         verify(device, never()).dropConnectionBookkeeping();
@@ -210,7 +210,7 @@ class MotorSafetyControllerTest {
         // ...and the bookkeeping drop outside it: it takes the device's instance monitor, and
         // the lock order is monitor-before-driveLock.
         assertThat(droppedInsideExclusive).as("dropConnectionBookkeeping must run outside runExclusive").isFalse();
-        assertThat(result.tier()).isEqualTo(SafeStopResult.Tier.NONE);
+        assertThat(result.tier()).isEqualTo(SafeStopResult.Tier.OPERATOR_ESCALATION);
         assertThat(result.needsOperatorAttention()).isTrue();
         assertThat(result.detail()).contains("tier 3");
     }
@@ -227,7 +227,7 @@ class MotorSafetyControllerTest {
         SafeStopResult result = controller.safeStop("tier 1 handle dead, tier 2 healthy");
 
         assertThat(result.tier()).isEqualTo(SafeStopResult.Tier.FRESH_HANDLE);
-        assertThat(result.stopped()).isTrue();
+        assertThat(result.verified()).isTrue();
         assertThat(result.needsOperatorAttention()).isFalse();
         assertThat(result.detail()).doesNotContain("tier 3");
         // The stop commands went out over the fresh handle in safety order, and the handle was
@@ -268,6 +268,7 @@ class MotorSafetyControllerTest {
 
         SafeStopResult second = controller.safeStop("repeat from cleanup()");
 
+        assertThat(first.tier()).isEqualTo(SafeStopResult.Tier.OPERATOR_ESCALATION);
         assertThat(second).isSameAs(first);
         verifyNoInteractions(device, driveProvider, drive);
     }
@@ -280,7 +281,7 @@ class MotorSafetyControllerTest {
         handleOpen = false;
         when(driveProvider.open()).thenThrow(new RuntimeException("USB gone"));
         SafeStopResult first = controller.safeStop("first run escalates");
-        assertThat(first.tier()).isEqualTo(SafeStopResult.Tier.NONE);
+        assertThat(first.tier()).isEqualTo(SafeStopResult.Tier.OPERATOR_ESCALATION);
 
         // The next run starts here: latch cleared, motor known-off, no stop of its own on record.
         controller.clearStopLatch();
@@ -295,7 +296,7 @@ class MotorSafetyControllerTest {
         // over the (healthy) existing handle...
         assertThat(second).isNotSameAs(first);
         assertThat(second.tier()).isEqualTo(SafeStopResult.Tier.EXISTING_HANDLE);
-        assertThat(second.stopped()).isTrue();
+        assertThat(second.verified()).isTrue();
         verify(drive).setStart(false);
         verifyNoInteractions(driveProvider);
         // ...and motorEnergized was reset: this run never energized, so its stop is bookkeeping.
@@ -309,8 +310,8 @@ class MotorSafetyControllerTest {
         SafeStopResult first = controller.safeStop("cleanup pass 1");
         SafeStopResult second = controller.safeStop("cleanup pass 2");
 
-        assertThat(first.stopped()).isTrue();
-        assertThat(second.stopped()).isTrue();
+        assertThat(first.verified()).isTrue();
+        assertThat(second.verified()).isTrue();
         // cleanup() runs twice by design; re-checking a motor over a working handle is worth repeating.
         verify(drive, times(2)).setStart(false);
     }
@@ -366,7 +367,7 @@ class MotorSafetyControllerTest {
         stopper.join(5_000);
         assertThat(stopper.isAlive()).isFalse();
 
-        assertThat(result.get().stopped()).isFalse();
+        assertThat(result.get().verified()).isFalse();
         assertThat(result.get().coasting()).isTrue();
         assertThat(result.get().detail()).contains("interrupt");
         assertThat(interruptFlagRestored).isTrue();

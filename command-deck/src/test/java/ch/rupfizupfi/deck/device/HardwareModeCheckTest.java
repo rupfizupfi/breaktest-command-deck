@@ -90,10 +90,43 @@ class HardwareModeCheckTest {
         }
     }
 
+    @Test
+    void anUnconfiguredBootIsJudgedOnItsDefaultProfiles() {
+        // Nothing active means the check reads the default set, which Spring reports as [default].
+        // Judging the empty active set instead would let any allowlist contain it, so the most
+        // likely configuration of all would be the one that slips through.
+        assertThatThrownBy(() -> check("simulated", new String[0]))
+                .hasMessageContaining("Simulation is permitted only under")
+                .hasMessageContaining("[default]");
+    }
+
+    @Test
+    void aDefaultDevProfileMaySimulate() {
+        // spring.profiles.default=dev is as much a decision as activating it, so the profile gate
+        // passes and only the provider check is left to refuse.
+        assertThatThrownBy(() -> check("simulated", new String[0], "dev"))
+                .hasMessageContaining("SimulatedDriveProvider")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("Simulation is permitted only under"));
+    }
+
     /** Runs the check with the given mode and active profiles against a factory holding no providers. */
     private static void check(String mode, String... activeProfiles) {
+        check(mode, activeProfiles, new String[0]);
+    }
+
+    /**
+     * Same fixture with the default profiles set too. Each array is applied only when non-empty, so
+     * the environment keeps Spring's own defaults — no active profiles and {@code [default]} — for
+     * the unconfigured case.
+     */
+    private static void check(String mode, String[] activeProfiles, String... defaultProfiles) {
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles(activeProfiles);
+        if (activeProfiles.length > 0) {
+            environment.setActiveProfiles(activeProfiles);
+        }
+        if (defaultProfiles.length > 0) {
+            environment.setDefaultProfiles(defaultProfiles);
+        }
         environment.setProperty(HardwareMode.PROPERTY, mode);
 
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();

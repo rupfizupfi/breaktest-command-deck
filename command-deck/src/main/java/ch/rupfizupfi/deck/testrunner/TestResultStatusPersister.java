@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 
 /**
  * Mirrors the run's state machine into {@code test_result}: {@link RunStatus} for querying, and a
@@ -29,7 +30,7 @@ public class TestResultStatusPersister implements TestStateListener {
     private static final Logger logger = LoggerFactory.getLogger(TestResultStatusPersister.class);
 
     /** Bumped when the document shape changes, so a reader can tell old rows apart. */
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
 
     private final long testResultId;
     private final TestResultRepository repository;
@@ -37,6 +38,13 @@ public class TestResultStatusPersister implements TestStateListener {
     private final Executor persistExecutor;
     private final @Nullable RecoveryGates gates;
     private final IntSupplier gapCount;
+
+    /**
+     * Counted by the load-cell stream live at the transition; {@code Device.reset()} opens a new
+     * stream at zero, so a SENSOR_LOST entry carries the dying stream's drops and a FINISHED entry
+     * the last stream's.
+     */
+    private final LongSupplier droppedSampleCount;
 
     /**
      * The whole document is rewritten on every transition, so the transitions are accumulated here
@@ -56,13 +64,15 @@ public class TestResultStatusPersister implements TestStateListener {
                                      ObjectMapper objectMapper,
                                      Executor persistExecutor,
                                      @Nullable RecoveryGates gates,
-                                     IntSupplier gapCount) {
+                                     IntSupplier gapCount,
+                                     LongSupplier droppedSampleCount) {
         this.testResultId = testResultId;
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.persistExecutor = persistExecutor;
         this.gates = gates;
         this.gapCount = gapCount;
+        this.droppedSampleCount = droppedSampleCount;
     }
 
     /**
@@ -82,7 +92,8 @@ public class TestResultStatusPersister implements TestStateListener {
                 // Snapshot taken under the same lock that appended, so the document a save carries
                 // can never be missing the transition that triggered it.
                 document = objectMapper.writeValueAsString(new LogDocument(
-                        SCHEMA_VERSION, gates, List.copyOf(transitions), gapCount.getAsInt()));
+                        SCHEMA_VERSION, gates, List.copyOf(transitions), gapCount.getAsInt(),
+                        droppedSampleCount.getAsLong()));
             }
             persistExecutor.execute(() -> persist(status, document));
         } catch (Exception e) {
@@ -134,6 +145,7 @@ public class TestResultStatusPersister implements TestStateListener {
     }
 
     private record LogDocument(int schema, @Nullable RecoveryGates gates,
-                               List<TransitionEntry> transitions, int gapCount) {
+                               List<TransitionEntry> transitions, int gapCount,
+                               long droppedSampleCount) {
     }
 }

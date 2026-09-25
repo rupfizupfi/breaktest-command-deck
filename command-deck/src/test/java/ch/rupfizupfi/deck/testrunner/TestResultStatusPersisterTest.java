@@ -17,6 +17,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -40,10 +41,11 @@ class TestResultStatusPersisterTest {
         when(repository.findById(RESULT_ID)).thenReturn(Optional.of(result));
     }
 
-    private TestResultStatusPersister persister(Executor executor, IntSupplier gapCount) {
+    private TestResultStatusPersister persister(Executor executor, IntSupplier gapCount,
+                                                LongSupplier droppedSampleCount) {
         return new TestResultStatusPersister(RESULT_ID, repository, new ObjectMapper(), executor,
                 new RecoveryGates(10_000, List.of(1_000L), 60_000, 30_000, 100, 0.02, 2, 1_000, true),
-                gapCount);
+                gapCount, droppedSampleCount);
     }
 
     private static TestStateMachine.TransitionRecord record(TestState from, TestState to) {
@@ -63,7 +65,7 @@ class TestResultStatusPersisterTest {
             case FINISHED, IDLE -> throw new IllegalStateException("covered by dedicated tests");
         };
 
-        persister(Runnable::run, () -> 0).onTransition(record(TestState.IDLE, state));
+        persister(Runnable::run, () -> 0, () -> 0).onTransition(record(TestState.IDLE, state));
 
         verify(repository).save(result);
         assertThat(result.runStatus).isEqualTo(expected);
@@ -72,13 +74,13 @@ class TestResultStatusPersisterTest {
 
     @Test
     void finishedWithoutGapsIsCompleted() {
-        persister(Runnable::run, () -> 0).onTransition(record(TestState.STOPPING, TestState.FINISHED));
+        persister(Runnable::run, () -> 0, () -> 0).onTransition(record(TestState.STOPPING, TestState.FINISHED));
         assertThat(result.runStatus).isEqualTo(RunStatus.COMPLETED);
     }
 
     @Test
     void finishedWithGapsIsCompletedWithGaps() {
-        persister(Runnable::run, () -> 3).onTransition(record(TestState.STOPPING, TestState.FINISHED));
+        persister(Runnable::run, () -> 3, () -> 0).onTransition(record(TestState.STOPPING, TestState.FINISHED));
         assertThat(result.runStatus).isEqualTo(RunStatus.COMPLETED_WITH_GAPS);
     }
 
@@ -87,7 +89,7 @@ class TestResultStatusPersisterTest {
         AtomicInteger gaps = new AtomicInteger(1);
         List<Runnable> deferred = new ArrayList<>();
 
-        persister(deferred::add, gaps::get).onTransition(record(TestState.STOPPING, TestState.FINISHED));
+        persister(deferred::add, gaps::get, () -> 0).onTransition(record(TestState.STOPPING, TestState.FINISHED));
         gaps.set(0);
         deferred.forEach(Runnable::run);
 
@@ -98,7 +100,7 @@ class TestResultStatusPersisterTest {
     void idleLeavesTheStoredRunStatusUntouched() {
         result.runStatus = RunStatus.COMPLETED;
 
-        persister(Runnable::run, () -> 0).onTransition(record(null, TestState.IDLE));
+        persister(Runnable::run, () -> 0, () -> 0).onTransition(record(null, TestState.IDLE));
 
         verify(repository).save(result);
         assertThat(result.runStatus).isEqualTo(RunStatus.COMPLETED);
@@ -110,7 +112,7 @@ class TestResultStatusPersisterTest {
     void interruptionLogIsAVersionedDocumentCarryingGatesAllTransitionsAndGapCount() {
         // The field names asserted here are the persisted schema - readers of old rows depend
         // on them.
-        TestResultStatusPersister persister = persister(Runnable::run, () -> 5);
+        TestResultStatusPersister persister = persister(Runnable::run, () -> 5, () -> 0);
         persister.onTransition(new TestStateMachine.TransitionRecord(
                 1, TestState.IDLE, TestState.STARTING, 1_000L, "operator start", "operator-1"));
         persister.onTransition(new TestStateMachine.TransitionRecord(
@@ -120,7 +122,7 @@ class TestResultStatusPersisterTest {
 
         // Numbers via Number.longValue(): whether the mapper hands back Integer or Long for an
         // untyped document is its business, the persisted value is not.
-        assertThat(((Number) document.get("schema")).longValue()).isEqualTo(1);
+        assertThat(((Number) document.get("schema")).longValue()).isEqualTo(2);
         assertThat(((Number) document.get("gapCount")).longValue()).isEqualTo(5);
 
         // The gates keep the incident record readable once the deployment's configuration has
@@ -150,12 +152,38 @@ class TestResultStatusPersisterTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void theDropsTheDriverAbsorbedAreRecordedBesideTheGapCount() {
+        persister(Runnable::run, () -> 0, () -> 17L)
+                .onTransition(record(TestState.STOPPING, TestState.FINISHED));
+
+        Map<String, Object> document = new ObjectMapper().readValue(result.interruptionLog, Map.class);
+
+        assertThat(((Number) document.get("droppedSampleCount")).longValue()).isEqualTo(17);
+        assertThat(((Number) document.get("schema")).longValue()).isEqualTo(2);
+        // Recorded, never judged: drops without a gap still complete clean.
+        assertThat(result.runStatus).isEqualTo(RunStatus.COMPLETED);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aStreamThatDroppedNothingWritesZeroRatherThanOmittingTheField() {
+        persister(Runnable::run, () -> 0, () -> 0)
+                .onTransition(record(TestState.RUNNING, TestState.SENSOR_LOST));
+
+        Map<String, Object> document = new ObjectMapper().readValue(result.interruptionLog, Map.class);
+
+        assertThat(document).containsKey("droppedSampleCount");
+        assertThat(((Number) document.get("droppedSampleCount")).longValue()).isZero();
+    }
+
+    @Test
     void rejectedExecutorNeverEscapesOnTransition() {
         Executor shutDown = task -> {
             throw new RejectedExecutionException("executor is shut down");
         };
 
-        assertThatCode(() -> persister(shutDown, () -> 0)
+        assertThatCode(() -> persister(shutDown, () -> 0, () -> 0)
                 .onTransition(record(TestState.RUNNING, TestState.ABORTED)))
                 .doesNotThrowAnyException();
 

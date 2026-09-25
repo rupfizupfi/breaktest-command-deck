@@ -9,10 +9,11 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * Single serialized gateway to the drive handle of the frequency inverter.
@@ -28,8 +29,8 @@ import java.util.function.Supplier;
  * reverse. So {@code connect()}, {@code disconnect()}, {@code markConnectionLost()},
  * {@link #tryStartThread()}, {@link #tryStopThread()} and {@link #dropConnectionBookkeeping()}
  * must never be called from inside a {@code driveLock} section, i.e. never from inside
- * {@link #runExclusive} / {@link #computeExclusive}. {@link #closeDriveHandle()} takes
- * {@code driveLock} only and touches no monitor, so it IS safe there.
+ * {@link #runExclusive}. {@link #closeDriveHandle()} takes {@code driveLock} only and
+ * touches no monitor, so it IS safe there.
  * <p>
  * Teardown is split into those two methods so the caller can order them itself: reset the
  * bookkeeping first (monitor, no {@code driveLock}), then hold {@code driveLock} across the
@@ -48,13 +49,19 @@ public class FrequencyInverterDevice extends Device {
     private volatile Drive drive;
     private final List<InfoObserver> observers = new CopyOnWriteArrayList<>();
     private Thread dataThread;
-    private volatile boolean isRunning = false;
-    private int idProvider = 0;
+    /** The run flag of {@code dataThread}, guarded by the instance monitor together with it. */
+    private AtomicBoolean pollRunning;
+    /** Atomic because an abandoned poll thread briefly overlaps its replacement: frame ids stay unique. */
+    private final AtomicInteger idProvider = new AtomicInteger();
     /**
      * Throttles the "handle gone" logging to one line per outage. Volatile because an abandoned
      * poll thread can briefly overlap its replacement; a lost update only costs a log line.
      */
     private volatile boolean driveWasUnavailable = false;
+    /** Throttles poll-failure logging to one line per outage, volatile for the same reason. */
+    private volatile boolean pollWasFailing = false;
+    /** Throttles observer-failure logging to one line per outage, volatile for the same reason. */
+    private volatile boolean observerWasFailing = false;
 
     public FrequencyInverterDevice(DriveProvider driveProvider) {
         this.driveProvider = driveProvider;
@@ -75,20 +82,18 @@ public class FrequencyInverterDevice extends Device {
 
     protected synchronized void tryStartThread() {
         if (dataThread == null && !observers.isEmpty()) {
-            isRunning = true;
-            dataThread = new Thread(this::readData);
+            var running = new AtomicBoolean(true);
+            pollRunning = running;
+            dataThread = new Thread(() -> readData(running), "frequency-inverter-poll");
             dataThread.start();
         }
     }
 
     protected synchronized void tryStopThread() {
-        // isRunning is cleared only when we actually intend to stop, i.e. together with nulling
-        // dataThread. Clearing it unconditionally killed the poll loop whenever closeConnection()
-        // ran with observers still registered, while the guard below left dataThread non-null - so
-        // tryStartThread()'s null check then refused to ever start polling again and the dashboard
-        // froze on its last Info with no way back short of a restart.
         if (dataThread != null && observers.isEmpty()) {
-            isRunning = false;
+            // Each poll thread exits on its own flag, so a thread abandoned by the bounded join
+            // below stays stopped once a replacement starts and publishes no frame after it.
+            pollRunning.set(false);
             // Interrupt first: the loop breaks out of its 400 ms sleep at once instead of being
             // waited on for the rest of the tick.
             dataThread.interrupt();
@@ -104,10 +109,8 @@ public class FrequencyInverterDevice extends Device {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            // Cleared even when the join timed out: isRunning is already false, so the stranded
-            // thread exits after its current iteration. Keeping the reference would make
-            // tryStartThread()'s null guard refuse to ever start a poll thread again, which is
-            // worse than a brief overlap of two poll threads.
+            // Nulled even after a timed-out join, so tryStartThread()'s null guard can start a
+            // replacement.
             dataThread = null;
         }
     }
@@ -120,9 +123,16 @@ public class FrequencyInverterDevice extends Device {
 
         driveLock.lock();
         try {
-            if (drive != null) {
-                drive.close();
-                drive = null;
+            var handle = drive;
+            drive = null;
+            if (handle != null) {
+                // Dropped even when the close fails: a handle we cannot close is not one
+                // withDrive/queryDrive may keep using, nor one connect() may open a second time.
+                try {
+                    handle.close();
+                } catch (Throwable t) {
+                    logger.warn("Failed to close the drive handle on disconnect", t);
+                }
             }
         } finally {
             driveLock.unlock();
@@ -173,16 +183,6 @@ public class FrequencyInverterDevice extends Device {
         driveLock.lock();
         try {
             action.run();
-        } finally {
-            driveLock.unlock();
-        }
-    }
-
-    /** Same, returning a value. */
-    public <T> T computeExclusive(Supplier<T> action) {
-        driveLock.lock();
-        try {
-            return action.get();
         } finally {
             driveLock.unlock();
         }
@@ -240,36 +240,78 @@ public class FrequencyInverterDevice extends Device {
         tryStopThread();
     }
 
+    /**
+     * An observer failure is the observer's, never the drive's: the other observers still get this
+     * tick and the poll outage flags stay untouched.
+     */
     private void notifyObservers(Info info) {
+        boolean failed = false;
         for (InfoObserver observer : observers) {
-            observer.update(info);
+            try {
+                observer.update(info);
+            } catch (RuntimeException e) {
+                failed = true;
+                // Stack trace once per outage, message only afterwards, so a permanently broken
+                // observer cannot flood the log at the poll cadence.
+                if (!observerWasFailing) {
+                    observerWasFailing = true;
+                    logger.warn("Frequency inverter info observer {} failed, skipping it until it recovers",
+                            observer.getClass().getName(), e);
+                } else {
+                    logger.debug("Frequency inverter info observer {} failed: {}",
+                            observer.getClass().getName(), e.getMessage());
+                }
+            }
+        }
+        if (!failed && observerWasFailing) {
+            observerWasFailing = false;
+            logger.info("Frequency inverter info observers accepted a full round again");
         }
     }
 
-    private void readData() {
-        while (isRunning) {
+    /**
+     * Builds the frame the observers see. Every key is required: a map missing one is a poll
+     * failure naming it, never a zero reading.
+     */
+    static Info toInfo(Map<String, Integer> motorData, Map<String, Boolean> controlParameters, int id) {
+        var info = new Info();
+        info.start = require(controlParameters, "control parameters", "start");
+        info.generalEnable = require(controlParameters, "control parameters", "generalEnable");
+        info.useSecondRamp = require(controlParameters, "control parameters", "useSecondRamp");
+        info.directionIsForward = require(controlParameters, "control parameters", "directionIsForward");
+        info.speed = require(motorData, "motor data", "speed");
+        info.motorCurrent = require(motorData, "motor data", "current");
+        info.motorVoltage = require(motorData, "motor data", "voltage");
+        info.motorTorque = require(motorData, "motor data", "torque");
+        info.id = id;
+        return info;
+    }
+
+    private static <T> T require(Map<String, T> map, String source, String key) {
+        var value = map.get(key);
+        if (value == null) {
+            throw new IllegalStateException("drive %s has no key '%s'".formatted(source, key));
+        }
+        return value;
+    }
+
+    private void readData(AtomicBoolean running) {
+        while (running.get()) {
+            Info info = null;
             try {
                 // Both maps are fetched in one locked section so they form a consistent pair;
                 // the lock is released again before notifying observers and before sleeping,
                 // otherwise the 400 ms cadence would starve the safety stop.
                 var snapshot = queryDrive(drive -> new DriveSnapshot(drive.getMotorData(), drive.getControlParameters()));
-                var motorData = snapshot.motorData();
-                var controlParameters = snapshot.controlParameters();
 
-                var info = new Info();
-                info.start = controlParameters.get("start");
-                info.generalEnable = controlParameters.get("generalEnable");
-                info.useSecondRamp = controlParameters.get("useSecondRamp");
-                info.directionIsForward = controlParameters.get("directionIsForward");
-                info.speed = motorData.get("speed");
-                info.motorCurrent = motorData.get("current");
-                info.motorVoltage = motorData.get("voltage");
-                info.motorTorque = motorData.get("torque");
-                info.id = idProvider++;
-                this.notifyObservers(info);
+                info = toInfo(snapshot.motorData(), snapshot.controlParameters(), idProvider.getAndIncrement());
                 if (driveWasUnavailable) {
                     driveWasUnavailable = false;
                     logger.info("Drive handle is available again, resuming info polling");
+                }
+                if (pollWasFailing) {
+                    pollWasFailing = false;
+                    logger.info("Frequency inverter answered again, resuming info polling");
                 }
             } catch (DriveUnavailableException e) {
                 // Handle closed (typically after a safe-stop escalation) - skip this round. Logged
@@ -279,8 +321,23 @@ public class FrequencyInverterDevice extends Device {
                     driveWasUnavailable = true;
                     logger.warn("Drive handle is not open, info polling is idle until it reopens");
                 }
-            } catch (RuntimeException e) {
-                logger.warn("Failed to poll frequency inverter data", e);
+            } catch (Exception e) {
+                // The driver's checked comms exception crosses Drive undeclared, so Exception - not
+                // RuntimeException - is the poll boundary that keeps this thread alive. Stack trace
+                // once per outage, message only afterwards, so a dead link cannot flood the log.
+                if (!pollWasFailing) {
+                    pollWasFailing = true;
+                    logger.warn("Failed to poll frequency inverter data, info polling is idle until it answers", e);
+                } else {
+                    logger.debug("Failed to poll frequency inverter data: {}", e.getMessage());
+                }
+            }
+
+            // Outside the try: only a produced Info is delivered, and an observer's own failure
+            // is never read as a drive outage. A thread stopped while it sat in the drive call
+            // keeps the frame it came back with.
+            if (info != null && running.get()) {
+                notifyObservers(info);
             }
 
             try {

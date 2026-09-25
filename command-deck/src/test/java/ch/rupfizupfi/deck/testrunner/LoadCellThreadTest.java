@@ -45,7 +45,6 @@ class LoadCellThreadTest {
     private MotorSafetyController motorSafety;
     private SensorLossListener lossListener;
     private GapRecorder gapRecorder;
-    private RecoveryProperties recovery;
     private Path csvPath;
     private LoadCellThread cell;
     private boolean started;
@@ -58,16 +57,27 @@ class LoadCellThreadTest {
         motorSafety = mock(MotorSafetyController.class);
         lossListener = mock(SensorLossListener.class);
         gapRecorder = mock(GapRecorder.class);
-        // Mutable on purpose: LoadCellThread reads the gate knobs live, so the gate tests tune
-        // plausibilityGateMillis per scenario instead of rebuilding the whole fixture.
-        recovery = new RecoveryProperties();
         when(motorSafety.safeStop(anyString())).thenReturn(new SafeStopResult(
                 SafeStopResult.Tier.EXISTING_HANDLE, true, true, true, 0, "stubbed stop"));
         csvPath = tempDir.resolve("run_force.csv");
-        cell = new LoadCellThread(context, loadCellDevice,
+        cell = threadWith(new RecoveryProperties().snapshot());
+    }
+
+    private LoadCellThread threadWith(RecoveryGates gates) {
+        return new LoadCellThread(context, loadCellDevice,
                 new CSVStoreService.TestRunFiles(csvPath.toString(),
                         tempDir.resolve("run_gaps.json").toString()),
-                motorSafety, lossListener, recovery, gapRecorder);
+                motorSafety, lossListener, gates, gapRecorder);
+    }
+
+    /**
+     * Rebuilds the thread around a gate window of its own: the knobs are a snapshot taken at
+     * construction, so a scenario that needs different ones needs a new thread. Call before start().
+     */
+    private void useGateWindow(long plausibilityGateMillis) {
+        RecoveryProperties tuned = new RecoveryProperties();
+        tuned.setPlausibilityGateMillis(plausibilityGateMillis);
+        cell = threadWith(tuned.snapshot());
     }
 
     /** start() spawns a NON-daemon thread and stop() joins only 100 ms, so every started loop must be
@@ -229,11 +239,45 @@ class LoadCellThreadTest {
     }
 
     @Test
-    void nonFiniteLatestSampleSkipsTheLimitDecision() throws Exception {
+    void intraBatchCrossingFiresEvenWhenTheLastSampleIsBackInside() {
         startLoop();
-        // Every batch ends on infinity, so however the drains merge, every limit decision in
-        // this phase sees a non-finite latest sample. The finite fillers keep the 250 ms
-        // no-data watchdog fed and hold the plausibility vote below its 3-of-5 trip.
+        // 150 N crosses the 100 N upper limit in the middle of the drain; the batch ends inside
+        // the limits, so only a per-sample decision can see the crossing at all.
+        cell.update(batch(50f, 150f, 60f));
+        quickly().untilAsserted(() -> verify(context).sendSignal(TestContext.RELEASE_SIGNAL));
+    }
+
+    @Test
+    void aBatchCrossingBothLimitsEmitsOnlyTheEarlierCrossing() {
+        startLoop();
+        cell.update(batch(-150f, 150f));
+        quickly().untilAsserted(() -> verify(context).sendSignal(TestContext.PULL_SIGNAL));
+
+        // A finite marker batch: drains are processed one after the other on one thread, so once
+        // the marker is through, the whole first drain has provably been decided.
+        cell.update(batch(48f, 47f));
+        quickly().until(() -> cell.getLastForce() == 47f);
+        verify(context, never()).sendSignal(TestContext.RELEASE_SIGNAL);
+        verify(context, times(1)).sendSignal(anyInt());
+    }
+
+    @Test
+    void aNanInTheMiddleOfAnInsideBatchDecidesNothing() {
+        startLoop();
+        // One NaN is one plausibility vote of five, two short of a trip, and it decides no limit:
+        // both comparisons are false for it, so an unguarded check would read as inside both.
+        cell.update(batch(50f, Float.NaN, 49f));
+        cell.update(batch(48f, 47f));
+        quickly().until(() -> cell.getLastForce() == 47f);
+        verify(context, never()).sendSignal(anyInt());
+    }
+
+    @Test
+    void nonFiniteSamplesNeverDecideTheLimit() throws Exception {
+        startLoop();
+        // No finite sample in these batches crosses a limit, and the infinities decide nothing, so
+        // however the drains merge no signal may leave. The finite fillers keep the 250 ms no-data
+        // watchdog fed and hold the plausibility vote below its 3-of-5 trip.
         for (int i = 0; i < 20; i++) {
             cell.update(batch(50f, 49f, 48f, Float.POSITIVE_INFINITY));
             Thread.sleep(5);
@@ -241,12 +285,12 @@ class LoadCellThreadTest {
         quickly().until(() -> Float.isInfinite(cell.getLastForce()));
 
         // A finite marker batch: drains are processed one after the other on one thread, so once
-        // the marker is through, the decision for an infinity-terminated drain has provably run.
+        // the marker is through, every drain above has provably been decided.
         cell.update(batch(46f, 45f, 47f));
         quickly().until(() -> cell.getLastForce() == 47f);
         verify(context, never()).sendSignal(anyInt());
 
-        // The guard skips the decision, it does not retire it: the next finite crossing fires.
+        // The guard skips a sample, it does not retire the decision: the next finite crossing fires.
         cell.update(batch(150f));
         quickly().untilAsserted(() -> verify(context).sendSignal(TestContext.RELEASE_SIGNAL));
     }
@@ -272,7 +316,7 @@ class LoadCellThreadTest {
 
     @Test
     void gateRejectsSamplesThatDriftBeyondTheConfiguredFraction() throws Exception {
-        recovery.setPlausibilityGateMillis(20);
+        useGateWindow(20);
         // driftFraction 0.02 of a 1000 N envelope: only readings within 20 N of the baseline pass.
         CompletableFuture<LoadCellThread.GateResult> gate = cell.beginRecoveryGate(100f, 1000.0);
 
@@ -302,18 +346,16 @@ class LoadCellThreadTest {
 
     @Test
     void gateTreatsBitIdenticalSamplesAsFrozenNoMatterHowMuchTimePasses() throws Exception {
-        // A gate that can never pass on elapsed time alone while the frozen run builds up.
-        recovery.setPlausibilityGateMillis(600_000);
+        useGateWindow(20);
         CompletableFuture<LoadCellThread.GateResult> gate = cell.beginRecoveryGate(50f, 1000.0);
 
-        // 11 bit-identical samples: the run of 10 repeats fails the gate and resets the timer.
+        // 11 bit-identical samples, back to back so the window cannot expire between them: the run
+        // of 10 repeats fails the gate and resets the timer.
         for (int i = 0; i < 11; i++) {
             cell.scoreGateSample(50f);
         }
 
-        // Shrink the window to 20 ms and exceed it: from here only the frozen check holds the
-        // gate closed.
-        recovery.setPlausibilityGateMillis(20);
+        // Past the window twice over, so from here only the frozen check holds the gate closed.
         Thread.sleep(30);
         cell.scoreGateSample(50f);
         assertThat(gate).as("bit-identical samples must never satisfy the gate").isNotDone();
@@ -328,7 +370,7 @@ class LoadCellThreadTest {
 
     @Test
     void gatePassesOnlyAfterAnUnbrokenPlausibleRunOfTheConfiguredLength() throws Exception {
-        recovery.setPlausibilityGateMillis(20);
+        useGateWindow(20);
         CompletableFuture<LoadCellThread.GateResult> gate = cell.beginRecoveryGate(100f, 1000.0);
 
         // The first acceptable sample starts the run, and the run has zero length at that instant
@@ -345,11 +387,31 @@ class LoadCellThreadTest {
         assertThat(result.detail()).contains("stayed plausible");
     }
 
+    @Test
+    void gateKeepsTheSnapshotItWasBuiltWithWhenThePropertiesAreRebound() throws Exception {
+        RecoveryProperties properties = new RecoveryProperties();
+        properties.setPlausibilityGateMillis(20);
+        cell = threadWith(properties.snapshot());
+
+        // A rebind mid-run must not move the gate the run is already being judged by: a zero drift
+        // band rejects every sample, and a 600 s window cannot open inside 30 ms.
+        properties.setPlausibilityGateMillis(600_000);
+        properties.setDriftFraction(0.0);
+
+        CompletableFuture<LoadCellThread.GateResult> gate = cell.beginRecoveryGate(100f, 1000.0);
+        cell.scoreGateSample(100.5f);
+        Thread.sleep(30);
+        cell.scoreGateSample(99.5f);
+
+        assertThat(gate).isDone();
+        assertThat(gate.get().passed()).isTrue();
+    }
+
     // ---- Recovery gate: end-to-end through the public surface (loop running) ----
 
     @Test
     void reconnectedStreamPassesTheGateEndToEndThroughThePublicSurface() throws Exception {
-        recovery.setPlausibilityGateMillis(50);
+        useGateWindow(50);
         startLoop();
         tripSensorLoss();
 
@@ -376,7 +438,7 @@ class LoadCellThreadTest {
 
     @Test
     void gateDeadlineExpiresWhenTheReconnectedStreamDeliversNothing() throws Exception {
-        recovery.setPlausibilityGateMillis(20); // deadline = 2 * 20 ms + the 1 s slack
+        useGateWindow(20); // deadline = 2 * 20 ms + the 1 s slack
         startLoop();
         tripSensorLoss();
 
@@ -395,7 +457,7 @@ class LoadCellThreadTest {
 
     @Test
     void sensorLostAgainDuringTheGateFailsItAndParksTheLoopAgain() throws Exception {
-        recovery.setPlausibilityGateMillis(600_000); // this gate can only end by losing the sensor
+        useGateWindow(600_000); // this gate can only end by losing the sensor
         startLoop();
         tripSensorLoss();
 
@@ -419,7 +481,7 @@ class LoadCellThreadTest {
 
     @Test
     void noLimitSignalIsEmittedWhileTheGateIsOpen() throws Exception {
-        recovery.setPlausibilityGateMillis(600_000); // the gate stays open for the whole test
+        useGateWindow(600_000); // the gate stays open for the whole test
         startLoop();
         tripSensorLoss();
         cell.markSensorRecovered();

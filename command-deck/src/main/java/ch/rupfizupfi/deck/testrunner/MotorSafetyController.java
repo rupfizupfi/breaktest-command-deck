@@ -360,8 +360,7 @@ public class MotorSafetyController {
     private SafeStopResult escalateToOperator(Integer lastSpeed, boolean tier2Responsive,
                                               boolean wasEnergized, String tier1Detail,
                                               String tier2Detail) {
-        // Name every tier that ran: the returned marker is Tier.NONE for compatibility, which on its
-        // own would read as "nothing was attempted" in a post-incident trace.
+        // Name every tier that ran, so a post-incident trace reads the whole ladder from one line.
         String detail = "tier 1 (EXISTING_HANDLE) ran and reported: " + tier1Detail
                 + " | tier 2 (FRESH_HANDLE) ran, re-enumerated the drive and reported: " + tier2Detail
                 + " | tier 3 (operator escalation): both software stop tiers failed, motor may still be "
@@ -373,8 +372,8 @@ public class MotorSafetyController {
         // Carry tier 2's responsiveness verdict, not a blanket false: if the fresh handle did answer
         // and only the standstill was missing, the operator alert is still warranted but the caller
         // can report it as a drive that is talking rather than as a silent one.
-        return new SafeStopResult(SafeStopResult.Tier.NONE, false, tier2Responsive, wasEnergized,
-                lastSpeed, detail);
+        return new SafeStopResult(SafeStopResult.Tier.OPERATOR_ESCALATION, false, tier2Responsive,
+                wasEnergized, lastSpeed, detail);
     }
 
     /**

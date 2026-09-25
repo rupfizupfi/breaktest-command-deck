@@ -6,13 +6,15 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.abort;
 
 /**
- * Checks each driver plugin jar in {@code drivers/} against the contract it will actually run on.
+ * Checks each driver plugin jar in {@code drivers/} against the contract it will actually run on,
+ * and the jars against each other.
  *
  * <p>Nothing else can catch what this catches. The driver repos compile against the live
  * {@code device-api} — that is their conformance check — but the jar sitting in {@code drivers/} is
@@ -95,6 +97,43 @@ class DriverPluginContractTest {
                     .isNotEmpty();
             assertThat(DriverPlugins.requiredProviderTypes()).containsAll(declared);
         }
+    }
+
+    @Test
+    void everyPluginJarDeclaresItsVersion() {
+        List<Path> jars = requirePluginJars();
+
+        for (Path jar : jars) {
+            assertThat(DriverPlugins.implementationVersion(jar))
+                    .as("%s declares no Implementation-Version, so the jar in %s cannot be traced "
+                            + "back to the build it came from. Add `manifest { attributes("
+                            + "\"Implementation-Version\" to project.version.toString()) }` to the "
+                            + "driver's shadowJar block, rebuild it (`./gradlew shadowJar`) and copy "
+                            + "the result back.",
+                            jar.getFileName(), DriverPlugins.directory())
+                    .isNotBlank();
+        }
+    }
+
+    @Test
+    void pluginJarsAgreeOnEverySharedClass() {
+        List<Path> jars = requirePluginJars();
+        if (jars.size() < 2) {
+            abort("only one driver plugin jar in " + DriverPlugins.directory()
+                    + " - a shared class needs two to disagree.");
+        }
+
+        Map<String, Map<Path, Long>> conflicts = DriverPlugins.conflictingSharedClasses(jars);
+        String firstConflict = conflicts.isEmpty() ? "" : conflicts.keySet().iterator().next();
+
+        assertThat(conflicts)
+                .as("%s carry differing copies of %s shared class(es), the first being %s. Each "
+                        + "plugin bundles its own copy of the libraries it uses, Kotlin's stdlib "
+                        + "above all, and PropertiesLauncher loads whichever jar it lists first - so "
+                        + "one driver would run on the other's stdlib. Pin the same Kotlin version "
+                        + "in both driver repos and rebuild both jars.",
+                        jars, conflicts.size(), firstConflict)
+                .isEmpty();
     }
 
     /**

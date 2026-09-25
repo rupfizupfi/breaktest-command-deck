@@ -6,4 +6,8 @@ import java.util.List;
 
 public interface MeasurementObserver {
     void update(List<Measurement> measurements);
+
+    /** Called when the device closes; deliver anything still buffered. */
+    default void flush() {
+    }
 }

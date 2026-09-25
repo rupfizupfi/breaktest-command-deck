@@ -103,40 +103,41 @@ public class TestRunnerThread {
     }
 
     protected void run() {
+        // Read once: stopThread() nulls the field from the operator's thread. Non-null here because
+        // startThread assigns it before Thread.start().
+        TestLogger log = this.testLogger;
         try {
             // Sleep for 50ms to allow the client to set up the websocket connection
             Thread.sleep(50);
-            testLogger.log("init test " + testResult.testParameter.type);
+            log.log("init test " + testResult.testParameter.type);
             test = switch (testResult.testParameter.type) {
-                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult, testLogger);
-                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult, testLogger);
-                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult, testLogger);
-                default -> test;
+                case "cyclic" -> testRunnerFactory.createTestRunner(CyclicTest.class, testResult, log);
+                case "timeCyclic" -> testRunnerFactory.createTestRunner(TimeCyclicTest.class, testResult, log);
+                case "destructive" -> testRunnerFactory.createTestRunner(DestructiveTest.class, testResult, log);
+                default -> throw new IllegalArgumentException(
+                        "unknown test parameter type: " + testResult.testParameter.type);
             };
 
-            if (test != null) {
-                test.initRecovery(this, stateMachine, gapRecorder, runFiles, gates);
-                test.runStartupChecks();
-                test.setup();
-                // Only after setup(), because the reconnector is built around the run's LoadCellThread
-                // and that does not exist until setup() creates it. A run that never gets one still
-                // holds and aborts safely; it simply can never be resumed.
-                test.setReconnector(testRunnerFactory.createReconnector(
-                        test.deviceService.getLoadCell(), test.loadCellThread,
-                        testRunnerFactory.recoveryProperties()));
-                settle(TestState.RUNNING, "setup complete, the motor is under force control");
-                test.getContext().processSignals();
-            }
+            test.initRecovery(this, stateMachine, gapRecorder, runFiles, gates);
+            test.runStartupChecks();
+            test.setup();
+            // Only after setup(), because the reconnector is built around the run's LoadCellThread
+            // and that does not exist until setup() creates it. A run that never gets one still
+            // holds and aborts safely; it simply can never be resumed.
+            test.setReconnector(testRunnerFactory.createReconnector(
+                    test.deviceService.getLoadCell(), test.loadCellThread, gates));
+            settle(TestState.RUNNING, "setup complete, the motor is under force control");
+            test.getContext().processSignals();
         } catch (InterruptedException e) {
-            testLogger.log("interrupt test " + testResult.testParameter.type);
+            log.log("interrupt test " + testResult.testParameter.type);
             logger.error("TestRunner Thread interrupted", e);
             settle(TestState.ABORTED, "the runner thread was interrupted");
         } catch (FinishTestException ignored) {
             settle(TestState.FINISHED, "the test reached its end condition");
         } catch (Exception e) {
             // getClass() alone renders as "class java.lang.IllegalStateException" in the test log
-            testLogger.log("error: " + e.getClass().getSimpleName() + ", " + e.getMessage());
-            testLogger.log("error test " + testResult.testParameter.type);
+            log.log("error: " + e.getClass().getSimpleName() + ", " + e.getMessage());
+            log.log("error test " + testResult.testParameter.type);
             logger.error("Exception occurred during test", e);
             // FAULT, not ABORTED: the run died on its own. ABORTED means somebody - an operator or
             // the safe-hold timer - decided to end it, and conflating the two makes the result table
@@ -148,13 +149,13 @@ public class TestRunnerThread {
                     test.cleanup();
                     test.destroy();
                 } catch (Exception e) {
-                    testLogger.log("error: " + e.getClass().getSimpleName() + ", " + e.getMessage());
+                    log.log("error: " + e.getClass().getSimpleName() + ", " + e.getMessage());
                     logger.error("Exception during cleanup/destroy", e);
                     retryShutdownOnException();
                 }
             }
-            // An unknown test type leaves the loop above without ever throwing, so the run would
-            // otherwise end still claiming STARTING and be swept as an orphan on the next boot.
+            // Every exit reaches a terminal state: a run left claiming STARTING or RUNNING is swept
+            // as an orphan on the next boot.
             settle(TestState.FAULT, "the run ended without reaching a terminal state");
             recordRunOutcome();
             this.test = null;
@@ -178,6 +179,8 @@ public class TestRunnerThread {
             this.motorSafetyController.clearStopLatch();
             this.testResult = testResult;
             this.lastRecoveryOutcome = null;
+            this.incidentStopTier = null;
+            this.incidentStopVerified = null;
             this.lastReason = null;
             this.lastSequence = 0;
             this.safeHoldDeadlineEpochMillis = null;
@@ -201,7 +204,7 @@ public class TestRunnerThread {
             this.stateMachine.addListener(this::onTransition);
             this.stateMachine.addListener(broadcaster);
             this.stateMachine.addListener(testRunnerFactory.createStatusPersister(
-                    testResultId, persistExecutor, gates, this::gapCount));
+                    testResultId, persistExecutor, gates, this::gapCount, this::droppedSampleCount));
             this.stateMachine.transition(TestState.STARTING, "run requested");
 
             this.thread = new Thread(this::run, "TestRunnerThread");
@@ -212,7 +215,7 @@ public class TestRunnerThread {
         } catch (IOException e) {
             this.running = false;
             releaseRunScope();
-            logger.error("IOException occurred while starting the thread", e);
+            throw new IllegalStateException("Could not start the run: " + e.getMessage(), e);
         } catch (RuntimeException e) {
             // Nothing is running, so the run-scoped executors and their threads must not survive.
             // Rethrown rather than swallowed: the operator pressed Start and no run began.
@@ -281,8 +284,10 @@ public class TestRunnerThread {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             } finally {
-                if (this.testLogger != null) {
-                    this.testLogger.end();
+                // Closed from here too: a wedged runner never reaches its own release.
+                TestLogger log = this.testLogger;
+                if (log != null) {
+                    log.end();
                 }
                 this.testLogger = null;
                 this.test = null;
@@ -337,6 +342,14 @@ public class TestRunnerThread {
                 gapCount(), outcome == null ? 0 : outcome.attempts(), lastKnownForce(),
                 state == TestState.SAFE_HOLD ? safeHoldDeadlineEpochMillis : null,
                 result.getId(), lastSequence);
+    }
+
+    /**
+     * An incident starts with no verdict; the reconnector's arrives through
+     * {@link #recordRecoveryOutcome}.
+     */
+    void beginIncident() {
+        this.lastRecoveryOutcome = null;
     }
 
     /**
@@ -600,12 +613,12 @@ public class TestRunnerThread {
     }
 
     /**
-     * Closes the open gap with whatever the reconnector established. {@code stopTier} and
-     * {@code stopVerified} are null until {@link MotorSafetyController} exposes its last
-     * {@link SafeStopResult} - see the note in {@link #performResume(String)} for why they cannot be
-     * recovered afterwards.
+     * Closes the open gap with whatever the reconnector established, naming the stop of this gap's
+     * own incident: {@link #performResume(String)} captures the {@link SafeStopResult} before
+     * {@code clearStopLatch()} discards it, this method consumes that capture once, and
+     * {@link #startThread(TestResult)} clears it.
      */
-    private void endGap(String outcome) {
+    void endGap(String outcome) {
         GapRecorder recorder = this.gapRecorder;
         if (recorder == null) {
             return;
@@ -616,8 +629,10 @@ public class TestRunnerThread {
 
         // An abort never passes through clearStopLatch(), so on that path the controller still holds
         // the incident's result and it can be read now. Only a resume has to have captured it earlier.
-        String stopTier = incidentStopTier;
-        Boolean stopVerified = incidentStopVerified;
+        String stopTier = this.incidentStopTier;
+        Boolean stopVerified = this.incidentStopVerified;
+        this.incidentStopTier = null;
+        this.incidentStopVerified = null;
         if (stopTier == null) {
             SafeStopResult stop = motorSafetyController.getLastStopResult();
             if (stop != null) {
@@ -656,6 +671,15 @@ public class TestRunnerThread {
         return recorder == null ? 0 : recorder.gapCount();
     }
 
+    /** 0 until the run holds a test with its devices: STARTING is recorded before the test exists. */
+    private long droppedSampleCount() {
+        AbstractTest current = this.test;
+        if (current == null || current.deviceService == null) {
+            return 0;
+        }
+        return current.deviceService.getLoadCell().getDroppedSampleCount();
+    }
+
     private boolean post(Runnable work) {
         ScheduledExecutorService exec = this.runControl;
         if (exec == null) {
@@ -682,9 +706,9 @@ public class TestRunnerThread {
     }
 
     /**
-     * Releases everything that belongs to one run. The broadcaster is stopped explicitly because its
-     * incident ticker would otherwise leak one repeating task per run onto an executor it does not
-     * own.
+     * Releases everything that belongs to one run, the run log included, so a refused start leaves
+     * no open writer behind. The broadcaster is stopped explicitly because its incident ticker would
+     * otherwise leak one repeating task per run onto an executor it does not own.
      */
     private void releaseRunScope() {
         cancelSafeHoldTimer();
@@ -710,6 +734,13 @@ public class TestRunnerThread {
         this.runControl = null;
         this.persistExecutor = null;
         this.broadcaster = null;
+
+        // end() is idempotent, so stopThread() may close the same logger from the operator's thread.
+        TestLogger log = this.testLogger;
+        if (log != null) {
+            log.end();
+        }
+        this.testLogger = null;
     }
 
     protected void retryShutdownOnException() {
@@ -717,9 +748,9 @@ public class TestRunnerThread {
             if (test != null) {
                 test.destroy();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            logger.error("Retrying destroy() failed, forcing a safe stop", e);
             test = null;
-            System.gc();
         }
 
         SafeStopResult result = motorSafetyController.safeStop("cleanup failed");

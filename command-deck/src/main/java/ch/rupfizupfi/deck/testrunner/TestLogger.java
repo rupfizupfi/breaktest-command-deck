@@ -19,7 +19,7 @@ public class TestLogger {
     private final TestResult testResult;
     private final SimpMessagingTemplate template;
     private final Path logPath;
-    private BufferedWriter writer;
+    private volatile BufferedWriter writer;
 
     public TestLogger(TestResult testResult, SimpMessagingTemplate template, StorageLocationService storageLocationService) {
         this.testResult = testResult;
@@ -32,26 +32,45 @@ public class TestLogger {
         writer = Files.newBufferedWriter(logPath, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 
+    /**
+     * Absorbs every broadcast and file-write failure, including a concurrent {@link #end}:
+     * teardown steps log through here.
+     */
     public void log(String message) {
-        template.convertAndSend("/topic/logs", message);
         try {
-            if (writer != null) {
-                writer.write(message);
-                writer.newLine();
-                writer.flush();
+            template.convertAndSend("/topic/logs", message);
+        } catch (Exception e) {
+            logger.warn("Failed to broadcast log message {} for test id:{}", message, testResult.getId(), e);
+        }
+        BufferedWriter w = writer;
+        try {
+            if (w != null) {
+                w.write(message);
+                w.newLine();
+                w.flush();
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.error("Failed to write to log file for test id:{}", testResult.getId(), e);
         }
     }
 
+    /**
+     * Idempotent: the run's own teardown and an operator Stop both end the same logger.
+     * A concurrent {@link #log} either writes or is a no-op.
+     */
     public void end() {
-        if (writer != null) {
-            try {
-                writer.close();
-            } catch (IOException e) {
-                logger.error("Failed to close log file for test id:{}", testResult.getId(), e);
-            }
+        // One read of the field, claimed before the close: concurrent ends then close the same
+        // descriptor at most twice, which BufferedWriter ignores.
+        BufferedWriter w = writer;
+        writer = null;
+        if (w == null) {
+            return;
+        }
+
+        try {
+            w.close();
+        } catch (IOException e) {
+            logger.error("Failed to close log file for test id:{}", testResult.getId(), e);
         }
     }
 }
