@@ -6,8 +6,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Registered only in simulated mode. The vendor provider carries the mirror condition, so the two
- * can never both be present — which is what stops "simulated" from silently resolving to hardware.
+ * Registered only in simulated mode. The vendor auto-configurations match {@code real} and treat an
+ * absent {@code deck.hardware.mode} as {@code real}, so the two sets accept disjoint values and can
+ * never both be present, and an unset property resolves to hardware
+ * ({@link ch.rupfizupfi.deck.device.HardwareMode#DEFAULT}) rather than to a simulator.
  */
 @Component
 @ConditionalOnProperty(name = "deck.hardware.mode", havingValue = "simulated")

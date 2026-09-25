@@ -19,7 +19,11 @@ public interface Drive {
     void setControlParameters(Boolean start, Boolean generalEnable, Boolean directionIsForward,
                               Boolean localRemote, Boolean useSecondRamp);
 
-    /** Read by {@code FrequencyInverterDevice} under keys {@code start}, {@code generalEnable}, {@code useSecondRamp}, {@code directionIsForward}. */
+    /**
+     * Must contain the keys {@code start}, {@code generalEnable}, {@code useSecondRamp},
+     * {@code directionIsForward}; {@code FrequencyInverterDevice} treats a missing or null one as a
+     * poll failure naming the key.
+     */
     Map<String, Boolean> getControlParameters();
 
     void setStart(boolean start);
@@ -45,7 +49,10 @@ public interface Drive {
      */
     int getMotorSpeedValueAsRpm();
 
-    /** Read by {@code FrequencyInverterDevice} under keys {@code speed}, {@code current}, {@code voltage}, {@code torque}. */
+    /**
+     * Must contain the keys {@code speed}, {@code current}, {@code voltage}, {@code torque};
+     * {@code FrequencyInverterDevice} treats a missing or null one as a poll failure naming the key.
+     */
     Map<String, Integer> getMotorData();
 
     /** 2 = disable via general enable; the drive's own backstop for a lost link. */
