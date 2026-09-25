@@ -12,7 +12,8 @@ const OwnerSelector = React.forwardRef<ComboBoxElement<any>, ComboBoxProps<any>>
     const [values, setValues] = useState<(User | null)[]>([]);
 
     useEffect(() => {
-        UserEndpoint.list({pageNumber:0,pageSize:100,sort: {orders:[{property:'name', direction:Direction.ASC, ignoreCase:false }]}}, undefined).then(users => setValues([null, ...(users || []).map(u => u!)]));
+        UserEndpoint.list({pageNumber:0,pageSize:100,sort: {orders:[{property:'name', direction:Direction.ASC, ignoreCase:false }]}}, undefined)
+            .then(users => setValues([null, ...(users ?? []).filter((u): u is User => u !== undefined && u !== null)]));
     }, []);
 
     return (

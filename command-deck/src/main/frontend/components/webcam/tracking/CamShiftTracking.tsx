@@ -15,19 +15,16 @@ export default function creatCamshiftTracking(cv: CV) {
     const hsvFrame = new cv.Mat();
     const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
 
-    console.log("CamShift Tracking created");
-
     function init(canvas: HTMLCanvasElement) {
         const areaSelector = useAreaSelector(canvas, (selection) => {
             startTracking(selection, getContext(canvas), canvas);
         });
 
-        console.log("CamShift Tracking initialized");
-
         return () => {
             areaSelector.removeEventListeners();
             if (roiHist) {
                 roiHist.delete();
+                roiHist = null;
             }
             hsvFrame.delete();
             kernel.delete();
@@ -49,46 +46,52 @@ export default function creatCamshiftTracking(cv: CV) {
         // Define the region of interest (ROI)
         const rawRoi = frame.roi(trackingWindow);
         const hsvRoi = new cv.Mat();
-        cv.cvtColor(rawRoi, hsvRoi, cv.COLOR_RGBA2RGB);
-        cv.cvtColor(hsvRoi, hsvRoi, cv.COLOR_RGB2HSV);
-
-        // Create mask
         const mask = new cv.Mat();
-        const lowScalar = new cv.Scalar(30, 30, 0);
-        const highScalar = new cv.Scalar(180, 180, 180);
-        const low = new cv.Mat(hsvRoi.rows, hsvRoi.cols, hsvRoi.type(), lowScalar);
-        const high = new cv.Mat(hsvRoi.rows, hsvRoi.cols, hsvRoi.type(), highScalar);
-        cv.inRange(hsvRoi, low, high, mask);
-
-        // Calculate histogram
         const hist = new cv.Mat();
         const hsvRoiVector = new cv.MatVector();
-        hsvRoiVector.push_back(hsvRoi);
-        cv.calcHist(hsvRoiVector, [0], mask, hist, [180], [0, 180]);
-        cv.normalize(hist, hist, 0, 255, cv.NORM_MINMAX);
+        let low: Mat | null = null;
+        let high: Mat | null = null;
 
-        // Store histogram reference
-        if (roiHist) {
-            roiHist.delete();
-            roiHist = null;
+        try {
+            cv.cvtColor(rawRoi, hsvRoi, cv.COLOR_RGBA2RGB);
+            cv.cvtColor(hsvRoi, hsvRoi, cv.COLOR_RGB2HSV);
+
+            // Create mask
+            const lowScalar = new cv.Scalar(30, 30, 0);
+            const highScalar = new cv.Scalar(180, 180, 180);
+            low = new cv.Mat(hsvRoi.rows, hsvRoi.cols, hsvRoi.type(), lowScalar);
+            high = new cv.Mat(hsvRoi.rows, hsvRoi.cols, hsvRoi.type(), highScalar);
+            cv.inRange(hsvRoi, low, high, mask);
+
+            // Calculate histogram
+            hsvRoiVector.push_back(hsvRoi);
+            cv.calcHist(hsvRoiVector, [0], mask, hist, [180], [0, 180]);
+            cv.normalize(hist, hist, 0, 255, cv.NORM_MINMAX);
+
+            if (roiHist) {
+                roiHist.delete();
+                roiHist = null;
+            }
+
+            if (hist.empty() || hist.rows === 0 || hist.cols === 0) {
+                console.warn('Selected area has no trackable colour histogram; select again');
+                return;
+            }
+
+            roiHist = hist;
+        } finally {
+            frame.delete();
+            rawRoi.delete();
+            hsvRoi.delete();
+            hsvRoiVector.delete();
+            mask.delete();
+            low?.delete();
+            high?.delete();
+            // hist survives only once it is the tracked histogram.
+            if (roiHist !== hist) {
+                hist.delete();
+            }
         }
-
-        if (hist.empty() || hist.rows === 0 || hist.cols === 0) {
-            console.warn('Empty ROI histogram, aborting startTracking');
-            // cleanup mats here...
-            return;
-        }
-
-        roiHist = hist;
-
-        // Clean up
-        frame.delete();
-        hsvRoi.delete();
-        hsvRoiVector.delete();
-        mask.delete();
-        rawRoi.delete();
-        low.delete();
-        high.delete();
     }
 
     function processFrames(canvas: HTMLCanvasElement, scaleFactor: number) {

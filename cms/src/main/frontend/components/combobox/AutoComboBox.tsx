@@ -21,8 +21,17 @@ const AutoComboBox = React.forwardRef<ComboBoxElement<any>, AutoComboBoxProps<an
     }
 
     useEffect(
-        (): void => {
-            service(input.value).then((value) => (items.value = value))
+        (): (() => void) => {
+            // Only the latest request may fill the list.
+            let ignore = false;
+            service(input.value).then((value) => {
+                if (!ignore) {
+                    items.value = value;
+                }
+            });
+            return () => {
+                ignore = true;
+            };
         },
         [input.value]
     );

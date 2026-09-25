@@ -1,6 +1,7 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {SettingService} from 'Frontend/generated/endpoints.js';
 import {Button, TextField, VerticalLayout} from "@vaadin/react-components";
+import {Notification} from "@vaadin/react-components/Notification.js";
 import SettingModel from "Frontend/generated/ch/rupfizupfi/deck/data/SettingModel";
 import {useState} from "react";
 import {AutoCrud} from "cms/components/autocrud/AutoCrud";
@@ -41,9 +42,11 @@ export default function SettingView() {
 
     return (
         <VerticalLayout theme="padding spacing-l stretch evenly">
-            <h1>Setting {reload}</h1>
+            <h1>Setting</h1>
             <div className="w-full">
+                {/* Sync can add keys, and AutoCrud reads the list once per mount: a new key forces a remount. */}
                 <AutoCrud
+                    key={reload}
                     service={customSettingService}
                     model={SettingModel}
                     formProps={{
@@ -59,7 +62,10 @@ export default function SettingView() {
                 />
             </div>
             <div className="w-full">
-                <Button theme="secondary" onClick={() => customSettingService.sync().then(()=> setReload(Date.now()))}>Sync</Button>
+                <Button theme="secondary" onClick={() => customSettingService.sync().then(() => {
+                    setReload(Date.now());
+                    Notification.show('Settings synced');
+                })}>Sync</Button>
             </div>
         </VerticalLayout>
     )

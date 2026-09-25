@@ -3,6 +3,7 @@ import React, {useEffect, useState} from "react";
 import Plot from 'react-plotly.js';
 import {TestResultService} from "Frontend/generated/endpoints";
 import {HorizontalLayout, Select, VerticalLayout} from "@vaadin/react-components";
+import {parseForceCsv} from "cms/components/dashboard/forceCsv";
 
 interface ResultViewerProps {
     testResult: TestResult;
@@ -130,22 +131,7 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
     useEffect(() => {
         if (selectedFile) {
             TestResultService.readCSVData(testResult.id!, selectedFile).then((text) => {
-                const lines = text.replace(/\r/g,'').split('\n');
-                const newPoints = lines.reduce((acc: [number[], number[]], line: string) => {
-                    const [timestamp, force] = line.split(',').map(parseFloat);
-
-                    if(isNaN(timestamp) || isNaN(force)){
-                        return acc;
-                    }
-
-                    if(line.split(',')[1].includes('E')){
-                        return acc;
-                    }
-
-                    acc[0].push(timestamp);
-                    acc[1].push(force);
-                    return acc;
-                }, [[], []]);
+                const newPoints = parseForceCsv(text);
 
                 const time = newPoints[0][0];
                 newPoints[0] = newPoints[0].map(v=>v-time);

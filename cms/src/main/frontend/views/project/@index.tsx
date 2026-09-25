@@ -7,7 +7,7 @@ import Project from "Frontend/generated/ch/rupfizupfi/deck/data/Project";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
 import {GridColumn, TextField} from "@vaadin/react-components";
 import {createAutoComboBoxService} from "cms/components/combobox/service";
-import OwnerSelector from "cms/components/owner/OnwerSelector";
+import OwnerSelector from "cms/components/owner/OwnerSelector";
 import {OwnerGridView} from "cms/components/owner/OwnerGridView";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
 import {Link} from "react-router";
@@ -17,7 +17,7 @@ export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file
 createEmptyValueProxy(ProjectModel);
 
 export default function ProjectView() {
-    const service = createAutoComboBoxService(CustomerService, "firstname");
+    const service = createAutoComboBoxService(CustomerService, ["organization", "firstname", "lastname"]);
 
     return (
         <AutoCrud

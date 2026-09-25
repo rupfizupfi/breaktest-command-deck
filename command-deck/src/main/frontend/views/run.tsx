@@ -11,10 +11,10 @@ import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
 import LiveTestResult from "Frontend/components/dashboard/LiveTestResult";
 import {Link} from "react-router";
-import OwnerSelector from "cms/components/owner/OnwerSelector";
+import OwnerSelector from "cms/components/owner/OwnerSelector";
 import {Button} from "@vaadin/react-components/Button.js";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
-import {AutoCrud} from "cms/components/autocrud/AutoCrud";
+import {AutoCrud, WithCopyFlag} from "cms/components/autocrud/AutoCrud";
 import ownerGridColumn from "cms/model/owner/ownerGridColumn";
 import sampleGridColumn from "cms/model/sample/sampleGridColumn";
 import {TestParameterService, SampleService, TestResultService} from "Frontend/generated/endpoints";
@@ -63,12 +63,11 @@ export default function RunView() {
         }
     }
 
-    function headerRenderer(editedItem: TestResult | null, disabled: boolean) {
+    function headerRenderer(editedItem: WithCopyFlag<TestResult> | null, disabled: boolean) {
         if(readyTestResultData !== editedItem){
             setTimeout(setReadyTestResultData, 100, editedItem);
         }
         const colorVar = disabled ? 'var(--lumo-disabled-text-color)' : 'var(--lumo-text-color)';
-        // @ts-ignore
         return <h3 style={{ color: colorVar }}>{editedItem ? (editedItem.__copy?'Copy' :'Edit' ): 'New'} item</h3>;
     }
 
@@ -96,13 +95,13 @@ export default function RunView() {
                     },
                     customColumns: [
                         <GridColumn key="results" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/result`}>Results</Link>} header="Results" autoWidth/>,
-                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>View</Link>} header="Bilder" autoWidth/>,
+                        <GridColumn key="images" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/image`}>View</Link>} header="Images" autoWidth/>,
                         <GridColumn key="tracking" renderer={({item}: { item: TestResult }) => <Link to={`/result/${item.id}/tracking`}>GoTo</Link>} header="Tracking" autoWidth/>
                     ]
                 }}
                 formProps={{
                     headerRenderer,
-                    visibleFields: ['owner', 'testParameter', 'sample', 'description', 'resultText', 'run', 'images'],
+                    visibleFields: ['owner', 'testParameter', 'sample', 'description', 'resultText', 'run'],
                     fieldOptions: {
                         owner: {
                             renderer: ({field}) => <OwnerSelector {...field} />,
@@ -120,7 +119,7 @@ export default function RunView() {
                             renderer: ({field}) => <TextArea {...field} />,
                         },
                         run: {
-                            renderer: () => <Button theme="pirmary large icon" style={{marginTop:'1em'}} disabled={!readyTestResultData} onClick={() => startRun()}>
+                            renderer: () => <Button theme="primary large icon" style={{marginTop:'1em'}} disabled={!readyTestResultData} onClick={() => startRun()}>
                                 <Icon icon="vaadin:bolt" slot={'prefix'} style={{ height: 'var(--lumo-icon-size-l)', width: 'var(--lumo-icon-size-l)' }} />
                                 Run test
                             </Button>,

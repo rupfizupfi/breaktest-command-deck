@@ -7,6 +7,7 @@ import {Icon} from "@vaadin/react-components/Icon.js";
 import './control.css';
 import {useLiveStatus} from "Frontend/service/useLiveStatus";
 import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
+import {parseBatch, peakForce} from "Frontend/service/loadCellBatch";
 
 export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/cogs-solid.svg', exclude:true}, title: 'Control board', loginRequired: true};
 
@@ -18,8 +19,10 @@ export default function ControlBoard() {
 
     useEffect(() => {
         const subscription = service.loadCellObservable.subscribe((value: IMessage) => {
-            const newStatus: object[] = JSON.parse(value.body);
-            setForce(newStatus.reduce((prev, item: any) => Math.max(prev, item.force), 0));
+            const peak = peakForce(parseBatch(value.body));
+            if (peak !== undefined) {
+                setForce(peak);
+            }
         });
 
         service.connectComponent(ControlBoard);

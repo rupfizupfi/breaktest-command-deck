@@ -18,6 +18,8 @@ export default function DistanceMeasureCam() {
     const [isCalibrating, setIsCalibrating] = useState(false);
     const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
     const [scaleFactor, setScaleFactor] = useState(1);
+    // The capture loop is started once, so it reads the scale factor through a ref.
+    const scaleFactorRef = useRef(scaleFactor);
     const [facingMode, setFacingMode] = useState(FACING_MODE_USER);
 
     const videoConstraints: MediaTrackConstraints = {
@@ -27,22 +29,40 @@ export default function DistanceMeasureCam() {
     };
 
     useEffect(() => {
-        // Wait for OpenCV to be ready
+        scaleFactorRef.current = scaleFactor;
+    }, [scaleFactor]);
+
+    // This effect owns the capture loop and the tracker's dispose handle; both end at unmount.
+    useEffect(() => {
+        let cancelled = false;
+        let rafId: number | null = null;
+        let dispose: (() => void) | null = null;
+
         // @ts-ignore
-        cvReady.then((cv:CV) => {
+        cvReady.then((cv: CV) => {
+            if (cancelled) {
+                return;
+            }
             const camShiftTracking = creatCamshiftTracking(cv);
+            algoRef.current = camShiftTracking;
+            dispose = camShiftTracking.init(canvasRef.current!);
 
             function update() {
                 captureFrame();
-                requestAnimationFrame(update);
+                rafId = requestAnimationFrame(update);
             }
 
-            update();
-            camShiftTracking.init(canvasRef.current!);
-
-            // @ts-ignore
-            algoRef.current = camShiftTracking;
+            rafId = requestAnimationFrame(update);
         });
+
+        return () => {
+            cancelled = true;
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+            }
+            dispose?.();
+            algoRef.current = null;
+        };
     }, []);
 
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -77,10 +97,14 @@ export default function DistanceMeasureCam() {
                 const img = new Image();
                 img.src = imageSrc;
                 img.onload = () => {
-                    const canvas = canvasRef.current!;
+                    const algo = algoRef.current;
+                    const canvas = canvasRef.current;
+                    if (!algo || !canvas) {
+                        return;
+                    }
                     const ctx = canvas.getContext("2d")!;
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    algoRef.current!.processFrames(canvas, scaleFactor);
+                    algo.processFrames(canvas, scaleFactorRef.current);
                 };
             }
         }

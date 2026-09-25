@@ -25,6 +25,8 @@ import {useLiveStatus} from "Frontend/service/useLiveStatus";
 import {useConnectionState} from "Frontend/service/useTestState";
 import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
 import TestIncidentBanner from "Frontend/components/dashboard/TestIncidentBanner";
+import {createBuffer, ingest, resetBuffer, TraceBuffer} from "Frontend/components/dashboard/traceBuffer";
+import {parseBatch} from "Frontend/service/loadCellBatch";
 
 ChartJS.register(
     LinearScale,
@@ -65,12 +67,13 @@ export default function LiveTestResult({testResult, reset}: TestResultBoardProps
         }
     }, [testResult]);
 
-    if (!(testResult || runningTestResult)) {
+    const activeTestResult = testResult ?? runningTestResult ?? undefined;
+
+    if (!activeTestResult) {
         return <div>No test running</div>;
     }
 
-    // @ts-ignore
-    return <TestResultGraph testResult={testResult || runningTestResult} reset={reset}/>;
+    return <TestResultGraph testResult={activeTestResult} reset={reset}/>;
 }
 
 export interface TestResultGraphProps {
@@ -78,46 +81,8 @@ export interface TestResultGraphProps {
     reset: () => void;
 }
 
-/** One `/topic/load-cell` element: server-clock `System.currentTimeMillis()` and newtons. */
-interface ForceSample {
-    timestamp: number;
-    force: number;
-}
-
-/**
- * Trace capacity, ~11 minutes at the DSCUSB's rated 200 samples/s. Raising it is paid twice: ~40
- * bytes per point held for the run, and a full min-max decimation rescan on each of the ~16 frames
- * a second the broadcaster sends. Eviction never moves the headline number — the running max is
- * kept separately and covers the whole run, not the visible window.
- */
-const MAX_SAMPLES = 131_072;
-
-/** Evict a block per overflow, not a point per sample: one O(n) splice per EVICT_BLOCK ingests. */
-const EVICT_BLOCK = 8_192;
-
-/**
- * How far behind a batch's newest sample a sample may sit and still belong to this run. The opening
- * batch can lead with the *previous* run's stranded tail, and anchoring the x axis on one of those
- * pushes the whole trace off screen. Sized between the ~60 ms an in-run batch spans and the gap to
- * a previous run, which is at least the operator's time to start it.
- * See doc/06-feature-work/testrunner-safety/staleness-and-lifecycle-findings.md.
- */
-const STRANDED_TAIL_MS = 500;
-
 /** Readouts only have to look live to a human; the chart carries the detail. */
 const READOUT_INTERVAL_MS = 250;
-
-interface TraceBuffer {
-    /** Chronological, capped at MAX_SAMPLES. Chart.js holds this reference — never replace it. */
-    points: Point[];
-    /** Objects freed by the last eviction, refilled in place so a long run stops allocating. */
-    recycled: Point[];
-    /** First accepted sample's server timestamp; the x origin. Null until the first sample. */
-    anchor: number | null;
-    max: number;
-    last: number;
-    hasValue: boolean;
-}
 
 interface Readout {
     current: number;
@@ -126,73 +91,6 @@ interface Readout {
 }
 
 const NO_READING: Readout = {current: 0, max: 0, hasValue: false};
-
-function createBuffer(): TraceBuffer {
-    return {points: [], recycled: [], anchor: null, max: Number.NEGATIVE_INFINITY, last: 0, hasValue: false};
-}
-
-function resetBuffer(buffer: TraceBuffer): void {
-    // In place: Chart.js holds `points` by reference, so replacing the array would orphan the chart.
-    buffer.points.length = 0;
-    buffer.recycled.length = 0;
-    buffer.anchor = null;
-    buffer.max = Number.NEGATIVE_INFINITY;
-    buffer.last = 0;
-    buffer.hasValue = false;
-}
-
-function append(buffer: TraceBuffer, x: number, y: number): void {
-    if (buffer.points.length >= MAX_SAMPLES) {
-        buffer.recycled = buffer.points.splice(0, EVICT_BLOCK);
-    }
-
-    const reused = buffer.recycled.pop();
-    if (reused) {
-        reused.x = x;
-        reused.y = y;
-        buffer.points.push(reused);
-    } else {
-        buffer.points.push({x, y});
-    }
-
-    if (y > buffer.max) {
-        buffer.max = y;
-    }
-    buffer.last = y;
-    buffer.hasValue = true;
-}
-
-/** Index of the first sample of this run, or -1 when the batch is entirely a stranded tail. */
-function firstOwnSample(batch: ForceSample[]): number {
-    const newest = batch[batch.length - 1].timestamp;
-    for (let i = 0; i < batch.length; i++) {
-        if (newest - batch[i].timestamp <= STRANDED_TAIL_MS) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-function ingest(buffer: TraceBuffer, batch: ForceSample[]): void {
-    if (batch.length === 0) {
-        return;
-    }
-
-    let from = 0;
-    if (buffer.anchor === null) {
-        from = firstOwnSample(batch);
-        if (from < 0) {
-            return;
-        }
-        buffer.anchor = batch[from].timestamp;
-    }
-
-    // Index loop, never spread: the batch is unbounded from this component's point of view, and
-    // `push(...batch)` throws RangeError once it is large enough to matter.
-    for (let i = from; i < batch.length; i++) {
-        append(buffer, batch[i].timestamp - buffer.anchor, batch[i].force);
-    }
-}
 
 export function TestResultGraph({testResult, reset}: TestResultGraphProps): React.JSX.Element {
     const service = getService();
@@ -213,7 +111,7 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
 
         const subscription = service.loadCellObservable.subscribe({
             next: (value: IMessage) => {
-                ingest(buffer, JSON.parse(value.body) as ForceSample[]);
+                ingest(buffer, parseBatch(value.body));
                 // 'none': the default mode animates over 1 s, and the next batch lands ~60 ms later,
                 // so every frame would restart an interpolation that never finishes.
                 chartRef.current?.update('none');
@@ -236,7 +134,8 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
             });
         }, READOUT_INTERVAL_MS);
 
-        TestRunnerService.start(testResult.id!);
+        // The rpc middleware toasts the failure; a run that never started has nothing to stop.
+        TestRunnerService.start(testResult.id!).catch(() => setStopped(true));
         service.connectComponent(TestResultGraph);
 
         return () => {
@@ -254,13 +153,10 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
             fill: false,
             backgroundColor: 'rgb(255, 99, 132)',
             borderColor: 'rgba(255, 99, 132, 0.2)',
-            showLine: false,
-            // false, and it must stay false: a line spanning a gap runs straight through an interval
-            // where nothing was measured, which is precisely the misreading the recovery feature
-            // exists to prevent. Necessary but not sufficient - Chart.js only breaks a line at a
-            // null/NaN y, and ingest() never inserts one, so a sensor loss currently shows as a jump
-            // in x with no marker. Today nothing is drawn across it because showLine is false; both
-            // of those have to change together.
+            showLine: true,
+            // false, and it must stay false: the line is broken by the NaN separator ingest() puts
+            // in a hole longer than GAP_MS, and nothing is then drawn across an interval where
+            // nothing was measured.
             spanGaps: false
         }],
     }), []);
@@ -269,9 +165,12 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
     // chart.update() whenever this object or `data` changes identity.
     const options = useMemo<ChartOptions<'line'>>(() => ({
         animation: false,
+        // The datasets are already {x, y} TracePoints, and Chart.js returns from the decimation
+        // plugin before decimating whenever parsing is on.
+        parsing: false,
         scales: {
             x: {
-                // Decimation needs a linear (or time) x axis and {x, y} points; `parsing` stays unset.
+                // Decimation needs a linear (or time) x axis, {x, y} points and parsing disabled.
                 type: 'linear',
                 title: {
                     display: true,
@@ -289,8 +188,9 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
             }
         },
         plugins: {
-            // min-max, not lttb: on a destructive test the peak force is the measurement, and lttb
-            // is free to drop it.
+            // min-max, not lttb: the peak force is the measurement. Past 4x the canvas width each x
+            // bucket keeps only its first, last, min and max, so a NaN separator survives only as a
+            // bucket end; the readouts come off the buffer - doc/04-frontend/state-and-realtime.md.
             decimation: {enabled: true, algorithm: 'min-max'}
         },
         responsive: true,

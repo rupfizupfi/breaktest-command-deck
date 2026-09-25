@@ -16,14 +16,18 @@ function clampRect(r: SelectedArea, w: number, h: number): SelectedArea {
 
 export default function useAreaSelector(canvas: HTMLCanvasElement, callback: (selection: SelectedArea) => void) {
     const ctx = canvas.getContext('2d', {willReadFrequently:true, alpha:false, colorSpace: 'srgb', colorType: 'unorm8', desynchronized: true}) as CanvasRenderingContext2D;
-    const selection = { x: 0, y: 0, width: 0, height: 0 };
+    const start = { x: 0, y: 0 };
+    // Normalised against the press point, so a drag in any direction yields a positive size.
+    const selection: SelectedArea = { x: 0, y: 0, width: 0, height: 0 };
     let isSelecting = false;
 
     function handleMouseDown(event: MouseEvent) {
         isSelecting = true;
         const rect = canvas.getBoundingClientRect();
-        selection.x = event.clientX - rect.left;
-        selection.y = event.clientY - rect.top;
+        start.x = event.clientX - rect.left;
+        start.y = event.clientY - rect.top;
+        selection.x = start.x;
+        selection.y = start.y;
         selection.width = 0;
         selection.height = 0;
     }
@@ -33,8 +37,12 @@ export default function useAreaSelector(canvas: HTMLCanvasElement, callback: (se
             return;
         }
         const rect = canvas.getBoundingClientRect();
-        selection.width = event.clientX - rect.left - selection.x;
-        selection.height = event.clientY - rect.top - selection.y;
+        const currentX = event.clientX - rect.left;
+        const currentY = event.clientY - rect.top;
+        selection.x = Math.min(start.x, currentX);
+        selection.y = Math.min(start.y, currentY);
+        selection.width = Math.abs(currentX - start.x);
+        selection.height = Math.abs(currentY - start.y);
         drawSelection();
     }
 
