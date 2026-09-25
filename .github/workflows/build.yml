@@ -69,8 +69,12 @@ jobs:
       # Runs before the Gradle build on purpose: vitest needs only node_modules, and the Vaadin
       # frontend tasks inside `build` can rewrite pnpm-lock.yaml, which would poison anything
       # lockfile-sensitive that ran after them. Node env only - no browser download.
-      - name: Frontend logic tests (Vitest)
+      - name: Frontend logic tests (Vitest, cms)
         working-directory: cms
+        run: pnpm test
+
+      - name: Frontend logic tests (Vitest, command-deck)
+        working-directory: command-deck
         run: pnpm test
 
       # productionMode is what makes this a *complete* frontend build, and the typecheck below
