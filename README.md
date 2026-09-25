@@ -47,7 +47,7 @@ This is a multi-module project with the following structure:
   - `src/main/resources` - Resources like static files, templates, and the application properties
   - `src/main/frontend` - Frontend source files
     - `src/main/frontend/generated` - Generated frontend files (api, models...)
-- `lib` - Directory containing external JAR dependencies
+- `drivers` - Driver plugin JARs, loaded at launch and never built in (see `drivers/README.md`)
 - `build.gradle` - Root Gradle build file
 - `settings.gradle` - Gradle settings file
 
@@ -91,4 +91,4 @@ To build the Dockerized version of the project, follow these steps:
     docker-compose down
     ```
 
-The `docker-compose.yaml` file defines the services, including the CMS application and the PostgreSQL database. The CMS application is built from the `cms` module and uses the `cms/Dockerfile` for its configuration. The database service uses the official PostgreSQL image and is configured to use a secret for the database password.
+The `docker-compose.yaml` file defines the services, including the CMS application and the PostgreSQL database. The CMS application is built from the `cms` module through `docker/Dockerfile`, which serves both modules and takes the module name as a `MODULE` build arg. The database service uses the official PostgreSQL image and is configured to use a secret for the database password.

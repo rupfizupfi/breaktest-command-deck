@@ -4,23 +4,38 @@
 
 ## Purpose
 
-The `docker` deck image cannot drive the test bench: both driver plugins are
-Windows-only, and the image is Linux (**OQ-79**, detail in
-[`../03-backend/driver-jars.md`](../03-backend/driver-jars.md)). Running
-`command-deck` natively on the Windows bench machine is the only path to the
-hardware today. This page owns that path. The containerised deployment is
-[`docker-and-profiles.md`](docker-and-profiles.md).
+**This is how the deck is deployed** — decided, not a stopgap. The hardware
+controller is a Windows PC and `command-deck` runs natively on it. Both driver
+plugins are Windows-only and the `docker` image is Linux, so a containerised deck
+cannot drive the bench at all
+([`../03-backend/driver-jars.md`](../03-backend/driver-jars.md#both-drivers-are-windows-only-and-that-decides-the-deployment));
+the alternative — rewriting both drivers onto serial so a Linux host could do the
+job — was weighed and declined, and survives only as a recorded future option in
+[`../06-feature-work/dscusb-serial-port/README.md`](../06-feature-work/dscusb-serial-port/README.md).
+The `docker` deck profile is not retired, it has a different job: **tests and
+simulations**, with no driver in the image at all. This page owns the bench path;
+that one is [`docker-and-profiles.md`](docker-and-profiles.md).
 
-**There is no `bench` properties file, deliberately.** On the axes that matter —
-hardware mode and database — a bench run is identical to the containerised
-deployment; only a keystore path, a JDBC URL and a storage root differ, and all
-three are environment variables. A third profile would have been a 95 % duplicate
-per module, against OQ-4's decision to *delete* duplicate properties files, and a
-second name for the simulation guard to remember.
+**There is no `bench` properties file, deliberately.** Everything that differs
+between a bench run and the containerised deployment is an environment variable —
+a keystore path, a JDBC URL, a storage root, and the hardware mode. A third
+properties file would have been a 95 % duplicate per module, against OQ-4's
+decision to *delete* duplicate properties files.
 
 Instead `spring.profiles.group.bench=docker` gives the honest operator-facing
 name for one line and no new file: `SPRING_PROFILES_ACTIVE=bench` activates
 `docker` as well.
+
+**`bench` is not only a nicer name — it is the simulation guard's marker.** The
+two deployments differ on exactly one dangerous axis, `deck.hardware.mode`, so
+`application-docker.properties` declares it for neither and each supplies its own
+`DECK_HARDWARE_MODE` (an environment variable outranks every properties file;
+unset, `application.properties` supplies the fail-safe `real`). `HardwareModeCheck`
+permits simulation under `docker` but not under `bench`, and since a bench run's
+active set is `[bench, docker]` while the container's is just `[docker]`, that one
+extra profile is what refuses a simulator on the machine. It follows that a bench
+must be started as `bench` — which `run-bench.ps1` always does — and never as
+`docker`.
 
 ## Contents
 
@@ -75,9 +90,15 @@ version; see
 ## Why simulation cannot happen here by accident
 
 `HardwareModeCheck` allowlists the profiles a simulator may run under
-(`SIMULATION_PROFILES`, currently just `dev`) rather than blocklisting the
-deployment profile. A bench run activates `bench`/`docker`, so simulation is
-refused; so is `dev,bench`, and so is any future profile until it is added to the
-allowlist deliberately. That inversion is what makes a profile-less native
-deployment safe — the old blocklist would simply have gone quiet. Rationale:
+(`SIMULATION_PROFILES` = `dev`, `docker`) rather than blocklisting the deployment
+profile, and permits simulation only when **every** effective profile is on the
+list. A bench run activates `bench` *and* `docker`; `bench` is not on the list, so
+simulation is refused — even though `docker` alone would be permitted, which is
+what lets the deck container simulate. So is `dev,bench`, and so is any future
+profile until it is added deliberately.
+
+That is why the launcher sets `SPRING_PROFILES_ACTIVE=bench` and why starting a
+bench as plain `docker` is wrong: `bench` is the marker that says this JVM can
+reach the machine. `HardwareModeCheckTest` pins it, and would fail if `bench` were
+ever added to the allowlist. Rationale:
 [`../02-modules/spring-boot-setup.md`](../02-modules/spring-boot-setup.md#hardware-mode).

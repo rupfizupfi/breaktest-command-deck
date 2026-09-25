@@ -20,12 +20,13 @@ Catalogue exactly which `ch.rupfizupfi.deck.*` sub-packages live in `:cms`, whic
   - [Bean pickup summary](#bean-pickup-summary)
 - [Where to look in the code](#where-to-look-in-the-code)
 - [Decision: cms stays the shared base (2026-08-16)](#decision-cms-stays-the-shared-base-2026-08-16)
-- [Open questions](#open-questions)
 
 ## Diagram
 
 ```mermaid
 graph TD
+    root["ch.rupfizupfi.deck<br/>(both modules host classes here)"]
+
     subgraph cms_pkgs["Defined in :cms"]
         cms_root["ch.rupfizupfi.deck<br/>Application.java"]
         cms_data["ch.rupfizupfi.deck.data<br/>+ data.jsonViews<br/>+ data.serializer"]
@@ -40,9 +41,12 @@ graph TD
     subgraph deck_pkgs["Defined in :command-deck"]
         deck_root["ch.rupfizupfi.deck<br/>Application.java<br/>(SAME PACKAGE as cms)"]
         deck_api["ch.rupfizupfi.deck.api.services<br/>(SAME PACKAGE as cms)"]
-        deck_device["ch.rupfizupfi.deck.device<br/>+ loadcell + frequencyconverter<br/>+ relayswitch"]
-        deck_test["ch.rupfizupfi.deck.testrunner<br/>+ cyclic + startup.check"]
-        deck_hilla["ch.rupfizupfi.deck.hilla<br/>(empty)"]
+        deck_device["ch.rupfizupfi.deck.device<br/>+ device.loadcell<br/>+ device.frequencyinverter<br/>+ device.relayswitch<br/>+ device.simulated"]
+        deck_test["ch.rupfizupfi.deck.testrunner<br/>+ testrunner.cyclic<br/>+ testrunner.startup.check"]
+    end
+
+    subgraph api_pkgs["Defined in :device-api (included build)"]
+        api_device["ch.rupfizupfi.deck.device.api<br/>Drive, LoadCellStream + their providers"]
     end
 
     deck_api -.->|imports| cms_data
@@ -53,6 +57,10 @@ graph TD
     deck_test -.->|imports| deck_device
     deck_device -.->|imports| cms_data
     deck_root -.->|imports| cms_data
+    deck_device -.->|implements| api_device
+
+    classDef shared fill:#fff3b0,stroke:#333,stroke-width:2px
+    class cms_root,deck_root,cms_api,deck_api shared
 ```
 
 Source diagram: [`doc/diagrams/src/package-overlap.mmd`](../diagrams/src/package-overlap.mmd).
@@ -74,8 +82,7 @@ There is exactly one declared cross-module link: `command-deck/build.gradle:2` �
 | `ch.rupfizupfi.deck.filesystem` | cms | `StorageLocationService`, `CSVStoreService` |
 | `ch.rupfizupfi.deck.hilla.crud` | cms | `OwnerDataHelper` + Hilla CRUD plumbing |
 | `ch.rupfizupfi.deck.service` | cms | `FileService` |
-| `ch.rupfizupfi.deck.hilla` | deck | empty placeholder directory (`command-deck/src/main/java/ch/rupfizupfi/deck/hilla/`) |
-| `ch.rupfizupfi.deck.device` (+ `.loadcell`, `.frequencyconverter`, `.relayswitch`) | deck | hardware drivers + `DeviceService` |
+| `ch.rupfizupfi.deck.device` (+ `.loadcell`, `.frequencyinverter`, `.relayswitch`) | deck | hardware drivers + `DeviceService` |
 | `ch.rupfizupfi.deck.testrunner` (+ `.cyclic`, `.startup.check`) | deck | test-execution engine |
 
 Two packages are present in **both** module source trees: `ch.rupfizupfi.deck` and `ch.rupfizupfi.deck.api.services`. Because the FQNs of the classes inside them are unique (`Application` is in both modules but compiled into different JARs that are loaded one at a time per app; the `api/services` classes are disjoint), this is legal but worth being aware of when grepping.
@@ -123,7 +130,6 @@ When `:command-deck:bootRun` boots, the following bean categories from cms are p
 - `command-deck/src/main/java/ch/rupfizupfi/deck/api/services/TestRunnerService.java:3-6` — deck Hilla service consuming cms `TestResult` / `TestResultRepository`.
 - `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/TestRunnerFactory.java:3-8` — peak cross-module fan-in (cms `TestResult` + cms `CSVStoreService` + cms `StorageLocationService` + own `device/loadcell` + own `testrunner/startup/check`).
 - `command-deck/src/main/frontend/views/@layout.tsx:5` — frontend cross-import via the `cms` Vite alias.
-- `command-deck/src/main/java/ch/rupfizupfi/deck/hilla/` — empty deck-only package (placeholder).
 - `cms/src/main/java/ch/rupfizupfi/deck/security/CheckUserCanOnlyAccessOwnDataAspect.java` — the AOP advice that fires for both modules.
 
 ## Decision: cms stays the shared base (2026-08-16)
@@ -144,12 +150,3 @@ Consequences to keep in mind:
 - `cms-library.jar` (the plain `jar` task output) exists solely so
   `project(':cms')` can be consumed by `:command-deck`. No external
   consumer is known.
-
-## Open questions
-
-1. **Delete the empty `command-deck/.../hilla/` package.**
-   `command-deck/src/main/java/ch/rupfizupfi/deck/hilla/` exists on disk and
-   contains nothing — no classes, no subdirectories. The name shadows cms's real
-   `ch.rupfizupfi.deck.hilla.crud` package, so a reader grepping for the Hilla
-   CRUD plumbing can land on the wrong module. Nothing was ever planned here;
-   remove the directory. (OQ-13)

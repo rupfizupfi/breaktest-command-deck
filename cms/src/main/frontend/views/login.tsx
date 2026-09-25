@@ -9,7 +9,7 @@ export const config: ViewConfig = {
 
 const loginI18n: LoginI18n = {
   ...new LoginOverlayElement().i18n,
-  header: { title: 'Breaktest Command Deck', description: 'Login using user/user or admin/admin' },
+  header: { title: 'Breaktest Command Deck', description: 'Sign in to continue' },
 };
 
 export default function LoginView() {

@@ -9,9 +9,9 @@
 ## Purpose
 
 How a user logs in, how a request reaches a `@BrowserCallable` service, and
-the two independent mechanisms that stop one non-admin user reaching another's
-rows — the `@CheckUserCanOnlyAccessOwnData` aspect for single-row access, and
-a query-level ownership `Specification` for collections.
+the mechanisms that stop one non-admin user reaching another's rows — a
+query-level ownership `Specification` on every owned CRUD service, and the
+`@CheckUserCanOnlyAccessOwnData` aspect for a custom single-row method.
 
 ## Contents
 
@@ -53,10 +53,10 @@ sequenceDiagram
         Repo-->>Aspect: Sample (DataWithOwner)
         Aspect->>Auth: get() current User
         Auth-->>Aspect: User
-        alt owner == null OR owner.id == user.id
+        alt entity.owner == null<br/>or owner.id == user.id
             Aspect-->>Service: allow (returns; method runs)
         else mismatch
-            Aspect--xBrowser: throw SecurityException
+            Aspect--xBrowser: throw SecurityException<br/>"User can only access their own data"
         end
     end
 
@@ -121,12 +121,25 @@ cause a regression, since nothing on those paths was ever enforced.
 needs a caller identity belongs on a `@BrowserCallable` service, or it needs
 its own matcher ahead of the `permitAll()` rule.
 
+Because the caller is unauthenticated, the file name it sends is the whole
+input: `FileService` (upload directory) and `CSVStoreService` (result
+directory) each resolve a name against their base and refuse it with a
+`SecurityException` when the result lands outside — a `..` segment and an
+absolute name alike.
+
 ### Role model
 
 `enum Role { USER, ADMIN }`
 (`cms/src/main/java/ch/rupfizupfi/deck/data/Role.java`); Spring authorities
 add the `ROLE_` prefix. `data.sql` grants `USER` to both seeded accounts and
 `ADMIN` only to `admin` (id 2).
+
+A Hilla view declares `rolesAllowed` as `Role` enum names — `views/admin/user`
+(cms) and `views/system/faults` (command-deck) are the two today. Vaadin 25.2's
+server-side route check compares those strings to granted authorities verbatim,
+so `SecurityConfiguration` registers its own `isSecuredHillaRoute` rule ahead of
+Vaadin's and prefixes each name with `ROLE_` the way `isUserInRole` does; a name
+that already carries the prefix is left alone.
 
 ### How services are protected
 
@@ -140,41 +153,21 @@ denied by Vaadin):
 | `@RolesAllowed("ROLE_ADMIN")` | `UserService` (`cms/.../api/services/UserService.java:12`) |
 | `@AnonymousAllowed` | `ControllerEndpoint`, `FileEndpoint`, `DownloadResults` (REST controllers under `/api/**`) |
 
-Services that hold owner-scoped data wear `@CheckUserCanOnlyAccessOwnData`
-in addition to `@PermitAll`:
+Which rows a non-admin then reaches is decided per service, by one of two
+mechanisms or by none:
 
-* `SampleService` (`cms/.../api/services/SampleService.java:13`)
-* `TestParameterService` (`cms/.../api/services/TestParameterService.java:12`)
-
-`ProjectService` and `TestResultService` rely on extending
-`CrudRepositoryServiceForOwnerData` (below) instead of the aspect.
+| Service | Mechanism | Scoped operations |
+|---|---|---|
+| `ProjectService`, `TestResultService`, `SampleService`, `TestParameterService` | extend `CrudRepositoryServiceForOwnerData` (below) | `get`, `list`, `delete`, `deleteAll`, `save`, `saveAll` |
+| `FileMetadataService` | hand-rolled through the file's `TestResult`, since `FileMetadata` is no `DataWithOwner` | `get`, `list`, `save`, `saveAll`, `delete`, `deleteAll`, `connectToTestResult`; a file with no result, or one whose result has no owner, is readable by everyone |
+| `CustomerService`, `MaterialService`, `GearTypeService`, `GearStandardService` | none — unscoped by design | reference data, shared by every logged-in user |
 
 ### The `@CheckUserCanOnlyAccessOwnData` aspect
 
-Two-layer enforcement, because the AOP aspect alone cannot stop a `list`/
-`findAll` returning other users' rows.
-
-**Layer 1 — AOP (`@Before` interceptor).**
-`CheckUserCanOnlyAccessOwnDataAspect`
-(`cms/.../security/CheckUserCanOnlyAccessOwnDataAspect.java:19`) matches
-either the annotation on a method or on the enclosing type, binding the
-*first* method argument as `value`:
-
-* If the caller is `ROLE_ADMIN`, return immediately.
-* If `value` is a `Long`, the aspect treats it as a primary key, calls
-  `crudRepositoryService.getCrudRepository().findById(id)`, and re-binds
-  `value` to the loaded entity.
-* If `value` (now) implements `DataWithOwner` and the entity has a non-null
-  owner whose id differs from the authenticated user's id, throw
-  `SecurityException("User can only access their own data")`.
-
-This covers `get(id)`, `delete(id)`, `save(entity)`, etc. It does **not**
-cover `list(pageable, filter)` — there is no single argument to inspect.
-
-**Layer 2 — Specification injection (`CrudRepositoryServiceForOwnerData`).**
-`cms/.../hilla/crud/CrudRepositoryServiceForOwnerData.java:17` overrides
-`get`, `list`, `delete` and, for non-admins, AND-s an extra
-`Specification` onto the query:
+**Specification injection is the default — `CrudRepositoryServiceForOwnerData`.**
+`cms/.../hilla/crud/CrudRepositoryServiceForOwnerData.java` overrides
+`get`, `list`, `delete`, `deleteAll`, `save` and `saveAll` and, for non-admins,
+AND-s an extra `Specification` onto the query:
 
 ```java
 spec.and((root, q, cb) -> cb.or(
@@ -182,9 +175,38 @@ spec.and((root, q, cb) -> cb.or(
     cb.isNull(root.get("owner"))));
 ```
 
-So a `list(Pageable, Filter)` returns only owner-matching or owner-null rows —
-a call the aspect never sees. **The aspect rejects single-row access by id;
-the specification scrubs collection results.** Neither covers the other.
+So a `list(Pageable, Filter)` returns only owner-matching or owner-null rows.
+Every owned CRUD service extends this class.
+
+`save` and `saveAll` are scoped by the same class: a non-admin payload's owner
+must be self or null, and a payload carrying an id must name a row the scoped
+`get` resolves, so an id alone never buys write access to another owner's row.
+The owner is stored exactly as sent — the frontend's `OwnerSelector` chooses
+it, and null stays the deliberate shared-row value. `deleteAll` resolves every
+id through that same `get` first, so a batch is refused whole.
+
+`TestResultService.listCSVResults` and `readCSVData` reach files rather than
+rows, so they gate on the scoped `get(id)` themselves before calling
+`CSVStoreService`.
+
+**The aspect is for a custom, non-CRUD method** whose *first* argument is the
+owned entity or its `Long` id — no CRUD service uses it today.
+`CheckUserCanOnlyAccessOwnDataAspect`
+(`cms/.../security/CheckUserCanOnlyAccessOwnDataAspect.java:26`) matches the
+annotation on a method or on the enclosing type, binds that first argument as
+`value`, logs the intercepted method name at debug, and:
+
+* returns immediately for `ROLE_ADMIN`;
+* re-binds a `Long` to the entity
+  `crudRepositoryService.getCrudRepository().findById(id)` loads, and throws
+  `IllegalStateException` naming the target class when that target is no
+  `CrudRepositoryService` — an annotation that cannot resolve its id fails on
+  first use instead of passing;
+* throws `SecurityException("User can only access their own data")` when the
+  entity carries a non-null owner that is somebody else.
+
+It never sees `list(Pageable, Filter)` — there is no single argument to
+inspect — so collection scoping stays the base class's job.
 
 ### `User`-management privileges
 
@@ -217,8 +239,8 @@ fallback). Dev runs plain HTTP on `localhost:8080`. Settings and rationale:
 | Authenticated principal -> JPA `User` | `cms/src/main/java/ch/rupfizupfi/deck/security/AuthenticatedUser.java:23` |
 | Role check helper | `cms/src/main/java/ch/rupfizupfi/deck/security/UserUtils.java:9` |
 | Marker interface | `cms/src/main/java/ch/rupfizupfi/deck/security/DataWithOwner.java:6` |
-| Aspect | `cms/src/main/java/ch/rupfizupfi/deck/security/CheckUserCanOnlyAccessOwnDataAspect.java:19` |
-| Spec injection | `cms/src/main/java/ch/rupfizupfi/deck/hilla/crud/CrudRepositoryServiceForOwnerData.java:21` |
+| Aspect | `cms/src/main/java/ch/rupfizupfi/deck/security/CheckUserCanOnlyAccessOwnDataAspect.java:26` |
+| Spec injection | `cms/src/main/java/ch/rupfizupfi/deck/hilla/crud/CrudRepositoryServiceForOwnerData.java:24` |
 | Spec helper | `cms/src/main/java/ch/rupfizupfi/deck/hilla/crud/OwnerDataHelper.java:22` |
 | Annotation | `cms/src/main/java/ch/rupfizupfi/deck/security/CheckUserCanOnlyAccessOwnData.java` |
 | Seed users | `cms/src/main/resources/data.sql:1-5` |
@@ -231,7 +253,7 @@ to the same organisation, so owner-scoped records (projects, samples, test
 parameters, results) must not leak between them.
 
 Live hardware telemetry is the exception. The `deck` deployment drives one
-physical tester, so `/topic/load-cell`, `/topic/frequency-converter-info`
+physical tester, so `/topic/load-cell`, `/topic/frequency-inverter-info`
 and `/topic/logs` are inherently shared: every operator watching that
 machine sees the same force readings, and per-user filtering on those
 topics would be meaningless. Per-user filtering on those topics is
@@ -250,19 +272,8 @@ default of no rule fails closed.
 
 ## Open questions
 
-1. **`@CheckUserCanOnlyAccessOwnData` covers only two services.**
-   `SampleService` and `TestParameterService` carry it; `ProjectService`,
-   `TestResultService` and `FileMetadataService` rely entirely on
-   `CrudRepositoryServiceForOwnerData`. Given the cloud cms needs genuine
-   isolation, the gap matters: audit each owner-scoped service and decide
-   per service whether the base class alone is sufficient, then make the
-   answer uniform. (OQ-37)
-2. **The aspect silently no-ops on non-CRUD targets.** `getEntityById`
-   only resolves the entity when the AOP target is a
-   `CrudRepositoryService<?, ?>`; applied to a plain `@Service`, the `Long`
-   argument goes unresolved and the check passes. A stricter pointcut or a
-   loud failure would stop a future annotation from being decorative.
-   (OQ-36)
-3. **`System.out.println` in the aspect** (`CheckUserCanOnlyAccessOwnDataAspect.java:22`
-   and `:40`) prints on every owner-scoped call. Replace with SLF4J at
-   debug. (OQ-38)
+1. **One service still hand-rolls its rule.** `FileMetadataService` scopes
+   through the file's `TestResult` on every entry point
+   ([`hilla-services.md`](hilla-services.md#hilla-service-catalogue)) because
+   `FileMetadata` is no `DataWithOwner`, so `CrudRepositoryServiceForOwnerData`
+   cannot carry it; every other owned service does extend that class. (OQ-37)

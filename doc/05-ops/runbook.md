@@ -8,10 +8,11 @@ When something fails, what's the fastest path to a fix? One problem ->
 one diagnostic -> one fix per entry. No theory, no diagrams. Cross-link
 to the deeper docs for the *why*.
 
-> (`./gradlew check` skips a test task that does not exist). The two
-> verification gates are `./script/typecheck.ps1` and the `/deck-run`
-> smoke test; beyond those, verification is manual and this runbook is the
-> primary safety net.
+> **Tests exist; only `/deck-run` exercises the running app.** The verification
+> gates are `./gradlew :cms:test :command-deck:test` (unit + Testcontainers +
+> context tests), `pnpm --dir cms test` (frontend logic),
+> `./script/typecheck.ps1`, and the `/deck-run` smoke test; beyond those,
+> verification is manual and this runbook is the primary safety net.
 
 ## Contents
 
@@ -33,7 +34,6 @@ to the deeper docs for the *why*.
   - [Frontend `404 /api/...` for upload/download endpoints](#frontend-404-api-for-uploaddownload-endpoints)
   - [Postgres container restarts in a loop with `database "rupfizupfi" does not exist`](#postgres-container-restarts-in-a-loop-with-database-rupfizupfi-does-not-exist)
   - [Gradle wrapper crashes with `Unsupported class file major version NN`](#gradle-wrapper-crashes-with-unsupported-class-file-major-version-nn)
-  - [Vaadin dev-server complains about generated files](#vaadin-dev-server-complains-about-generated-files)
 - [Where to look in the code](#where-to-look-in-the-code)
 - [Open questions](#open-questions)
 
@@ -130,20 +130,23 @@ The build succeeds without the driver jars; running does not. The message
 names the missing jar.
 - **Diagnostic:** the error names each missing provider and its jar, and each
   jar registers independently — one missing jar disables only its own provider.
-  In the container: `docker compose exec server-deck ls /app/drivers
-  /app/drivers-local`. On a dev bench: `ls lib/`, and check that `bootRun` ran
-  with `-PdeckDrivers=local`.
-- **Fix (container):** the public `dscusb` plugin comes from the image
-  (`/app/drivers`); if it is missing, the image was built without a valid
-  `read:packages` token — see
-  [`docker-and-profiles.md`](docker-and-profiles.md#required-host-preparation).
-  `usbmodbus.jar` is the host mount: drop it in `docker/drivers-local/` and
-  restart the container. **No rebuild** — drivers load from `LOADER_PATH` at
-  launch.
-- **Fix (dev bench):** put the jars in `lib/` and restart `bootRun` with
-  `-PdeckDrivers=local`, or run the boot jar with `LOADER_PATH=lib`. Neither jar
-  is in git; both are built from sibling repos
-  ([`driver-jars.md`](../03-backend/driver-jars.md)).
+  `ls drivers/` on the bench machine: every launch path reads that one directory,
+  so there is no build option to check as well.
+- **In a container this is a misconfiguration, not a missing file.** The deck
+  container is the simulation and test deployment and carries no driver by
+  design; both drivers are Windows-only, so a Linux image could never use one.
+  Compose sets `DECK_HARDWARE_MODE=simulated`, and seeing this message there
+  means something overrode it. Fix the mode, not the jars.
+- **Fix (bench or dev machine):** put both jars in `drivers/`, then either
+  `script/run-bench.ps1` (which sets `LOADER_PATH` itself) or restart `bootRun`
+  with `--args='--deck.hardware.mode=real'`. Neither jar is in git; both are built from sibling repos
+  ([`driver-jars.md`](../03-backend/driver-jars.md)). Confirm the jars themselves
+  before blaming the app: `./gradlew :command-deck:driverPluginTest`.
+- **Fix (a jar is present and it still refuses):** the jar may be stale rather
+  than missing — a driver built against an incompatible `device-api` refuses to
+  register, and one built before the skew check existed registers nothing and
+  says nothing. `driverPluginTest` names which jar and why; the fix is a driver
+  rebuild (`./gradlew shadowJar` in the sibling repo) and a file copy.
 - **Not a fix:** there is no simulated fallback, deliberately — absent
   hardware must never look like working hardware. `deck.hardware.mode=simulated`
   is refused too, until the simulator exists.
@@ -209,14 +212,6 @@ names the missing jar.
   `gradle:9.7.0-jdk26-corretto`. An older or newer JDK on PATH can produce
   a class-file version Gradle's Groovy parser rejects. Use a version
   manager to select JDK 26 for the build.
-
-### Vaadin dev-server complains about generated files
-- **Diagnostic:** check `git status` for stale `generated/` files.
-- **Fix:** `src/main/frontend/generated/` is gitignored but parts are
-  tracked from earlier commits, so a Hilla regeneration produces noisy
-  diffs. `git checkout -- '*/src/main/frontend/generated/*'` resets to the
-  tracked baseline. The decision is to untrack these trees entirely
-  (OQ-14) — once that lands, this failure mode disappears.
 
 ## Where to look in the code
 

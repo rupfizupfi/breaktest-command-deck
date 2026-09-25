@@ -19,11 +19,20 @@ public class TestResultService extends CrudRepositoryServiceForOwnerData<TestRes
     private CSVStoreService csvStoreService;
 
     public String[] listCSVResults(long id) {
+        requireReadableResult(id);
         String[] paths = csvStoreService.listCSVFilesForTestResult(id);
         return Arrays.stream(paths).map(path -> Paths.get(path).getFileName().toString()).toArray(String[]::new);
     }
 
     public String readCSVData(long id, String fileName) {
+        requireReadableResult(id);
         return csvStoreService.readCSVDataForTestResult(id, fileName);
+    }
+
+    /** Force data is reachable only through a result the owner scoping resolves for the caller. */
+    private void requireReadableResult(long id) {
+        if (get(id).isEmpty()) {
+            throw new SecurityException("You do not have permission to access this record");
+        }
     }
 }

@@ -1,19 +1,27 @@
-%% docker-compose deployment topology (one file, two profiles, two hosts)
-%% docker/docker-compose.yaml
-%% Branch: dev-split @ 2026-08-16
+%% docker-compose deployment topology (one file, two profiles) plus the native bench
+%% docker/docker-compose.yaml, script/run-bench.ps1
+%% Branch: dev-split @ 2026-08-31
 flowchart TB
-    subgraph Cloud["Cloud host — profile: cms"]
-        SC["server-cms<br/>cms/Dockerfile<br/>SPRING_PROFILES_ACTIVE=docker<br/>internal :443 (HTTPS), host 8043"]
+    subgraph Cloud["Cloud host — compose profile: cms"]
+        SC["server-cms<br/>docker/Dockerfile MODULE=cms<br/>SPRING_PROFILES_ACTIVE=docker<br/>internal :443 (HTTPS), host 8043"]
         DB[("db<br/>postgres :5432<br/>rupfizupfi/rupfizupfi<br/>healthcheck pg_isready")]
         DBV[(db-data volume)]
         SC -- "JDBC :5432" --> DB
         DB --- DBV
     end
 
-    subgraph Shop["Tester host, shop floor — profile: deck"]
-        SD["server-deck<br/>command-deck/Dockerfile<br/>SPRING_PROFILES_ACTIVE=docker<br/>internal :443 (HTTPS), host 8043"]
-        HW["USB / serial devices<br/>load cell · CFW11 · relay board"]
-        SD --- HW
+    subgraph Sim["Any host — compose profile: deck (tests and simulations)"]
+        SD["server-deck<br/>docker/Dockerfile MODULE=command-deck<br/>SPRING_PROFILES_ACTIVE=docker<br/>DECK_HARDWARE_MODE=simulated<br/>internal :443 (HTTPS), host 8043"]
+        SDB[("db<br/>compose-local postgres")]
+        SD -- "JDBC :5432 — simulated runs stay out of<br/>the authoritative dataset" --> SDB
+    end
+
+    subgraph Bench["Windows bench — no container"]
+        RB["command-deck boot jar<br/>script/run-bench.ps1<br/>SPRING_PROFILES_ACTIVE=bench<br/>DECK_HARDWARE_MODE=real"]
+        DRV["drivers/<br/>dscusb.jar + usbmodbus.jar<br/>via LOADER_PATH"]
+        HW["USB devices<br/>load cell · CFW11 · relay board"]
+        RB --- DRV
+        RB --- HW
     end
 
     subgraph HostFS["Per-host filesystem (bind mounts)"]
@@ -23,7 +31,7 @@ flowchart TB
         ENV["docker/.env (per host,<br/>from .env.example)<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
     end
 
-    SD -- "JDBC :5432 — intended (OQ-61);<br/>today points at a local db service" --> DB
+    RB -- "JDBC :5432 — the cloud database,<br/>URL owner-owed (OQ-61)" --> DB
 
     BT --> SD
     BT --> SC

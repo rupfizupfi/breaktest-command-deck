@@ -3,11 +3,11 @@ package ch.rupfizupfi.deck.device.api;
 import java.util.Map;
 
 /**
- * The frequency converter operations the deck actually uses. An interface rather than the vendor
+ * The frequency inverter operations the deck actually uses. An interface rather than the vendor
  * type because the vendor's {@code Cfw11} is a Kotlin class and therefore final.
  * <p>
  * No vendor type may appear in this package: it is what keeps the main source set compilable
- * without {@code lib/usbmodbus.jar}. See
+ * without {@code drivers/usbmodbus.jar}. See
  * {@code doc/06-feature-work/virtual-devices/driver-api-extraction.md}.
  */
 public interface Drive {
@@ -19,7 +19,11 @@ public interface Drive {
     void setControlParameters(Boolean start, Boolean generalEnable, Boolean directionIsForward,
                               Boolean localRemote, Boolean useSecondRamp);
 
-    /** Read by {@code CFW11Device} under keys {@code start}, {@code generalEnable}, {@code useSecondRamp}, {@code directionIsForward}. */
+    /**
+     * Must contain the keys {@code start}, {@code generalEnable}, {@code useSecondRamp},
+     * {@code directionIsForward}; {@code FrequencyInverterDevice} treats a missing or null one as a
+     * poll failure naming the key.
+     */
     Map<String, Boolean> getControlParameters();
 
     void setStart(boolean start);
@@ -45,7 +49,10 @@ public interface Drive {
      */
     int getMotorSpeedValueAsRpm();
 
-    /** Read by {@code CFW11Device} under keys {@code speed}, {@code current}, {@code voltage}, {@code torque}. */
+    /**
+     * Must contain the keys {@code speed}, {@code current}, {@code voltage}, {@code torque};
+     * {@code FrequencyInverterDevice} treats a missing or null one as a poll failure naming the key.
+     */
     Map<String, Integer> getMotorData();
 
     /** 2 = disable via general enable; the drive's own backstop for a lost link. */

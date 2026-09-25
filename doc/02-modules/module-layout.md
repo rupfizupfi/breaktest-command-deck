@@ -34,9 +34,9 @@ Source diagram: [`doc/diagrams/src/module-graph.mmd`](../diagrams/src/module-gra
 The repo ships two `@SpringBootApplication` classes, both in package `ch.rupfizupfi.deck`:
 
 - `cms/src/main/java/ch/rupfizupfi/deck/Application.java:24` — Content-Management deployment. Owns every JPA entity (10 of them), all `@RestController`s under `/api/**`, all 11 customer/sample/project/result `@BrowserCallable` Hilla services, the `SecurityConfiguration`, the `WebSocketConfig` and the `data.sql` seed.
-- `command-deck/src/main/java/ch/rupfizupfi/deck/Application.java:23` — Hardware-control deployment. Adds the test-execution engine (`testrunner/*`), the device drivers (`device/loadcell`, `device/frequencyconverter`, `device/relayswitch`) and three more `@BrowserCallable` services (`SuckService`, `TestRunnerService`, `DeviceInfoService`).
+- `command-deck/src/main/java/ch/rupfizupfi/deck/Application.java:23` — Hardware-control deployment. Adds the test-execution engine (`testrunner/*`), the device drivers (`device/loadcell`, `device/frequencyinverter`, `device/relayswitch`) and three more `@BrowserCallable` services (`SuckService`, `TestRunnerService`, `DeviceInfoService`).
 
-The split is a **deployment** boundary, not a compile-time isolation: the same H2 file (`./.data/deck` in dev) and the same PostgreSQL schema in `docker` are read/written by both apps. The CMS image runs anywhere there is a database; the command-deck image runs only on the physical bench computer that has the USB load cell, the CFW11 frequency converter and the relay switch wired up. Putting hardware code in a separate fat JAR keeps `dscusb.jar` (a native USB driver) off the CMS classpath, where it would be useless.
+The split is a **deployment** boundary, not a compile-time isolation: the same H2 file (`./.data/deck` in dev) and the same PostgreSQL schema in `docker` are read/written by both apps. The CMS image runs anywhere there is a database; the command-deck image runs only on the physical bench computer that has the USB load cell, the CFW11 frequency inverter and the relay switch wired up. Putting hardware code in a separate fat JAR keeps `dscusb.jar` (a native USB driver) off the CMS classpath, where it would be useless.
 
 A side-effect — and a quirk worth knowing — is that **`command-deck` is a strict superset of `cms` at runtime**: it depends on `cms` (`command-deck/build.gradle:2`), inherits its component scan, ships every Hilla service `cms` exposes, and merges the cms frontend routes into its own bundle (`command-deck/customFileSystemRouterPlugin.ts:73`). So `:command-deck:bootRun` serves the CMS UI **plus** the run/control views; `:cms:bootRun` only serves the CMS UI.
 
@@ -71,7 +71,7 @@ A clean `./gradlew build` produces, per module, both a Spring Boot fat JAR (`boo
 - `cms/build.gradle:1` → `cms-application.jar` (boot) + `cms-library-plain.jar` (plain)
 - `command-deck/build.gradle:10` → `command-deck-application.jar` (boot) + `command-deck-library-plain.jar` (plain)
 
-The plain JARs are byproducts. The Dockerfiles `COPY .../build/libs/*.jar /app/MODULE.jar`, and the glob is safe because each image runs `gradle clean :MODULE:bootJar` — `bootJar` does not depend on `jar`, so `build/libs/` holds exactly one artefact at `COPY` time. Changing that build command to `assemble` or `build` would put two jars there and break the image.
+The plain JARs are byproducts. `docker/Dockerfile` copies `.../build/libs/*-application.jar` — matching the boot jar's `archiveBaseName` suffix rather than a bare `*.jar` glob, so a second artefact in `build/libs/` cannot turn that `COPY` into an ambiguous multi-source one. The old glob was safe only because each image runs `gradle clean :MODULE:bootJar` and `bootJar` does not depend on `jar`; switching that command to `assemble` or `build` used to break the image.
 
 `cms-library.jar` exists solely so `project(':cms')` resolves for `:command-deck`; no external consumer is known. See [`shared-code-strategy.md`](shared-code-strategy.md).
 

@@ -11,8 +11,11 @@ import 'cms/components/autocrud/autoCrud.css';
 import {AutoFormFieldProps} from "@vaadin/hilla-react-crud/autoform-field";
 
 
+/** `__copy` marks a row the Copy button cloned; no generated model carries it. */
+export type WithCopyFlag<T> = T & { __copy?: boolean };
+
 export type AutoCrudFormHeaderRenderer<TItem> = (
-    editedItem: TItem | null,
+    editedItem: WithCopyFlag<TItem> | null,
     disabled: boolean,
 ) => JSX.Element | null | undefined;
 
@@ -93,9 +96,11 @@ function defaultFormHeaderRenderer<TItem>(editedItem: TItem | null, disabled: bo
     return editedItem ? <h3 style={style}>Edit item</h3> : <h3 style={style}>New item</h3>;
 }
 
-function defaultCopyItem<TItem>(item: TItem): TItem {
-    const clone = JSON.parse(JSON.stringify(item));
+function defaultCopyItem<TItem>(item: TItem): WithCopyFlag<TItem> {
+    const clone = JSON.parse(JSON.stringify(item)) as WithCopyFlag<TItem> & { id?: unknown; version?: number };
     clone.id = undefined;
+    // 0 is the unsaved value of a primitive @Version int; must stay a number on the wire.
+    clone.version = 0;
     clone.__copy = true;
     return clone;
 }

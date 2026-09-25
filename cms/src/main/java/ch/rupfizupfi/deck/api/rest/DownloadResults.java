@@ -8,8 +8,9 @@ import ch.rupfizupfi.deck.filesystem.CSVStoreService;
 import jakarta.annotation.security.PermitAll;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -20,41 +21,25 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/DownloadEndpoint")
 @PermitAll
 public class DownloadResults {
-    private static final Logger log = Logger.getLogger(DownloadResults.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(DownloadResults.class);
 
     protected final ProjectRepository projectRepository;
     protected final SampleRepository sampleRepository;
     protected final TestResultRepository testResultRepository;
     protected final CSVStoreService csvStoreService;
-    protected long minTimeStamp;
 
     public DownloadResults(ProjectRepository projectRepository, SampleRepository sampleRepository, TestResultRepository testResultRepository, CSVStoreService csvStoreService) {
         this.projectRepository = projectRepository;
         this.sampleRepository = sampleRepository;
         this.testResultRepository = testResultRepository;
         this.csvStoreService = csvStoreService;
-    }
-
-    @RequestMapping(value = "/get", method = RequestMethod.GET)
-    public String get() {
-        minTimeStamp = (System.currentTimeMillis() / 1000) - 60 * 60 * 24 * 4;
-        StringBuilder result = new StringBuilder();
-        testResultRepository.findAll().forEach(testResult -> {
-            // create array of field from testResult, name, result:
-            var fields = new String[]{testResult.sample.name, testResult.testParameter.type, csvStoreService.getPeaksFromResultFiles(testResult.getId()), testResult.description, testResult.resultText};
-            result.append('"').append(String.join("\",\"", fields)).append("\"\n");
-        });
-
-        return result.toString();
     }
 
     @RequestMapping(value = "/project/{projectId:[\\d]+}", method = RequestMethod.GET)
@@ -79,7 +64,7 @@ public class DownloadResults {
 
             return ResponseEntity.ok().headers(headers).contentLength(resource.contentLength()).body(resource);
         } catch (IOException e) {
-            log.severe(e.getMessage());
+            log.error("Could not build the results workbook for project {}", projectId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
@@ -193,12 +178,5 @@ public class DownloadResults {
                 throw new IllegalArgumentException("Unsupported value type");
             }
         }
-    }
-
-    private ResponseEntity<FileSystemResource> createResponseEntity(File file) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + file.getName());
-        headers.add(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        return ResponseEntity.ok().headers(headers).body(new FileSystemResource(file));
     }
 }

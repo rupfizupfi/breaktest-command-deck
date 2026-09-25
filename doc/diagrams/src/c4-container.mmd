@@ -1,13 +1,13 @@
 %% C4 Container diagram for Breaktest Command Deck
-%% Branch: dev-split @ 2026-04-25
+%% Branch: main @ 2026-08-29
 %% Sources: settings.gradle, docker/docker-compose.yaml, application*.properties,
 %%          command-deck/build.gradle (depends on :cms), lib/dscusb.jar
 flowchart LR
     BR["Browser<br/>React 19 + TypeScript<br/>@stomp/rx-stomp"]:::container
 
-    subgraph Apps["Spring Boot apps (Java 26, Vaadin/Hilla 25.2.6)"]
-        DECK["command-deck app<br/>command-deck-application.jar<br/>(superset of cms)<br/>hardware control + tests"]:::container
-        CMS["cms app<br/>cms-application.jar<br/>projects/samples/results CRUD<br/>REST under /api/**"]:::container
+    subgraph Apps["Spring Boot 4.1 apps (Java 26, Vaadin/Hilla 25.2.6)"]
+        DECK["command-deck app · tester host<br/>command-deck-application.jar<br/>(superset of cms)<br/>hardware control + tests"]:::container
+        CMS["cms app · cloud host<br/>cms-application.jar<br/>projects/samples/results CRUD<br/>REST under /api/**"]:::container
     end
 
     subgraph DB["Database"]
@@ -17,13 +17,13 @@ flowchart LR
 
     subgraph HW["Hardware (USB / RS232)"]
         LC["DSCUSB load cell<br/>(dscusb.jar)"]:::hw
-        CFW["WEG CFW11 freq converter<br/>(usbmodbus.jar)"]:::hw
+        CFW["WEG CFW11 freq inverter<br/>(usbmodbus.jar)"]:::hw
         REL["4-way relay CH9102<br/>(jSerialComm)"]:::hw
     end
 
     BR -- "HTTPS Hilla RPC<br/>(generated TS clients)" --> DECK
     BR -- "HTTPS Hilla RPC" --> CMS
-    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-converter-info<br/>/topic/status, /topic/logs" .-> DECK
+    BR <-. "STOMP /topic/load-cell<br/>/topic/frequency-inverter-info<br/>/topic/status, /topic/logs" .-> DECK
 
     DECK -- "implementation project(':cms')<br/>shared package ch.rupfizupfi.deck" --> CMS
     DECK -- "JDBC" --> H2

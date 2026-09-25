@@ -35,6 +35,6 @@
 LICENSE
 README.md
 /.secrets
-# Bench-local driver plugins. The build stages the public driver from GitHub Packages instead, and
-# the licence-restricted usbmodbus.jar must not even enter the build context.
-/lib
+# The bench's driver plugin directory. The image stages the public driver from GitHub Packages
+# instead, and the licence-restricted usbmodbus.jar must not even enter the build context.
+/drivers

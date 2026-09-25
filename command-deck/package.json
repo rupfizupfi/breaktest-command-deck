@@ -3,6 +3,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:generate": "powershell -NoProfile -ExecutionPolicy Bypass -File ../script/typecheck.ps1",
     "typecheck:all": "powershell -NoProfile -ExecutionPolicy Bypass -File ../script/typecheck.ps1 -SkipGenerate"
@@ -70,7 +71,8 @@
     "transform-ast": "2.4.4",
     "typescript": "6.0.3",
     "vite": "8.0.16",
-    "vite-plugin-checker": "0.14.5"
+    "vite-plugin-checker": "0.14.5",
+    "vitest": "4.1.11"
   },
   "vaadin": {
     "dependencies": {
@@ -128,6 +130,6 @@
       "vite": "8.0.16",
       "vite-plugin-checker": "0.14.5"
     },
-    "hash": "3ddaa2cf869110e285572e0281e044deaf3c355a7ef7c9a97b93944548786f26"
+    "hash": "a7e56219ea11b3c32bcbf7d58bbf935d427e722864858b7efe09de5c2c7daf69"
   }
 }

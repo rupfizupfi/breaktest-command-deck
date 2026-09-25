@@ -7,7 +7,8 @@
 Document the production deployment shape: one `docker-compose.yaml`, two
 Compose profiles (`cms` and `deck`) that run on **different hosts**, one
 Postgres service, and the host-side state (secret file + keystore + bind
-mounts) the operator must provide.
+mounts) the operator must provide. Neither container drives the machine — the
+bench runs natively, [`bench-deployment.md`](bench-deployment.md).
 
 ## Contents
 
@@ -30,70 +31,77 @@ separate deployments:
 | Profile | Runs where | Why |
 |---|---|---|
 | `cms` | Cloud host | Content management: projects, samples, customers, materials, results. Reachable by users who are nowhere near the machine. |
-| `deck` | The physical tester, on the shop floor | Needs local USB/serial access to the load cell, CFW11 frequency converter and relay board. |
+| `deck` | Any host — a CI box, a laptop, the cloud | Running the deck's own stack for **tests and simulations**: the full application, `deck.hardware.mode=simulated`, no driver plugin anywhere in the image. |
 
-> **The `deck` image cannot reach that hardware.** Both driver plugins are
-> Windows-only and this image is Linux, so each refuses to register and the
-> container fails at startup rather than mid-run (**OQ-79**). Running natively on
-> the Windows bench is the only path that drives hardware today:
-> [`bench-deployment.md`](bench-deployment.md).
+**Neither container touches hardware, and the `deck` container is not the
+tester.** Both driver plugins are Windows-only, so a Linux image could not drive
+the bench even if it carried them. **Decided (2026-08-31):** rather
+than retire the `deck` profile, it becomes the simulation and test deployment, and
+every piece of driver delivery leaves the image — no `stageDrivers`, no GitHub
+Packages credential, no `drivers-local` mount, no `LOADER_PATH`. The machine is
+driven by `command-deck` running **natively on the Windows bench**
+([`bench-deployment.md`](bench-deployment.md)), the only deployment that supplies a
+driver at all.
 
-The on-machine `deck` connects to the **cloud database**, so there is one
-authoritative dataset rather than a sync problem. That also means the
-tester needs network reachability to the cloud host in order to run a
-test.
+That settles the container half of the database question: a simulated run must
+**not** write into the authoritative dataset, so the `deck` service uses the
+Compose-local `db`, which is what it already defaulted to (`DECK_DB_URL` still
+points it elsewhere for a shared test database).
 
-> **The mechanism exists; the value is owner-owed.** `spring.datasource.url` is
-> now `${DB_URL:...}`, and the deck service passes `DECK_DB_URL`. Unset, it still
-> falls back to the Compose-local `db` — fine for a smoke test, wrong for a real
-> run. Supplying the cloud URL is what remains of OQ-61. There is deliberately no
-> fallback on connection failure: a deck that quietly wrote results elsewhere
-> would be worse than one that refuses to start.
+> **What remains of OQ-61 belongs to the bench.** It is the deployment that must
+> reach the cloud Postgres, and it takes its URL from `script/run-bench.ps1`
+> (`DB_URL`, no local fallback — a deck that quietly wrote results elsewhere would
+> be worse than one that refuses to start). The cloud host is still owner-owed.
 
 ## Diagram — deployment topology
 
 ```mermaid
 flowchart TB
-    Host[("Docker host")]
+    subgraph Cloud["Cloud host — compose profile: cms"]
+        SC["server-cms<br/>docker/Dockerfile MODULE=cms<br/>SPRING_PROFILES_ACTIVE=docker<br/>internal :443 (HTTPS), host 8043"]
+        DB[("db<br/>postgres :5432<br/>rupfizupfi/rupfizupfi<br/>healthcheck pg_isready")]
+        DBV[(db-data volume)]
+        SC -- "JDBC :5432" --> DB
+        DB --- DBV
+    end
 
-    subgraph HostFS["Host filesystem"]
-        BT["docker/breaktester/<br/>config + media"]
-        KS["docker/keystore/<br/>rupfizupfi.p12 (PKCS12)"]
+    subgraph Sim["Any host — compose profile: deck (tests and simulations)"]
+        SD["server-deck<br/>docker/Dockerfile MODULE=command-deck<br/>SPRING_PROFILES_ACTIVE=docker<br/>DECK_HARDWARE_MODE=simulated<br/>internal :443 (HTTPS), host 8043"]
+        SDB[("db<br/>compose-local postgres")]
+        SD -- "JDBC :5432 — simulated runs stay out of<br/>the authoritative dataset" --> SDB
+    end
+
+    subgraph Bench["Windows bench — no container"]
+        RB["command-deck boot jar<br/>script/run-bench.ps1<br/>SPRING_PROFILES_ACTIVE=bench<br/>DECK_HARDWARE_MODE=real"]
+        DRV["drivers/<br/>dscusb.jar + usbmodbus.jar<br/>via LOADER_PATH"]
+        HW["USB devices<br/>load cell · CFW11 · relay board"]
+        RB --- DRV
+        RB --- HW
+    end
+
+    subgraph HostFS["Per-host filesystem (bind mounts)"]
+        BT["docker/breaktester/<br/>config + media + CSV results"]
+        KS["docker/keystore/<br/>rupfizupfi.p12 (PKCS12, self-signed by startup.sh)"]
         SEC[".secrets/db-password.txt"]
         ENV["docker/.env (per host,<br/>from .env.example)<br/>KEY_STORE_PASSWORD<br/>COMPOSE_PROFILES"]
     end
 
-    subgraph Net["docker network rupfizupfi"]
-        subgraph DeckProfile["profile: deck"]
-            SD["server-deck<br/>command-deck/Dockerfile<br/>internal :443"]
-        end
-        subgraph CmsProfile["profile: cms"]
-            SC["server-cms<br/>cms/Dockerfile<br/>internal :443"]
-        end
-        subgraph Always["always"]
-            DB[("db<br/>postgres :5432")]
-            DBV[(db-data volume)]
-        end
-    end
-
-    Host -- "8043 -> 443<br/>(tester host)" --> SD
-    Host -- "8043 -> 443<br/>(cloud host)" --> SC
-
-    SD -- "JDBC :5432" --> DB
-    SC -- "JDBC :5432" --> DB
-    DB --- DBV
+    RB -- "JDBC :5432 — the cloud database,<br/>URL owner-owed (OQ-61)" --> DB
 
     BT --> SD
     BT --> SC
     KS --> SD
     KS --> SC
 
-    SEC -. db-password secret .-> SD
-    SEC -. db-password secret .-> SC
-    SEC -. POSTGRES_PASSWORD_FILE .-> DB
+    SEC -. "secret: db-password<br/>mounted at /run/secrets/db-password" .-> SD
+    SEC -. "secret: db-password" .-> SC
+    SEC -. "POSTGRES_PASSWORD_FILE" .-> DB
+
 
     classDef secret fill:#fee,stroke:#900
+    classDef volume fill:#eef,stroke:#039
     class SEC secret
+    class BT,KS,DBV volume
 ```
 
 Source: [`doc/diagrams/src/deployment.mmd`](../diagrams/src/deployment.mmd).
@@ -106,8 +114,8 @@ Source: [`doc/diagrams/src/deployment.mmd`](../diagrams/src/deployment.mmd).
 
 | Service | Profile | Build | Internal port | Host port | Env |
 |---|---|---|---|---|---|
-| `server-cms` | `cms` | `cms/Dockerfile` (context `..`) | 443 | 8043 | `SPRING_PROFILES_ACTIVE=docker`, `KEY_STORE_PASSWORD`, `DB_PASSWORD_FILE=/run/secrets/db-password` |
-| `server-deck` | `deck` | `command-deck/Dockerfile` (context `..`) | 443 | 8043 | same as above |
+| `server-cms` | `cms` | `docker/Dockerfile`, `MODULE=cms` (context `..`) | 443 | 8043 | `SPRING_PROFILES_ACTIVE=docker`, `KEY_STORE_PASSWORD`, `DB_PASSWORD_FILE=/run/secrets/db-password` |
+| `server-deck` | `deck` | `docker/Dockerfile`, `MODULE=command-deck` (context `..`) | 443 | 8043 | the same, plus `DECK_HARDWARE_MODE=simulated` and `DB_URL` |
 | `db` | (no profile gate; always on) | image `postgres` (no tag) | 5432 (`expose:`, not published) | — | `POSTGRES_DB=rupfizupfi`, `POSTGRES_USER=rupfizupfi`, `POSTGRES_PASSWORD_FILE=/run/secrets/db-password` |
 
 Activate exactly one per host — `cms` on the cloud host, `deck` on the tester.
@@ -126,10 +134,10 @@ unrecorded, so nothing can activate it yet (OQ-56).
 
 ### Image build and entrypoint
 
-Both images are two-stage builds (`gradle:9.7.0-jdk26-corretto` →
-`eclipse-temurin:26-jre`) sharing one entrypoint script that self-signs a TLS
-keystore and unwraps the DB-password secret. Details, and the three details
-that surprise people, are in [`docker-images.md`](docker-images.md).
+**One Dockerfile, parameterised by `MODULE`.** `docker/Dockerfile` is a two-stage
+build (`gradle:9.7.0-jdk26-corretto` → `eclipse-temurin:26-jre`); the two services
+differ only in that build arg. The shared entrypoint self-signs a TLS keystore and
+unwraps the DB-password secret; details in [`docker-images.md`](docker-images.md).
 
 ### Spring profiles
 
@@ -155,6 +163,16 @@ the two placeholders above plus `DECK_STORAGE_ROOT` are the only per-deployment
 differences, so no `application-bench.properties` exists —
 [`bench-deployment.md`](bench-deployment.md).
 
+**That alias is also the safety boundary, so it is not cosmetic.** The one thing
+the container and the bench must never share is `deck.hardware.mode`, so
+`application-docker.properties` sets it for neither: each declares its own through
+`DECK_HARDWARE_MODE` (an environment variable outranks every properties file), and
+unset by both, `application.properties` supplies the fail-safe `real`.
+`HardwareModeCheck` permits simulation under `docker` but **not** under `bench` — a
+bench run's active set is `[bench, docker]` and the allowlist requires *every*
+active profile to be permitted, so the container may simulate and the bench may
+not, distinguished only by that extra entry. `HardwareModeCheckTest` pins both.
+
 See [`db.md`](db.md) for the database angle.
 
 ### Volumes & secrets
@@ -172,25 +190,8 @@ See [`db.md`](db.md) for the database angle.
 * **Secret `db-password`** (mapped to `../.secrets/db-password.txt`). Both
   Postgres (`POSTGRES_PASSWORD_FILE`) and the app server
   (`DB_PASSWORD_FILE`) read from `/run/secrets/db-password`.
-* **Bind mount `./drivers-local:/app/drivers-local:ro`, deck only.** The
-  licence-restricted `usbmodbus.jar`, which may not be redistributed and is
-  therefore never in the image. Second entry on the container's `LOADER_PATH`;
-  the public `dscusb.jar` is already at `/app/drivers` from the image build, and
-  must not be duplicated here — the earlier `loader.path` entry wins, so a
-  second copy is a silent version-skew trap. Drop the jar in and restart; there
-  is nothing to rebuild. Owned by
-  [`driver-jars.md`](../03-backend/driver-jars.md).
-* **Build secret `github-token`**, deck build only. A file-backed secret like
-  `db-password`, its path set by `GITHUB_TOKEN_FILE` and defaulting to the
-  committed **empty** `docker/github-token.empty`. A PAT with
-  `read:packages`, mounted only into the build stage so it never lands in a
-  layer. `stageDrivers` needs it because GitHub Packages demands a token even
-  for public reads. **Optional** — left at the default the build still succeeds,
-  warns, and leaves `/app/drivers` empty; the container then refuses to start in
-  real mode naming the missing provider. The path is indirected precisely for
-  that: compose aborts *before the build starts* if a declared secret's file is
-  missing, so a plain path would have made the token mandatory. The `cms`
-  profile neither uses nor needs it.
+**`db-password` is the only secret, and the image build is credential-free** — it
+resolves no driver plugin, so it needs neither a registry token nor a build secret.
 
 ### Required host preparation
 
@@ -206,19 +207,16 @@ Before `docker compose up -d`, an operator must:
    generates a self-signed one. **Accepted as the normal operating mode
    (2026-08-16)** — the tester is reached over a trusted local network,
    so the auto-signed cert is intended, not a fallback.
-4. **Tester only:** put a PAT with `read:packages` in
-   `<repo>/.secrets/github-token.txt` and set
-   `GITHUB_TOKEN_FILE=../.secrets/github-token.txt` (a path, so `docker/.env`
-   is its home — the token is not). Optionally set `GITHUB_ACTOR`; it
-   defaults to a placeholder GitHub Packages accepts alongside a valid token.
-   Skipping this leaves `/app/drivers` empty, which fails at startup, not at
-   build time. Confirm with
-   `docker compose exec server-deck ls /app/drivers`.
-5. **Tester only:** copy `usbmodbus.jar` into `docker/drivers-local/`. Without
-   it the container starts and then refuses, naming the missing `DriveProvider`
-   — by design, it never falls back to a simulator.
-6. Run the profile that matches the host: `deck` on the tester, `cms` in
-   the cloud.
+4. Run the profile that matches the host: `cms` in the cloud, `deck` wherever
+   tests and simulations run.
+5. Rotate the seeded accounts before the cms host is reachable from outside.
+   `cms/src/main/resources/data.sql` seeds `user`/`user` (role `USER`) and
+   `admin`/`admin` (roles `USER` + `ADMIN`) on any boot that finds the user table
+   empty. Change both passwords, or remove `user` and keep one admin whose
+   password you set.
+
+Nothing about driver plugins appears here any more, for either profile. The bench
+has its own, shorter list: [`bench-deployment.md`](bench-deployment.md).
 
 See [`runbook.md`](runbook.md) for failure modes when these preconditions
 are skipped.
@@ -229,8 +227,7 @@ are skipped.
 |---|---|
 | Compose file | `docker/docker-compose.yaml` |
 | Compose env defaults | `docker/.env.example` (tracked); `docker/.env` is the per-host copy, gitignored |
-| CMS image | `cms/Dockerfile` |
-| Deck image | `command-deck/Dockerfile` |
+| Both images | `docker/Dockerfile` (one file, `MODULE` build arg) |
 | Container entrypoint (shared) | `cms/src/docker/bin/startup.sh` |
 | Active-profile property | `cms/src/main/resources/application.properties:1` (`spring.profiles.default=dev`) |
 | Docker profile DB / TLS | `cms/src/main/resources/application-docker.properties` (and the byte-identical command-deck copy) |
@@ -239,11 +236,11 @@ are skipped.
 
 ## Open questions
 
-1. **Point `deck` at the cloud Postgres.** The decided topology has the
-   on-machine deck using the cloud database, but
-   `application-docker.properties` still hardcodes the Compose-local
-   `db:5432`. Needs an externalised JDBC URL and a decision on what
-   happens to a running test when the link drops. (OQ-61)
+1. **Point the *bench* at the cloud Postgres.** The URL is externalised
+   (`${DB_URL:...}`) and `script/run-bench.ps1` refuses to start without it, so
+   what is left is owner-owed: the cloud host, and a decision on what happens to
+   a running test when the link drops. No longer a container question —
+   simulated runs belong in the local db. (OQ-61)
 2. **`rclone` service is missing.** The compose file never defines it, so
    `.env.example` does not activate it. Intended purpose is off-tester
    backup of test result files — the remote target, credentials handling

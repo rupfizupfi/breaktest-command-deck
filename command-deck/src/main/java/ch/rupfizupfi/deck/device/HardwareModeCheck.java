@@ -30,12 +30,21 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
      * The only profiles a simulator may run under — an allowlist, not a blocklist.
      * <p>
      * Blocklisting the deployment profile was the earlier shape and it had the failure mode
-     * backwards: any profile nobody remembered to add was permitted to simulate. That matters now
-     * that the deck can be deployed without the {@code docker} profile at all — running natively on
-     * the Windows bench, which is the only way it reaches the hardware (OQ-79). An allowlist fails
+     * backwards: any profile nobody remembered to add was permitted to simulate. An allowlist fails
      * safe for profiles that do not exist yet, and enabling one becomes a reviewed edit here.
+     * <p>
+     * {@code docker} is on it because the deck container is a <b>simulation and test deployment</b>,
+     * not a bench: it runs a Linux image, where both drivers refuse to register on principle, so it
+     * could not reach hardware even with a jar. What keeps that from also permitting a simulator on
+     * the real bench is {@code containsAll} below plus the {@code bench} profile: a native bench run
+     * activates {@code bench}, which groups to {@code docker}, so its active set is
+     * {@code [bench, docker]} — and {@code bench} is deliberately <b>not</b> on this list, so
+     * simulation there is refused. That makes {@code bench} the marker for "this JVM may reach the
+     * machine", and {@code script/run-bench.ps1} always sets it. Starting a bench natively with
+     * {@code SPRING_PROFILES_ACTIVE=docker} instead would bypass that, which is why the script is
+     * the documented way in ({@code doc/05-ops/bench-deployment.md}).
      */
-    private static final Set<String> SIMULATION_PROFILES = Set.of("dev");
+    private static final Set<String> SIMULATION_PROFILES = Set.of("dev", "docker");
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
@@ -55,19 +64,22 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
 
         switch (mode) {
             case REAL -> requireProviders(beanFactory, mode,
-                    "DriveProvider (frequency converter) - usbmodbus.jar",
+                    "DriveProvider (frequency inverter) - usbmodbus.jar",
                     "LoadCellStreamProvider (load cell) - dscusb.jar",
-                    "No driver plugin registered the provider. Drivers are loaded at launch from "
-                            + "the loader.path directories (LOADER_PATH env var, or "
+                    "No driver plugin registered the provider. Drivers are loaded at launch "
+                            + "from the loader.path directories (LOADER_PATH env var, or "
                             + "-Dloader.path), not from the build - so put the jar in place and "
-                            + "restart, there is nothing to rebuild. In the container: "
-                            + "/app/drivers carries dscusb.jar from the image, and "
-                            + "/app/drivers-local is the host mount for the licence-restricted "
-                            + "usbmodbus.jar (docker/drivers-local/ on the tester). On a dev bench: "
-                            + "run bootRun with -PdeckDrivers=local and the jars in lib/, or start "
-                            + "this jar with LOADER_PATH=lib. Provenance and build requirements "
-                            + "for both jars: doc/03-backend/driver-jars.md. This never falls back "
-                            + "to a simulator - a test bench that cannot reach its hardware must "
+                            + "restart, there is nothing to rebuild. Every path on a Windows "
+                            + "machine reads drivers/: put both jars there, then either "
+                            + "script/run-bench.ps1 (which sets LOADER_PATH for you) or bootRun "
+                            + "with --deck.hardware.mode=real. Check the jars themselves with "
+                            + "`gradlew :command-deck:driverPluginTest`; provenance and build "
+                            + "requirements are in doc/03-backend/driver-jars.md. If this is a "
+                            + "container: it cannot drive the bench at all - both drivers are "
+                            + "Windows-only - so it is meant to run "
+                            + "deck.hardware.mode=simulated, and real mode here is a "
+                            + "misconfiguration rather than a missing file. This never falls back "
+                            + "to a simulator: a test bench that cannot reach its hardware must "
                             + "not run at all.");
             case SIMULATED -> {
                 requireSimulationProfile(environment);

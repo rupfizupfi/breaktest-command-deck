@@ -3,19 +3,19 @@
 flowchart LR
     subgraph Hardware["Physical hardware (real mode only)"]
         DSC["DSCUSB load-cell (USB)"]
-        CFW["WEG CFW11 frequency converter (USB Modbus)"]
+        CFW["WEG CFW11 frequency inverter (USB Modbus)"]
         REL["4-way relay CH9102 (Serial)"]
     end
 
     subgraph Providers["Providers - one pair per deck.hardware.mode"]
-        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>plugin jars on loader.path, Windows only"]
+        VEND["real: Cfw11Drive / CellValueStream<br/>plugin jars on loader.path, Windows only"]
         SIM["simulated: SimulatedDrive / SimulatedLoadCellStream<br/>shared SimulatedBench"]
     end
 
     subgraph DeviceLayer["device/ - singleton DeviceService"]
         LCD["LoadCellDevice<br/>(extends Device)<br/>readData() loop, 20ms"]
-        CFD["CFW11Device<br/>(extends Device)<br/>readData() loop, 400ms"]
-        FRS["FourWayRelaySwitch<br/>(plain object)"]
+        CFD["FrequencyInverterDevice<br/>(extends Device)<br/>readData() loop, 400ms"]
+        FRS["RelaySwitch<br/>(via RelaySwitchProvider, owned by SuckService)"]
     end
 
     subgraph Broadcasters
@@ -25,7 +25,7 @@ flowchart LR
 
     subgraph Topics["STOMP topics"]
         T1["/topic/load-cell"]
-        T2["/topic/frequency-converter-info"]
+        T2["/topic/frequency-inverter-info"]
     end
 
     DSC --> VEND

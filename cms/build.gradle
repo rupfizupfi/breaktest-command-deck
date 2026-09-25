@@ -9,3 +9,21 @@ jar {
     archiveBaseName = 'cms-library'
     enabled = true
 }
+
+tasks.named('bootRun') {
+    // The dev H2 URL is working-directory relative; both modules must resolve it to the same file.
+    workingDir = rootProject.projectDir
+}
+
+dependencies {
+    // Persistence tests run against real PostgreSQL (Testcontainers), not H2 — the dev/prod
+    // split is H2/Postgres and H2 semantics are not what production sees. Versions come from
+    // the Boot 4.1 BOM (Testcontainers 2.0.5); the 2.0 modules are the RENAMED coordinates —
+    // the old org.testcontainers:postgresql no longer exists.
+    // Boot 4 split the test slices out of spring-boot-test-autoconfigure: @DataJpaTest and
+    // @AutoConfigureTestDatabase now come from the data-jpa test starter.
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+}

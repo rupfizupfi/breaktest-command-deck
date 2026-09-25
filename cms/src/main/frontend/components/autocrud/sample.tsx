@@ -8,7 +8,7 @@ import type {JSX} from "react";
 import {GearStandardService, GearTypeService, MaterialService, ProjectService} from "Frontend/generated/endpoints";
 import Sample from "Frontend/generated/ch/rupfizupfi/deck/data/Sample";
 import {OwnerGridView} from "cms/components/owner/OwnerGridView";
-import OwnerSelector from "cms/components/owner/OnwerSelector";
+import OwnerSelector from "cms/components/owner/OwnerSelector";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
 
 createEmptyValueProxy(SampleModel);

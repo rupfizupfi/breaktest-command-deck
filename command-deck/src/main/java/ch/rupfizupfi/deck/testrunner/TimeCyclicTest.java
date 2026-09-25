@@ -14,15 +14,22 @@ public class TimeCyclicTest extends CyclicTest {
     private static final int INITIAL_SPEED = 50;
     private static final int INITIAL_RAMP_TIME = 3;
 
-    private boolean analyseRun = true;
+    /**
+     * Volatile because a resume re-arms the analyse phase from the operator's thread while the
+     * runner thread reads this on every signal; writing it LAST also publishes the fresh
+     * {@link #analysedData} entries to that reader.
+     */
+    private volatile boolean analyseRun = true;
     private final AnalyseData[] analysedData = new AnalyseData[2];
-    private TimeProcessor timeProcessor;
+    /** Replaced from the measurement thread on a hold, from the runner thread in analyze(). */
+    private volatile TimeProcessor timeProcessor;
 
     public TimeCyclicTest(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory, DeviceService deviceService, MotorSafetyController motorSafety) {
         super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
     }
 
     public void setup() {
+        requireRecoveryWiring();
         this.analysedData[0] = new AnalyseData();
         this.analysedData[1] = new AnalyseData();
 
@@ -31,7 +38,8 @@ public class TimeCyclicTest extends CyclicTest {
         targetLowerLimit = testContext.getLowerLimit();
         targetUpperLimit = testContext.getUpperLimit();
 
-        loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell());
+        loadCellThread = testRunnerFactory.createLoadCellThread(testContext, deviceService.getLoadCell(),
+                runFiles(), this, gates, gapRecorder);
         loadCellThread.start();
 
         log("upperShutOffThreshold " + testContext.getUpperLimit() + " Newton");
@@ -42,15 +50,48 @@ public class TimeCyclicTest extends CyclicTest {
         awaitLoadCellOrFail();
         log("load cell delivering measurements");
 
-        connectFrequencyConverter();
-        // one block so the whole energize sequence is atomic against the polling thread,
-        // and energize() so a safe stop already requested by the load cell thread wins
+        connectFrequencyInverter();
+        energizeForAnalysePhase();
+    }
+
+    private void energizeForAnalysePhase() {
+        // One energize() block: atomic against the polling thread, and a safe stop the load cell
+        // thread already requested wins - see MotorSafetyController#energize.
         motorSafety.energize(drive -> {
             drive.setActionInCaseOfCommunicationError(2); // disable via general enable
             drive.setSpeedReferenceValueAsRpm((int) Math.round(INITIAL_SPEED / (double) SPEED_DIVISOR));
             drive.setSecondSpeedRampTime(INITIAL_RAMP_TIME, INITIAL_RAMP_TIME); // 300ms each
             drive.setControlParameters(true, true, true, null, true);
         });
+    }
+
+    /**
+     * Runs on the measurement thread. {@code stop()} shuts the scheduler down NOW, dropping the
+     * pending direction change that would otherwise fire into a de-energized drive, and the field is
+     * cleared because a {@code ScheduledExecutorService} cannot be revived - the resumed run gets a
+     * new processor out of {@link #analyze()}.
+     */
+    @Override
+    protected void onHoldEntry() {
+        if (timeProcessor != null) {
+            timeProcessor.stop();
+            timeProcessor = null;
+        }
+    }
+
+    /**
+     * Resuming re-enters the ANALYSE phase instead of picking the timed phase back up: the specimen
+     * relaxes and creeps while the hold stands, so the release/pull times measured before the loss
+     * no longer describe it. {@link #analyze()} then builds the replacement {@code TimeProcessor}
+     * exactly as it does on a fresh run - which is also why {@code TimeProcessor} has no pause(),
+     * see {@link TimeProcessor#stop()}.
+     */
+    @Override
+    protected void reinitDriveForResume() {
+        analysedData[0] = new AnalyseData();
+        analysedData[1] = new AnalyseData();
+        analyseRun = true;
+        energizeForAnalysePhase();
     }
 
     @Override
@@ -104,7 +145,7 @@ public class TimeCyclicTest extends CyclicTest {
 
         log("Current min value " + minForceValue);
         log("<b>init: start release round<b/>");
-        cfw11Release();
+        driveRelease();
 
         if (Math.abs(minForceValue - targetLowerLimit) < FORCE_THRESHOLD) {
             analysedData[index].minForce = minForceValue;
@@ -124,7 +165,7 @@ public class TimeCyclicTest extends CyclicTest {
 
         log("Current max value " + maxForceValue);
         log("<b>init: start pull round<b/>");
-        cfw11Pull();
+        drivePull();
 
         if (Math.abs(maxForceValue - targetUpperLimit) < FORCE_THRESHOLD) {
             analysedData[index].maxForce = maxForceValue;
@@ -157,6 +198,12 @@ public class TimeCyclicTest extends CyclicTest {
         log("Adapted Release time: " + releaseTime + " ms");
         log("Adapted Pull time: " + pullTime + " ms");
 
+        // A TimeProcessor registers itself as a signal listener in its constructor, so a predecessor
+        // left standing here would keep scheduling direction changes alongside the new one - two
+        // schedules driving one drive. Reached whenever a resume re-enters the analyse phase.
+        if (timeProcessor != null) {
+            timeProcessor.stop();
+        }
         timeProcessor = new TimeProcessor(testContext, releaseTime, pullTime);
         return true;
     }
@@ -166,6 +213,7 @@ public class TimeCyclicTest extends CyclicTest {
         super.cleanup();
         if (timeProcessor != null) {
             timeProcessor.stop();
+            timeProcessor = null;
         }
     }
 }

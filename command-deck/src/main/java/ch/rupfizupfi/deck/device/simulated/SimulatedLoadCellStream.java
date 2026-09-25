@@ -9,13 +9,12 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Drains samples the {@link SimulatedBench} pushes while this stream is registered.
- * <p>
- * The stream is fed continuously rather than on demand, because the no-data watchdog trips after
- * 250 ms of silence: a stream that only answered when asked would be indistinguishable from a dead
- * sensor whenever the reader thread was descheduled.
+ * Drains samples the {@link SimulatedBench} pushes while this stream is registered. Pushed, not
+ * pulled: a stream that only answered when asked would look dead to the no-data watchdog whenever
+ * the reader thread was descheduled.
  */
 public class SimulatedLoadCellStream implements LoadCellStream {
 
@@ -30,6 +29,7 @@ public class SimulatedLoadCellStream implements LoadCellStream {
     /** Latched: matches the driver contract that a stopped stream can never be read again. */
     private volatile boolean stopped = false;
     private volatile StreamFailure failure;
+    private final AtomicLong droppedSamples = new AtomicLong();
 
     SimulatedLoadCellStream(SimulatedBench bench) {
         this.bench = bench;
@@ -78,6 +78,23 @@ public class SimulatedLoadCellStream implements LoadCellStream {
         return failure;
     }
 
+    @Override
+    public long droppedSampleCount() {
+        return droppedSamples.get();
+    }
+
+    /**
+     * The real driver rejecting a reading it does not trust: nothing is queued, but the discard is
+     * counted, so the deck sees a hole plus a rising count rather than bare silence. Bench tick
+     * thread.
+     */
+    void drop() {
+        if (!reading) {
+            return;
+        }
+        droppedSamples.incrementAndGet();
+    }
+
     /** Called from the bench tick thread. */
     void offer(Measurement measurement) {
         if (!reading) {
@@ -91,7 +108,7 @@ public class SimulatedLoadCellStream implements LoadCellStream {
 
     /**
      * Stops the stream the way the real driver does on an error: reading goes false and the cause is
-     * available through {@link #lastError()}. The seam step 4's fault injection drives.
+     * available through {@link #lastError()}.
      */
     void fail(StreamFailure cause) {
         failure = cause;

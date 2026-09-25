@@ -7,21 +7,25 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.repository.CrudRepository;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
+/**
+ * Single-row ownership check for a custom method whose <em>first</em> argument is the owned entity
+ * or its {@code Long} id; it never filters a list. Owned CRUD services use
+ * {@link ch.rupfizupfi.deck.hilla.crud.CrudRepositoryServiceForOwnerData} instead. See
+ * {@code doc/03-backend/security-and-tenancy.md}.
+ */
 @Aspect
 @Component
 public class CheckUserCanOnlyAccessOwnDataAspect {
 
-    CheckUserCanOnlyAccessOwnDataAspect() {
-        System.out.println("CheckUserCanOnlyAccessOwnDataAspect init");
-    }
-
+    private static final Logger log = LoggerFactory.getLogger(CheckUserCanOnlyAccessOwnDataAspect.class);
 
     @Pointcut("@annotation(ch.rupfizupfi.deck.security.CheckUserCanOnlyAccessOwnData)")
     public void applyToAllAnnotatedMethods() {
@@ -36,10 +40,9 @@ public class CheckUserCanOnlyAccessOwnDataAspect {
 
     @Before("(applyToAllAnnotatedMethods() || applyToAllMethodsOfAnnotatedClass()) && args(value,..)")
     public void checkUserAccess(JoinPoint joinPoint, Object value) {
-        String methodName = joinPoint.getSignature().getName();
-        System.out.println("Calling method: " + methodName);
+        log.debug("Checking ownership for method {}", joinPoint.getSignature().getName());
 
-        if (isAdmin()) {
+        if (UserUtils.isAdmin()) {
             return;
         }
 
@@ -54,18 +57,15 @@ public class CheckUserCanOnlyAccessOwnDataAspect {
         }
     }
 
-    private boolean isAdmin() {
-        return SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-    }
-
+    /** An id resolves only through the target's own repository. */
     private Object getEntityById(@NotNull JoinPoint joinPoint, Long id) {
         Object target = joinPoint.getThis();
         if (target instanceof CrudRepositoryService<?, ?> crudRepositoryService) {
             CrudRepository<?, Long> crudRepository = crudRepositoryService.getCrudRepository();
             return crudRepository.findById(id).orElseThrow(() -> new SecurityException("Data not found"));
         }
-        return id;
+        throw new IllegalStateException("@CheckUserCanOnlyAccessOwnData needs a CrudRepositoryService to resolve a Long id, but "
+                + (target == null ? "null" : target.getClass().getName()) + " is not one");
     }
 
     private void checkOwnership(User user, DataWithOwner valueWithOwner) {

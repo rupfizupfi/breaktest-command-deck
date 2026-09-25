@@ -15,17 +15,17 @@ The system replaces manual machine operation with a browser-based interface that
 
 | Component | Part | Interface |
 |-----------|------|-----------|
-| Motor driver | CFW11 frequency converter | USB Modbus (`dscusb.jar`) |
+| Motor driver | CFW11 frequency inverter | USB Modbus (`dscusb.jar`) |
 | Force sensor | Load cell | USB (`CellValueStream`) |
 | Suction pump | 4-way relay switch (CH9102 USB-UART) | Serial, 115200 8N1 |
 | Optional camera | Webcam | Browser MediaDevices API |
 
 ---
 
-## Motor Control (CFW11 Frequency Converter)
+## Motor Control (CFW11 Frequency Inverter)
 
 ### Connection
-The CFW11 is connected over USB Modbus. `CFW11Device` wraps the third-party `Cfw11` library and manages a reference-counted connection so multiple test components can share the device handle.
+The CFW11 is connected over USB Modbus. `FrequencyInverterDevice` wraps the third-party `Cfw11` library and manages a reference-counted connection so multiple test components can share the device handle.
 
 ### Commands used during a test
 
@@ -42,7 +42,7 @@ The CFW11 is connected over USB Modbus. `CFW11Device` wraps the third-party `Cfw
 During the analysis phase a cyclic test runs at a fixed low speed (50 Hz → ~133 RPM) and measures the real travel time for pull and release strokes. In the execution phase it scales those times to the target speed and programs the second-ramp acceleration/deceleration times accordingly, so direction changes are smooth rather than abrupt.
 
 ### Telemetry
-`DeviceInfoBroadcaster` polls the converter every **400 ms** and publishes a JSON snapshot — speed (RPM), current (A), voltage (V), torque (N·m), and all control flags — to the WebSocket topic `/topic/frequency-converter-info`. The frontend subscribes and renders live gauges.
+`DeviceInfoBroadcaster` polls the inverter every **400 ms** and publishes a JSON snapshot — speed (RPM), current (A), voltage (V), torque (N·m), and all control flags — to the WebSocket topic `/topic/frequency-inverter-info`. The frontend subscribes and renders live gauges.
 
 ### Emergency shutdown path
 If the test thread throws an unhandled exception, `TestRunnerThread.retryShutdownOnException()` opens a **fresh** `Cfw11` connection (the existing one may be corrupted) and forces: `generalEnable = false`, `speed = 0 RPM`, `start = false`, then closes the USB connection. This ensures the motor stops even when the normal cleanup path fails.
@@ -122,13 +122,13 @@ Spring Security with BCrypt password hashing. The login view is `/login`; Vaadin
 
 **REST file endpoints are unauthenticated.** `/api/files/upload`, `/api/files/uploads`, and `/api/files/image/{fileName}` carry `@AnonymousAllowed` and have CSRF disabled. File-type validation is not enforced in the endpoint code.
 
-**WebSocket topics are not per-message authenticated.** Subscriptions to `/topic/load-cell` and `/topic/frequency-converter-info` rely on the HTTP session that was authenticated when the WebSocket was upgraded; there is no token check on individual STOMP frames.
+**WebSocket topics are not per-message authenticated.** Subscriptions to `/topic/load-cell` and `/topic/frequency-inverter-info` rely on the HTTP session that was authenticated when the WebSocket was upgraded; there is no token check on individual STOMP frames.
 
 ### Transport security
 Production (docker profile) runs on port 443 with a PKCS12 keystore (`${KEY_STORE_PASSWORD}` from environment). Development runs plain HTTP on 8080. Database credentials come from `${DB_PASSWORD}` in production; in development the H2 file database has an empty password.
 
 ### Hardware-specific risk
-Because the motor can reverse direction and there is no software-enforced deceleration delay between a stop and a direction change command, a malicious or buggy client call sequence could cause abrupt mechanical stress. The only protection is the converter's own ramp settings — which are configurable at test setup time and can be set to zero.
+Because the motor can reverse direction and there is no software-enforced deceleration delay between a stop and a direction change command, a malicious or buggy client call sequence could cause abrupt mechanical stress. The only protection is the inverter's own ramp settings — which are configurable at test setup time and can be set to zero.
 
 ---
 

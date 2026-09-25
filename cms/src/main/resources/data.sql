@@ -8,3 +8,10 @@ insert into gear_type (version, id, name) values (1, '1', 'shackle'), (1, '2', '
 insert into gear_standard (version, id, name) values (1, '1', 'EN362:2004'), (1, '2', 'ISA:52:2022'), (1, '3', 'UIAA121')
 insert into material (version, id, name) values (1, '1', 'multi'), (1, '2', 'Polyamid'), (1, '3', 'Polyester'), (1, '4', 'Steel'), (1, '5', 'Aluminium'), (1, '6', 'Dyneema (UHMW-PE)'), (1, '7', 'Kevlar'), (1, '8', 'Hemp')
 insert into customer (version, id, organization, firstname, lastname, email, street, code, location, country) values (1, '1', 'Climbing Club', 'John', 'Doe', 'john.doe@swiss-slackline.ch', 'Bahnhofstrasse 1', '8000', 'Zürich', 'Switzerland')
+
+-- identity counters start past the seeded ids; a new seeded row with an explicit id moves its restart value
+alter table application_user alter column id restart with 3
+alter table gear_type alter column id restart with 12
+alter table gear_standard alter column id restart with 4
+alter table material alter column id restart with 9
+alter table customer alter column id restart with 2

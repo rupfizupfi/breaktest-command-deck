@@ -34,7 +34,7 @@ implements `SignalListener` and exposes:
   — see [below](#finishtestexception-and-the-double-cleanup). Subclasses
   override but must always call `super.cleanup()`.
 * `destroy()` — disconnect the CFW11 device and null out fields.
-* `cfw11Pull()` / `cfw11Release()` — direction helpers.
+* `drivePull()` / `driveRelease()` — direction helpers.
 
 ## The three subclasses
 
@@ -67,9 +67,10 @@ Because writes are line-buffered and flush on close, **killing the JVM
 mid-test loses up to ~1 s of CSV.** `TestLogger` log lines are safe — it
 flushes on every `log()` call (`TestLogger.java:39`).
 
-An unplugged USB cable makes `getNextValues()` return empty and the run
-continues recording nothing (OQ-45); the decided fix is reconnect-and-resume,
-designed in
+An unplugged USB cable trips the no-data watchdog into a verified safe stop,
+then reconnect-and-resume — the writer stays open across the hold, so the gap
+lands in this same file as an epoch-millis discontinuity and is explained by a
+`<millis>_gaps.json` sidecar. See
 [`../06-feature-work/testrunner-safety/loadcell-recovery-design.md`](../06-feature-work/testrunner-safety/loadcell-recovery-design.md).
 
 ## `FinishTestException` and the double cleanup
@@ -113,7 +114,7 @@ skipped `finish()` — an exception thrown from `setup()`, for instance. Any
 writing it three times, are part of
 [hardware-layer-redesign](../06-feature-work/hardware-layer-redesign/README.md) (OQ-64).
 
-Otherwise none of its own. The runner-side items (OQ-35, OQ-49, OQ-50, OQ-51) are in
+Otherwise none of its own. The runner-side item (OQ-50) is in
 [`test-execution-engine.md`](test-execution-engine.md#open-questions);
-load-cell recovery is OQ-45 in
-[`hardware-integration.md`](hardware-integration.md).
+load-cell recovery has shipped —
+[`loadcell-recovery-design.md`](../06-feature-work/testrunner-safety/loadcell-recovery-design.md).

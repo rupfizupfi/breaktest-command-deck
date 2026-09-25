@@ -1,6 +1,7 @@
 import {IFrame, IMessage, RxStomp, RxStompState} from "@stomp/rx-stomp";
 import {Observable} from "rxjs/internal/Observable";
 import {BehaviorSubject, Subscription} from "rxjs";
+import TestState from "Frontend/generated/ch/rupfizupfi/deck/testrunner/TestState";
 
 function resolveBrokerUrl(): string {
     // Leading slash: the endpoint is at the server root, while this service may first be
@@ -16,8 +17,8 @@ function resolveBrokerUrl(): string {
  * ordinary scheduler jitter.
  */
 const LOAD_CELL_STALE_AFTER_MS = 1500;
-/** The backend polls the frequency converter every 400 ms, so three missed rounds. */
-const FREQUENCY_CONVERTER_STALE_AFTER_MS = 1200;
+/** The backend polls the frequency inverter every 400 ms, so three missed rounds. */
+const FREQUENCY_INVERTER_STALE_AFTER_MS = 1200;
 /** Staleness has to be noticed without an incoming frame, so it is driven by a timer. */
 const FRESHNESS_TICK_MS = 500;
 
@@ -34,7 +35,7 @@ export interface LiveStatus {
     /** The WebSocket itself. Distinguishes "machine is quiet" from "we lost the server". */
     connected: boolean;
     loadCell: FeedStatus;
-    frequencyConverter: FeedStatus;
+    frequencyInverter: FeedStatus;
 }
 
 const NEVER_RECEIVED: FeedStatus = {everReceived: false, stale: false, staleForSeconds: null};
@@ -42,7 +43,7 @@ const NEVER_RECEIVED: FeedStatus = {everReceived: false, stale: false, staleForS
 export const DISCONNECTED_LIVE_STATUS: LiveStatus = {
     connected: false,
     loadCell: NEVER_RECEIVED,
-    frequencyConverter: NEVER_RECEIVED,
+    frequencyInverter: NEVER_RECEIVED,
 };
 
 function sameFeed(a: FeedStatus, b: FeedStatus): boolean {
@@ -51,21 +52,72 @@ function sameFeed(a: FeedStatus, b: FeedStatus): boolean {
         && a.staleForSeconds === b.staleForSeconds;
 }
 
+/**
+ * One `/topic/test-state` frame, and the shape `TestRunnerService.status()` is normalized into so the
+ * two paths cannot disagree. Mirrors the Java record `TestStateMessage`.
+ */
+export interface TestStateFrame {
+    state: TestState;
+    reason: string | null;
+    /** The server's verdict. Never recomputed here — see TestRunnerThread#canResumeNow. */
+    canResume: boolean;
+    lossCount: number;
+    reconnectAttempt: number;
+    /** Newton, null before the first measurement of the run. */
+    lastKnownForce: number | null;
+    /** Epoch millis, null outside SAFE_HOLD. Wall clock, because the browser renders a countdown. */
+    safeHoldDeadlineMillis: number | null;
+    testResultId: number;
+    /** Restarts at 0 with each run, which is why the run id is part of every ordering comparison. */
+    sequence: number;
+}
+
+/**
+ * What the operator is owed about the trustworthiness of what is on screen, in one value so a view
+ * cannot render two contradictory warnings at once.
+ */
+export type ConnectionState =
+    | {kind: 'ok'}
+    | {kind: 'server-lost'}
+    | {kind: 'feed-stale', seconds: number}
+    | {kind: 'sensor-lost', reason: string, canResume: boolean, deadlineMillis: number | null};
+
+const CONNECTION_OK: ConnectionState = {kind: 'ok'};
+const CONNECTION_SERVER_LOST: ConnectionState = {kind: 'server-lost'};
+
+/** Keep in sync with TestState#isIncident (Java); the two lists are the same three states. */
+export function isIncident(state: TestState | null | undefined): boolean {
+    return state === TestState.SENSOR_LOST || state === TestState.SAFE_HOLD || state === TestState.RESUMING;
+}
+
+function sameConnectionState(a: ConnectionState, b: ConnectionState): boolean {
+    if (a.kind === 'feed-stale' && b.kind === 'feed-stale') {
+        return a.seconds === b.seconds;
+    }
+    if (a.kind === 'sensor-lost' && b.kind === 'sensor-lost') {
+        return a.reason === b.reason && a.canResume === b.canResume && a.deadlineMillis === b.deadlineMillis;
+    }
+    return a.kind === b.kind;
+}
+
 export default class StatusService {
     private rxStomp: RxStomp;
     private loadCellTopic: Observable<IMessage>;
     private updateLog: Observable<IMessage>;
-    private frequencyConverterInfoTopic: Observable<IMessage>;
+    private frequencyInverterInfoTopic: Observable<IMessage>;
+    private testStateTopic: Observable<IMessage>;
     private connectedComponents: Set<object> = new Set();
 
     // performance.now(), not Date.now(): a monotonic clock, so a system time adjustment cannot
     // make a dead feed look fresh (or vice versa).
     private lastLoadCellAt: number | null = null;
-    private lastFrequencyConverterAt: number | null = null;
+    private lastFrequencyInverterAt: number | null = null;
     private socketOpen = false;
     private feedSubscriptions: Subscription[] = [];
     private freshnessTimer: ReturnType<typeof setInterval> | null = null;
     private readonly liveStatusSubject = new BehaviorSubject<LiveStatus>(DISCONNECTED_LIVE_STATUS);
+    private readonly testStateSubject = new BehaviorSubject<TestStateFrame | null>(null);
+    private readonly connectionStateSubject = new BehaviorSubject<ConnectionState>(CONNECTION_SERVER_LOST);
 
     constructor() {
         this.rxStomp = new RxStomp();
@@ -76,11 +128,14 @@ export default class StatusService {
         this.loadCellTopic = this.rxStomp
             .watch({destination: "/topic/load-cell"});
 
-        this.frequencyConverterInfoTopic = this.rxStomp
-            .watch({destination: "/topic/frequency-converter-info"});
+        this.frequencyInverterInfoTopic = this.rxStomp
+            .watch({destination: "/topic/frequency-inverter-info"});
 
         this.updateLog = this.rxStomp
             .watch({destination: "/topic/logs"});
+
+        this.testStateTopic = this.rxStomp
+            .watch({destination: "/topic/test-state"});
 
         this.rxStomp.stompErrors$.subscribe((frame: IFrame) => {
             console.error('Broker reported error: ' + frame.headers['message']);
@@ -93,9 +148,10 @@ export default class StatusService {
             this.socketOpen = state === RxStompState.OPEN;
             if (!this.socketOpen) {
                 // Timestamps belong to the connection that produced them; a reconnect must not
-                // inherit freshness earned before the gap.
+                // inherit freshness earned before the gap. Note what is NOT reset here: the last
+                // test-state frame. See applyTestState.
                 this.lastLoadCellAt = null;
-                this.lastFrequencyConverterAt = null;
+                this.lastFrequencyInverterAt = null;
             }
             this.publishLiveStatus();
         });
@@ -108,6 +164,43 @@ export default class StatusService {
 
     get currentLiveStatus(): LiveStatus {
         return this.liveStatusSubject.value;
+    }
+
+    /** The last state the server asserted about the run, parsed and ordered. Null when none is known. */
+    get testState(): Observable<TestStateFrame | null> {
+        return this.testStateSubject.asObservable();
+    }
+
+    get currentTestState(): TestStateFrame | null {
+        return this.testStateSubject.value;
+    }
+
+    /** Socket, feed freshness and run incident collapsed into the one thing a view should render. */
+    get connectionState(): Observable<ConnectionState> {
+        return this.connectionStateSubject.asObservable();
+    }
+
+    get currentConnectionState(): ConnectionState {
+        return this.connectionStateSubject.value;
+    }
+
+    /**
+     * Records what the server says about the run. The only writer of the incident state, fed both by
+     * the `/topic/test-state` subscription below and by a `TestRunnerService.status()` read.
+     *
+     * A frame is dropped when it is older than one already applied for the same run; `sequence`
+     * restarts at 0 with each run, hence the run-id comparison. Pass null for "the server says no run
+     * is active" — that is a contradiction and does clear an incident.
+     */
+    applyTestState(frame: TestStateFrame | null): void {
+        const previous = this.testStateSubject.value;
+        if (frame !== null && previous !== null
+            && frame.testResultId === previous.testResultId && frame.sequence < previous.sequence) {
+            return;
+        }
+
+        this.testStateSubject.next(frame);
+        this.publishLiveStatus();
     }
 
     /**
@@ -128,10 +221,11 @@ export default class StatusService {
                 this.lastLoadCellAt = performance.now();
                 this.publishLiveStatus();
             }),
-            this.frequencyConverterInfoTopic.subscribe(() => {
-                this.lastFrequencyConverterAt = performance.now();
+            this.frequencyInverterInfoTopic.subscribe(() => {
+                this.lastFrequencyInverterAt = performance.now();
                 this.publishLiveStatus();
             }),
+            this.testStateTopic.subscribe((message: IMessage) => this.ingestTestState(message)),
         ];
 
         this.freshnessTimer = setInterval(() => this.publishLiveStatus(), FRESHNESS_TICK_MS);
@@ -147,8 +241,28 @@ export default class StatusService {
         }
 
         this.lastLoadCellAt = null;
-        this.lastFrequencyConverterAt = null;
+        this.lastFrequencyInverterAt = null;
         this.publishLiveStatus();
+    }
+
+    /** A malformed frame must not take the banner down with it; the last good one keeps standing. */
+    private ingestTestState(message: IMessage) {
+        try {
+            const raw = JSON.parse(message.body);
+            this.applyTestState({
+                state: raw.state,
+                reason: raw.reason ?? null,
+                canResume: raw.canResume === true,
+                lossCount: raw.lossCount ?? 0,
+                reconnectAttempt: raw.reconnectAttempt ?? 0,
+                lastKnownForce: raw.lastKnownForce ?? null,
+                safeHoldDeadlineMillis: raw.safeHoldDeadlineMillis ?? null,
+                testResultId: raw.testResultId ?? 0,
+                sequence: raw.sequence ?? 0,
+            });
+        } catch (error) {
+            console.error('unreadable /topic/test-state frame', error);
+        }
     }
 
     private feedStatus(lastAt: number | null, staleAfterMs: number): FeedStatus {
@@ -168,19 +282,63 @@ export default class StatusService {
         const next: LiveStatus = {
             connected: this.socketOpen,
             loadCell: this.feedStatus(this.lastLoadCellAt, LOAD_CELL_STALE_AFTER_MS),
-            frequencyConverter: this.feedStatus(this.lastFrequencyConverterAt, FREQUENCY_CONVERTER_STALE_AFTER_MS),
+            frequencyInverter: this.feedStatus(this.lastFrequencyInverterAt, FREQUENCY_INVERTER_STALE_AFTER_MS),
         };
+
+        // Before the early return below, and from the same snapshot: the freshness timer is what
+        // advances the stale-second counter, and it must keep doing so even on a tick where the
+        // LiveStatus itself did not change.
+        this.publishConnectionState(next.loadCell);
 
         // Emitting only on change keeps a healthy feed from re-rendering every consumer at frame
         // rate; once stale, the second counter is what makes it emit, at most once per second.
         const previous = this.liveStatusSubject.value;
         if (previous.connected === next.connected
             && sameFeed(previous.loadCell, next.loadCell)
-            && sameFeed(previous.frequencyConverter, next.frequencyConverter)) {
+            && sameFeed(previous.frequencyInverter, next.frequencyInverter)) {
             return;
         }
 
         this.liveStatusSubject.next(next);
+    }
+
+    private publishConnectionState(loadCell: FeedStatus) {
+        const next = this.deriveConnectionState(loadCell);
+        if (sameConnectionState(this.connectionStateSubject.value, next)) {
+            return;
+        }
+        this.connectionStateSubject.next(next);
+    }
+
+    /**
+     * Precedence: sensor-lost > server-lost > feed-stale > ok.
+     *
+     * The first rank is the load-bearing one. A sensor loss is asserted by the server, and the socket
+     * dropping is not evidence that the sensor came back — so the incident outranks, and survives,
+     * every connection problem the browser can observe about itself. It is cleared only by a newer
+     * frame or by a `TestRunnerService.status()` read, which still reaches the server over plain HTTP
+     * while the WebSocket is down.
+     */
+    private deriveConnectionState(loadCell: FeedStatus): ConnectionState {
+        const frame = this.testStateSubject.value;
+        if (frame !== null && isIncident(frame.state)) {
+            return {
+                kind: 'sensor-lost',
+                reason: frame.reason ?? 'the load cell stopped delivering measurements',
+                canResume: frame.canResume,
+                deadlineMillis: frame.safeHoldDeadlineMillis,
+            };
+        }
+
+        if (!this.socketOpen) {
+            return CONNECTION_SERVER_LOST;
+        }
+
+        if (loadCell.stale) {
+            return {kind: 'feed-stale', seconds: loadCell.staleForSeconds ?? 0};
+        }
+
+        return CONNECTION_OK;
     }
 
     get loadCellObservable() {
@@ -191,8 +349,12 @@ export default class StatusService {
         return this.updateLog;
     }
 
-    get frequencyConverterInfoObservable(){
-        return this.frequencyConverterInfoTopic;
+    get frequencyInverterInfoObservable(){
+        return this.frequencyInverterInfoTopic;
+    }
+
+    get testStateObservable(){
+        return this.testStateTopic;
     }
 
     connect() {

@@ -1,5 +1,5 @@
 %% Sensor reading -> chart, end-to-end, in :command-deck.
-%% Branch dev-split, 2026-04-25.
+%% Branch main, 2026-08-29.
 %% Files anchoring this diagram:
 %%   command-deck/src/main/frontend/views/run.tsx
 %%   command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx
@@ -18,7 +18,7 @@ sequenceDiagram
     participant Hilla as Hilla generated<br/>TestRunnerService.ts
     participant Spring as Spring MVC /<br/>Hilla dispatcher
     participant Runner as TestRunnerService.java<br/>@BrowserCallable
-    participant Thread as TestRunnerThread.java<br/>(java.lang.Thread)
+    participant Thread as TestRunnerThread.java<br/>(plain class that owns a java.lang.Thread)
     participant LCThread as LoadCellThread.java
     participant Device as LoadCellDevice<br/>(dscusb.jar serial)
     participant Broadcast as ForceBroadcaster.java<br/>(MeasurementObserver)
@@ -42,13 +42,13 @@ sequenceDiagram
         loop continuous sampling
             Device-->>LCThread: Measurement(timestamp, force)
             LCThread->>Broadcast: update(measurements)
-            Broadcast->>Broker: convertAndSend("/topic/load-cell", buf)<br/>(every ~60 ms)
+            Broadcast->>Broker: convertAndSend("/topic/load-cell", buf)<br/>(flushes when the oldest buffered sample is<br/>&gt;60 ms old, tested on the 20 ms reader tick)
         end
     end
 
     Broker-->>Status: STOMP MESSAGE frame
     Status-->>ChartCmp: IMessage (rxjs Observable)
-    ChartCmp->>ChartCmp: setDataPoints([...prev, ...new])<br/>Chart.js re-renders
+    ChartCmp->>ChartCmp: setDataPoints(prev =&gt; push into prev arrays)<br/>mutates in place, unbounded — Chart.js re-renders
 
     User->>ChartCmp: Click "Stop"
     ChartCmp->>Hilla: TestRunnerService.stop()

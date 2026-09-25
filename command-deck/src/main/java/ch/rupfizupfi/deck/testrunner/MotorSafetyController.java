@@ -3,8 +3,8 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.api.Drive;
 import ch.rupfizupfi.deck.device.api.DriveProvider;
-import ch.rupfizupfi.deck.device.frequencyconverter.CFW11Device;
-import ch.rupfizupfi.deck.device.frequencyconverter.DriveUnavailableException;
+import ch.rupfizupfi.deck.device.frequencyinverter.DriveUnavailableException;
+import ch.rupfizupfi.deck.device.frequencyinverter.FrequencyInverterDevice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,9 @@ import java.util.function.Function;
  * Single entry point for stopping the motor. Every stop is verified against the drive's own
  * measured motor speed instead of being fire-and-forget, and escalates through three tiers.
  * <p>
- * Escalation is driven by drive RESPONSIVENESS, never by the clock alone: the tier 1 stop
+ * The tiers, their command order and the backstops behind tier 3 are owned by
+ * {@code doc/06-feature-work/testrunner-safety/loadcell-recovery-design.md}. The one rule to carry
+ * into every method here: escalation is driven by drive RESPONSIVENESS, never by the clock. Tier 1
  * de-energizes the output stage and lets the motor coast, so a still-turning shaft is a normal
  * mechanical outcome, not evidence of a broken USB handle.
  */
@@ -30,12 +32,15 @@ public class MotorSafetyController {
     private static final int STOPPED_RPM_TOLERANCE = 5;
     private static final long VERIFY_DEADLINE_MS = 5000;
     private static final long VERIFY_POLL_INTERVAL_MS = 50;
-    /** One quiet sample can be a stale or defaulted register, so demand consecutive ones. */
+    /**
+     * One quiet sample arrives a single Modbus round trip after the write and can be a stale or
+     * defaulted register value, so demand that standstill holds across a poll.
+     */
     private static final int REQUIRED_CONSECUTIVE_STOPPED_READINGS = 2;
     /** Speed drop, in rpm, above which the shaft counts as measurably slowing down. */
     private static final int COASTING_DROP_RPM = 10;
 
-    private final CFW11Device frequencyConverter;
+    private final FrequencyInverterDevice frequencyInverter;
 
     /** Tier 2 opens its own handle, bypassing the one the device holds — see stopWithFreshHandle. */
     private final DriveProvider driveProvider;
@@ -58,21 +63,35 @@ public class MotorSafetyController {
      */
     private volatile SafeStopResult lastResult;
 
+    /**
+     * True from the moment a stop latches until it has recorded its result. Guards the window in
+     * which the latch is set but the stop is still working - up to VERIFY_DEADLINE_MS of it spent
+     * inside the drive lock - so nothing can clear the latch out from under a stop in flight.
+     */
+    private boolean stopInProgress = false;
+
+    /**
+     * Guards the latch bookkeeping only: {@link #stopLatched}, {@link #stopReason},
+     * {@link #motorEnergized}, {@link #lastResult} and {@link #stopInProgress}. Deliberately not the
+     * drive lock and never held across one, so it can never delay a stop reaching the hardware.
+     */
+    private final Object latchLock = new Object();
+
     public MotorSafetyController(DeviceService deviceService, DriveProvider driveProvider) {
-        this.frequencyConverter = deviceService.getFrequencyConverter();
+        this.frequencyInverter = deviceService.getFrequencyInverter();
         this.driveProvider = driveProvider;
     }
 
     public boolean isDriveAvailable() {
-        return frequencyConverter.isDriveHandleOpen();
+        return frequencyInverter.isDriveHandleOpen();
     }
 
     public void withDrive(Consumer<Drive> action) {
-        frequencyConverter.withDrive(action);
+        frequencyInverter.withDrive(action);
     }
 
     public <T> T queryDrive(Function<Drive, T> action) {
-        return frequencyConverter.queryDrive(action);
+        return frequencyInverter.queryDrive(action);
     }
 
     /** True once safeStop() has been requested for the current run, until clearStopLatch(). */
@@ -80,15 +99,49 @@ public class MotorSafetyController {
         return stopLatched.get();
     }
 
-    /** Clears the latch. Called when a new test run starts. */
+    /**
+     * How this run's last stop went, or null if none completed. Read by the resume path, which has to
+     * capture the tier and the verification into the run's incident record BEFORE calling
+     * {@link #clearStopLatch()} - that nulls this, so afterwards there is no record anywhere of how
+     * the motor was stopped.
+     */
+    public SafeStopResult getLastStopResult() {
+        return lastResult;
+    }
+
+    /**
+     * Clears the latch. Called when a new test run starts.
+     *
+     * @throws IllegalStateException if a stop is still executing, which means this is not the start
+     *                               of a quiet run and the latch is not this caller's to clear
+     */
     public void clearStopLatch() {
-        String reason = stopReason;
-        stopReason = null;
-        // A new run starts with the motor known-off and with no stop of its own on record, so the
-        // next safeStop neither replays the previous run's escalation nor assumes a live motor.
-        motorEnergized.set(false);
-        lastResult = null;
-        if (stopLatched.getAndSet(false)) {
+        String reason;
+        boolean wasLatched;
+
+        // Refused rather than queued, under the same lock the stop latches under, so a stop cannot
+        // slip in between the check and the clear. Clearing under a safeStop that is inside
+        // verifyStopped() - up to VERIFY_DEADLINE_MS holding the drive lock - would let the next
+        // energize() re-enable the drive that stop just de-energized; and resetting motorEnergized
+        // there makes the following stop read a coasting motor as one that was never energized,
+        // returning "nothing to stop" without trying tier 2, tier 3, or telling anybody.
+        synchronized (latchLock) {
+            if (stopInProgress) {
+                throw new IllegalStateException(
+                        "refusing to clear the motor safety stop latch, a stop is still executing: "
+                                + stopReason);
+            }
+
+            reason = stopReason;
+            stopReason = null;
+            // A new run starts with the motor known-off and with no stop of its own on record, so the
+            // next safeStop neither replays the previous run's escalation nor assumes a live motor.
+            motorEnergized.set(false);
+            lastResult = null;
+            wasLatched = stopLatched.getAndSet(false);
+        }
+
+        if (wasLatched) {
             logger.info("motor safety stop latch cleared, previous stop reason: {}", reason);
         }
     }
@@ -102,7 +155,7 @@ public class MotorSafetyController {
      * @throws IllegalStateException if a safety stop has been requested
      */
     public void energize(Consumer<Drive> action) {
-        frequencyConverter.withDrive(drive -> {
+        frequencyInverter.withDrive(drive -> {
             if (stopLatched.get()) {
                 throw new IllegalStateException(
                         "refusing to energize the motor, a safety stop was requested for this run: " + stopReason);
@@ -122,19 +175,36 @@ public class MotorSafetyController {
      * finds an escalation already recorded for this run replays it instead of re-running it.
      */
     public SafeStopResult safeStop(String reason) {
-        // Latch before taking any lock, so an energize already queued on the drive lock still
-        // observes the latch by the time it gets in. getAndSet makes latching and noticing that
-        // somebody already latched one atomic step, so two concurrent stops cannot both conclude
-        // they are the first one.
-        stopReason = reason;
-        boolean alreadyLatched = stopLatched.getAndSet(true);
+        boolean alreadyLatched;
+        // Latched before any drive lock is taken, so an energize already queued on the drive lock
+        // still observes the latch by the time it gets in. getAndSet is one atomic step so two
+        // concurrent stops cannot both conclude they are the first. latchLock only keeps
+        // clearStopLatch() from interleaving; it is never held while the hardware is being touched.
+        synchronized (latchLock) {
+            stopReason = reason;
+            alreadyLatched = stopLatched.getAndSet(true);
+            stopInProgress = true;
+        }
 
+        try {
+            return performStop(reason, alreadyLatched);
+        } finally {
+            // Cleared on every path, including the ones nobody expects: a stranded flag would refuse
+            // every later clearStopLatch() and with it every attempt to start another run.
+            synchronized (latchLock) {
+                stopInProgress = false;
+            }
+        }
+    }
+
+    /** The stop itself, split out so the latch bookkeeping above can wrap it in a try/finally. */
+    private SafeStopResult performStop(String reason, boolean alreadyLatched) {
         SafeStopResult previous = lastResult;
         if (alreadyLatched && previous != null && previous.tier() != SafeStopResult.Tier.EXISTING_HANDLE) {
             // A previous stop already went past the cheap tier: repeating it would mean a second USB
-            // re-enumeration, a second 5 s drive lock hold and a second "use the E-stop" alert for
-            // one and the same incident. Tier 1 results are deliberately NOT cached: re-checking a
-            // motor over a working handle is cheap, non-destructive and worth doing again.
+            // re-enumeration, a second full-deadline drive lock hold and a second "use the E-stop"
+            // alert for one incident. Tier 1 results are deliberately NOT cached: re-checking a motor
+            // over a working handle is cheap, non-destructive and worth doing again.
             logger.info("safeStop({}) not repeated, a stop for this run already escalated to tier {}: {}",
                     reason, previous.tier(), previous.detail());
             return previous;
@@ -157,17 +227,14 @@ public class MotorSafetyController {
         try {
             var tier1 = stopWithExistingHandle(wasEnergized);
             result = tier1.result();
-            // Responsive means the drive took the de-energize command and is reporting a real,
-            // non-zero speed: the shaft is coasting on its own inertia, which no amount of USB
-            // re-enumeration can shorten. An interrupt likewise only truncates the evidence, it
-            // never proves the handle is dead, so neither may trigger a tier 2 teardown.
+            // A responsive drive is coasting on its own inertia, which no USB re-enumeration can
+            // shorten; an interrupt only truncates the evidence. Neither proves a dead handle, so
+            // neither may trigger a tier 2 teardown.
             boolean handleSuspect = !result.verified() && !tier1.responsive() && !tier1.interrupted();
 
             if (handleSuspect && !wasEnergized) {
-                // Tier 1 found nothing to talk to, but this run never enabled the drive either, so
-                // there is no motor to chase. Escalating here would punish a failed startup check -
-                // which terminates long before setup() connects anything - with a full USB
-                // re-enumeration, a 5 s drive lock hold and an E-stop alert.
+                // Nothing to talk to and no motor to chase. Escalating would punish a failed startup
+                // check with a USB re-enumeration, a full-deadline drive lock hold and an E-stop alert.
                 nothingToStop = true;
                 result = new SafeStopResult(result.tier(), result.verified(), result.driveResponsive(),
                         wasEnergized, result.motorSpeedRpm(),
@@ -208,15 +275,13 @@ public class MotorSafetyController {
         return result;
     }
 
-    /**
-     * Tier 1: use the handle the running test already holds, so no USB re-enumeration is needed.
-     */
+    /** Tier 1: the handle the running test already holds, so no USB re-enumeration is needed. */
     private TierOutcome stopWithExistingHandle(boolean wasEnergized) {
         var commandProblems = new AtomicReference<>("");
         var outcome = new AtomicReference<VerifyOutcome>();
 
         try {
-            frequencyConverter.withDrive(drive -> {
+            frequencyInverter.withDrive(drive -> {
                 commandProblems.set(commandStop(drive));
                 outcome.set(verifyStopped(drive));
             });
@@ -236,9 +301,7 @@ public class MotorSafetyController {
                 commandProblems.get(), outcome.get(), null, wasEnergized);
     }
 
-    /**
-     * Tier 2: the existing handle is dead or lying. Drop it and enumerate the drive fresh.
-     */
+    /** Tier 2: the existing handle is dead or lying. Drop it and enumerate the drive fresh. */
     private TierOutcome stopWithFreshHandle(Integer previousSpeed, boolean wasEnergized) {
         var commandProblems = new AtomicReference<>("");
         var outcome = new AtomicReference<VerifyOutcome>();
@@ -247,21 +310,18 @@ public class MotorSafetyController {
         // monitor and the lock order is monitor-before-driveLock, so doing it inside runExclusive
         // would deadlock against closeConnection(). Doing it before the close is also what makes a
         // later connect() genuinely re-open instead of handing back the handle we are about to kill.
-        frequencyConverter.dropConnectionBookkeeping();
+        frequencyInverter.dropConnectionBookkeeping();
 
         try {
-            // Exclusive for the rest of the tier, for two reasons: the 400 ms info poller must not
-            // talk on the bus while we re-enumerate, and - because DriveProvider.open() eagerly grabs
-            // the USB device - closing the old handle and opening the fresh one has to be ONE atomic step.
-            // With the close hoisted out of here, a Device.connect() landing in the gap would open a
-            // second live session on one physical drive, exactly the dual-handle condition this
-            // teardown exists to prevent (OQ-50).
+            // Exclusive for the rest of the tier: the 400 ms info poller must not talk on the bus
+            // mid-re-enumeration, and - because DriveProvider.open() eagerly grabs the USB device -
+            // close-then-open has to be ONE atomic step. Hoist the close out and a Device.connect()
+            // landing in the gap opens a second live session on one physical drive, the dual-handle
+            // condition this teardown exists to prevent (OQ-50).
             // Deadlock-free: closeDriveHandle() takes driveLock only, never the instance monitor, so
-            // nothing in this block inverts the monitor-before-driveLock order. A concurrent
-            // connect() holds the monitor, blocks on driveLock for the whole escalation, and then
-            // re-opens cleanly against the reset bookkeeping.
-            frequencyConverter.runExclusive(() -> {
-                frequencyConverter.closeDriveHandle();
+            // nothing here inverts the monitor-before-driveLock order.
+            frequencyInverter.runExclusive(() -> {
+                frequencyInverter.closeDriveHandle();
                 Drive fresh = null;
                 try {
                     fresh = driveProvider.open();
@@ -293,29 +353,27 @@ public class MotorSafetyController {
     }
 
     /**
-     * Tier 3: nothing in software could confirm a stop. Log loudly, there is nothing left to command.
+     * Tier 3: nothing in software could confirm a stop. Log loudly, there is nothing left to
+     * command. The proposed hardware kill line that would give this tier something to pull is a
+     * paired hardware task in {@code loadcell-recovery-design.md}; until it exists, tier 3 logs only.
      */
-    // TODO hardware kill line: relay 2 of FourWayRelaySwitch wired in series with the CFW11
-    //  general-enable/STO input would give this tier something to actually pull. Needs a relay
-    //  firmware extension before it can be driven from software.
     private SafeStopResult escalateToOperator(Integer lastSpeed, boolean tier2Responsive,
                                               boolean wasEnergized, String tier1Detail,
                                               String tier2Detail) {
-        // Name every tier that ran: the returned marker is Tier.NONE for compatibility, which on its
-        // own would read as "nothing was attempted" in a post-incident trace.
+        // Name every tier that ran, so a post-incident trace reads the whole ladder from one line.
         String detail = "tier 1 (EXISTING_HANDLE) ran and reported: " + tier1Detail
                 + " | tier 2 (FRESH_HANDLE) ran, re-enumerated the drive and reported: " + tier2Detail
                 + " | tier 3 (operator escalation): both software stop tiers failed, motor may still be "
                 + "running - USE THE PHYSICAL E-STOP. The only active backstop left is the drive's own "
-                + "setActionInCaseOfCommunicationError(2), which reacts to loss of the CFW11 link only "
+                + "setActionInCaseOfCommunicationError(2), which reacts to loss of the drive link only "
                 + "and not to loss of the load cell.";
         logger.error("safeStop escalated to the operator after both software tiers ran."
                 + " Last measured motor speed: {} rpm. {}", lastSpeed, detail);
         // Carry tier 2's responsiveness verdict, not a blanket false: if the fresh handle did answer
         // and only the standstill was missing, the operator alert is still warranted but the caller
         // can report it as a drive that is talking rather than as a silent one.
-        return new SafeStopResult(SafeStopResult.Tier.NONE, false, tier2Responsive, wasEnergized,
-                lastSpeed, detail);
+        return new SafeStopResult(SafeStopResult.Tier.OPERATOR_ESCALATION, false, tier2Responsive,
+                wasEnergized, lastSpeed, detail);
     }
 
     /**
@@ -364,10 +422,8 @@ public class MotorSafetyController {
         var problems = new StringBuilder();
 
         try {
-            // General enable first: this drops the output stage and lets the motor coast. A ramp
-            // stop would keep the drive loading the sample for the whole stopRampSeconds, and a
-            // blind direction reversal could slam the crosshead through zero. Never ramp, never
-            // reverse.
+            // General enable FIRST, then reference, then start. Never ramp, never reverse — the
+            // reasoning is in loadcell-recovery-design.md and this order is not free to change.
             drive.setGeneralEnable(false);
         } catch (Throwable t) {
             logger.warn("setGeneralEnable(false) failed during safeStop", t);
@@ -405,10 +461,9 @@ public class MotorSafetyController {
 
         while (true) {
             try {
-                // getMotorSpeedValueAsRpm() is the MEASURED speed. Never verify against
-                // getSpeedReferenceValueAsRpm(): that reads back the commanded setpoint and reports
-                // 0 the instant we write 0, while the motor is still spinning.
-                // The sign convention for direction is unverified, so compare the magnitude.
+                // MEASURED speed. Never verify against getSpeedReferenceValueAsRpm(): it reads back
+                // the setpoint and reports 0 the instant we write 0, motor still spinning. The sign
+                // convention for direction is unverified, so compare the magnitude.
                 int rpm = drive.getMotorSpeedValueAsRpm();
                 if (firstSpeed == null) {
                     firstSpeed = rpm;
@@ -416,8 +471,6 @@ public class MotorSafetyController {
                 lastSpeed = rpm;
 
                 if (Math.abs(rpm) <= STOPPED_RPM_TOLERANCE) {
-                    // One quiet sample arrives a single Modbus round trip after the write and can be
-                    // a stale or defaulted register value, so require it to hold across a poll.
                     consecutiveStopped++;
                     if (consecutiveStopped >= REQUIRED_CONSECUTIVE_STOPPED_READINGS) {
                         return new VerifyOutcome(true, true, false, firstSpeed, lastSpeed);

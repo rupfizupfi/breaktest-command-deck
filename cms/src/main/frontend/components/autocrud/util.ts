@@ -1,4 +1,4 @@
-import React, { type CSSProperties, forwardRef } from 'react';
+import { type CSSProperties } from 'react';
 
 export type ComponentStyleProps = Readonly<{
     id?: string;

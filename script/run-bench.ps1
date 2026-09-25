@@ -5,8 +5,8 @@
 .DESCRIPTION
     The bench equivalent of cms/src/docker/bin/startup.sh, and the only way the deck reaches the
     hardware: both driver plugins are Windows-only (a Win32 vendor DLL and the Thesycon USBIO
-    kernel driver), so the Linux container cannot drive the machine at all -- OQ-79, detail in
-    doc/03-backend/driver-jars.md.
+    kernel driver), so the Linux container cannot drive the machine at all -- it runs the
+    tests-and-simulations deployment instead. Detail in doc/03-backend/driver-jars.md.
 
     There is deliberately no `bench` properties file. This activates the `bench` profile *group*,
     which resolves to `docker` -- one deployment configuration for both the container and this
@@ -22,6 +22,10 @@
 .PARAMETER DriversPath
     Directory holding dscusb.jar and usbmodbus.jar. Both must be present or startup refuses and
     names the one that is missing -- it never falls back to a simulator.
+
+    Defaults to the repo's drivers/, which is the same directory bootRun and
+    :command-deck:driverPluginTest read. One plugin directory per machine, whichever way the deck
+    is started.
 
 .PARAMETER StorageRoot
     Where `~` in the stored paths resolves to, i.e. the parent of `breaktester/`. Defaults to the
@@ -97,6 +101,12 @@ if (-not $DbUrl) {
 }
 
 $env:SPRING_PROFILES_ACTIVE = 'bench'
+# Declared here rather than in application-docker.properties, which that profile shares with the
+# deck container -- and the container runs simulated. Each deployment states its own mode; an
+# environment variable outranks every properties file. Unset, the base default is 'real' too, so
+# this is belt-and-braces rather than the only thing standing between a bench and a simulator: the
+# 'bench' profile above is what HardwareModeCheck refuses to simulate under.
+$env:DECK_HARDWARE_MODE = 'real'
 $env:DB_URL = $DbUrl
 $env:KEY_STORE_PATH = $KeyStorePath
 $env:KEY_STORE_PASSWORD = $KeyStorePassword
@@ -105,6 +115,7 @@ $env:LOADER_PATH = $driversPath
 
 Write-Host "Starting command-deck on the bench"
 Write-Host "  profile      : bench (resolves to docker)"
+Write-Host "  hardware     : real"
 Write-Host "  drivers      : $driversPath"
 Write-Host "  storage root : $StorageRoot"
 # Logged without credentials so a typo pointing at a reachable-but-wrong database is visible.

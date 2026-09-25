@@ -1,5 +1,5 @@
-> Branch: `dev-split` — implemented 2026-08-18. **Steps 1–4 have shipped.** Only the
-> relay fake and record/replay (step 5) are outstanding.
+> Branch: `dev-split` — implemented 2026-08-18. **Steps 1–4 and the relay fake have
+> shipped.** Only record/replay (step 5) is outstanding.
 
 # Design: virtual devices — running a test with no hardware attached
 
@@ -97,7 +97,7 @@ Two silent-corruption traps beyond the watchdogs:
 
 The load-cell fake and the drive fake **cannot be independent**. `CyclicTest`
 closes a loop through the hardware: force crosses the upper limit →
-`RELEASE_SIGNAL` → `cfw11Release()` flips direction → force must actually *fall*
+`RELEASE_SIGNAL` → `driveRelease()` flips direction → force must actually *fall*
 → `PULL_SIGNAL` → cycle count decrements (`CyclicTest.java:65` reads direction
 back off the drive). An independent force generator either never crosses the
 thresholds or crosses them regardless of the motor; both leave the cycle logic
@@ -142,11 +142,11 @@ alone would *not* fix the fresh-clone build. A simulated device implements
 `DriveProvider` / `LoadCellStreamProvider` and needs no vendor jar; nothing else
 has to be extracted first.
 
-The relay is the one device out of scope there, because it never needed a jar:
-`FourWayRelaySwitch` is already subclassable (`getComPort()` is protected), so the
-fake subclasses it. Its two `new` sites — `SuckService.java:20`, `SuckJob.java:20`
-— are jSerialComm, not vendor-jar, and were never part of the extraction.
-vendor, now behind providers, plus these two.)
+The relay is the one device out of scope there, because it never needed a jar: it is
+jSerialComm, not vendor-jar. It got the same shape anyway — a `RelaySwitch` interface,
+`SerialRelaySwitchProvider` / `SimulatedRelaySwitchProvider` gated by `deck.hardware.mode`,
+and `SuckService` as the single owner that both the dashboard toggle and `SuckJob` go
+three vendor and these two, all now behind providers.)
 
 ## Fault injection — the reason to build this
 
@@ -190,7 +190,7 @@ the bench models; it is the weakest of the three test types to simulate.
 | 2 | ~~`SimulatedBench` + the two simulated implementations, then flip the dev profile to `simulated`~~ | **done** |
 | 3 | ~~Result-data root override, WARN-per-run, UI banner~~ | **done**, and it landed with step 2 rather than after it |
 | 4 | ~~Fault-injection switches, toggled from a dev-only endpoint~~ | **done** — the payoff |
-| 5 | Relay fake; record/replay of real sessions | lowest value — the relay is one fire-and-forget ASCII byte |
+| 5 | ~~Relay fake~~; record/replay of real sessions | relay fake **done** — provider pair plus `SuckService` as sole owner; record/replay still open |
 
 ## Where to look in the code
 
@@ -205,7 +205,7 @@ the bench models; it is the weakest of the three test types to simulate.
 | Result-root redirect | `command-deck/src/main/java/ch/rupfizupfi/deck/filesystem/SimulatedStorageLocationService.java` |
 | Per-run annunciation | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/TestRunnerThread.java` |
 | Load-cell stream seam | `command-deck/src/main/java/ch/rupfizupfi/deck/device/loadcell/LoadCellDevice.java:46` |
-| Drive seam + drive lock | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyconverter/CFW11Device.java:63` |
+| Drive seam + drive lock | `command-deck/src/main/java/ch/rupfizupfi/deck/device/frequencyinverter/FrequencyInverterDevice.java:46` |
 | Stop verification the fake must satisfy | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/MotorSafetyController.java:400` |
 | Watchdog constants the fake must respect | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/LoadCellThread.java:37` |
 | Closed loop the bench must close | `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/CyclicTest.java:59` |
@@ -215,13 +215,15 @@ the bench models; it is the weakest of the three test types to simulate.
 
 Touching existing items — none of them is resolved by this design:
 
-1. **OQ-44** (`Cfw11Check`): a simulated device must return a *distinguishable*
+1. **OQ-44** (`FrequencyInverterCheck`): a simulated device must return a *distinguishable*
    identity, so the check and the simulator have to be designed together. With the
    drivers optional no vendor code loads in dev, so the simulated provider declares
    its own identity — the bundled `VirtualDeviceConnection` (`WEG` / `VDW-00`) is
    **not** used ([`driver-jars.md`](../../03-backend/driver-jars.md)).
-2. **OQ-46** (relay `CH9102` literal): the substring match is why no virtual COM
-   port would help even for the one device that is a real COM port.
+2. **Relay port matching**: the port description is configuration now
+   (`device.relay.port-description`), but the match stays a descriptive-name
+   substring, which is why no virtual COM port helps even for the one device
+   that is a real COM port.
 3. **OQ-50** (two drive handles on one device): fault injection is how this
    becomes answerable without risking the rig.
 4. **OQ-43** (`usbmodbus.jar` provenance): the build half is closed; procurement

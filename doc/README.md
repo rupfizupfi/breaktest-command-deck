@@ -48,6 +48,8 @@ doc/
 ├── OPEN-QUESTIONS.md                   the backlog, grouped by kind
 ├── _verify-refs.mjs                    scan all docs for broken file refs
 ├── _check-size.py                      enforce the size / TOC / anchor standard
+├── _check-diagrams.py                  hold inline mermaid fences to their .mmd source
+├── _check-inventories.py               hold a doc table to the symbol set it enumerates
 │   ├── README.md                       what this folder is, and what it is not
 │   ├── test-harness-jvm.md             a first backend suite on Java 26 + Boot 4.1
 │   ├── test-harness-frontend.md        what can test a Hilla/React frontend
@@ -95,7 +97,7 @@ doc/
 │   ├── testrunner-safety/
 │   │   ├── README.md                   scope of the safety audit + in-flight state
 │   │   ├── audit-findings.md           surviving C / H findings, verified against source
-│   │   ├── loadcell-recovery-design.md reconnect-and-resume design (OQ-45)
+│   │   ├── loadcell-recovery-design.md reconnect-and-resume, shipped
 │   │   └── staleness-and-lifecycle-findings.md
 │   │                                   second audit: stale values, leaks, phase-1 debts
 │   └── virtual-devices/
@@ -142,7 +144,7 @@ docs may touch the topic but defer there.
 | `DataWithOwner` + AOP ownership check | [`03-backend/security-and-tenancy.md`](03-backend/security-and-tenancy.md) |
 | `@BrowserCallable` catalogue | [`03-backend/hilla-services.md`](03-backend/hilla-services.md) |
 | Load cell, CFW11, relay drivers | [`03-backend/hardware-integration.md`](03-backend/hardware-integration.md) |
-| `lib/*.jar` provenance, driver contracts, sibling-repo builds | [`03-backend/driver-jars.md`](03-backend/driver-jars.md) |
+| `drivers/*.jar` provenance, driver contracts, sibling-repo builds | [`03-backend/driver-jars.md`](03-backend/driver-jars.md) |
 | Running a test with no hardware (simulated devices) | [`06-feature-work/virtual-devices/README.md`](06-feature-work/virtual-devices/README.md) |
 | Building without the vendor jars, deck-owned device API | [`06-feature-work/virtual-devices/driver-api-extraction.md`](06-feature-work/virtual-devices/driver-api-extraction.md) |
 | Tripping the watchdogs and the safe-stop tiers on demand | [`06-feature-work/virtual-devices/fault-injection.md`](06-feature-work/virtual-devices/fault-injection.md) |
@@ -228,9 +230,10 @@ wrong line of the right file.
 holds evaluations of *external* tooling — test harnesses, device simulators,
 agent configuration — considered for future adoption. **Assume nothing it
 verification gates are the one exception. Do not infer from it that this project
-uses Playwright, Testcontainers, or any other tool it names; the repo still has
-no tests and no hardware abstraction layer. (CI does now exist — see
+uses Playwright or pymodbus; the repo still has
+no hardware abstraction layer. (CI — see
 [`02-modules/gradle-build.md`](02-modules/gradle-build.md#continuous-integration) —
+plus JUnit, Testcontainers and Vitest test layers now exist; the test-harness
 
 The caveat is about **adoption, not subject matter**. Several of its findings are
 owns them until the work they inform lands, at which point they move into the
@@ -277,9 +280,14 @@ entry, and a reader after one stops paying for the other.
   another.
 - "Where to look in the code", and an "Open questions" section that stays in
   sync with [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md).
-- Run [`_check-size.py`](_check-size.py) **and** [`_verify-refs.mjs`](_verify-refs.mjs)
-  before calling it done. The first checks sizes, TOC presence and that every
-  in-page TOC link resolves; the second catches dangling file references.
+- Run all four gates before calling it done: [`_check-size.py`](_check-size.py)
+  (sizes, TOC presence, in-page TOC links), [`_verify-refs.mjs`](_verify-refs.mjs)
+  (dangling file references), [`_check-diagrams.py`](_check-diagrams.py) (an
+  inline `mermaid` fence still matching its `diagrams/src/*.mmd` source — the one
+  region the other two cannot see, since `_verify-refs.mjs` skips fenced blocks),
+  and [`_check-inventories.py`](_check-inventories.py) (a table that enumerates a
+  code symbol set still matching that set — the only gate that catches a doc being
+  *incomplete* rather than wrong).
 
 ---
 
@@ -289,9 +297,18 @@ entry, and a reader after one stops paying for the other.
   TOC over 120 lines, minimum words with zero lost facts.
 - Cross-link instead of duplicating.
 - Keep diagrams as code (`.mmd` under `diagrams/src/`) — never paste
-  rendered SVG into the markdown.
+  rendered SVG into the markdown. The `.mmd` is **canonical**: an inline
+  ` ```mermaid ` fence may be a summary of it, but must never contradict it
+  or carry a fact the source lacks. [`_check-diagrams.py`](_check-diagrams.py)
+  enforces exactly that, and it is why editing only the fence is a defect.
 - File references use the form `module/path/File.ext:NN` so the verifier
   catches drift. Avoid relative `./` or `../` in file references unless
   the link is rendered (Markdown link, not inline citation).
+- A table that enumerates a set declared in code (an enum's constants, say)
+  carries `<!-- inventory: enum <repo-relative-path> -->` on the line above it,
+  so [`_check-inventories.py`](_check-inventories.py) fails when the set grows
+  and the table doesn't. Name the value's owner rather than copying the value:
+  a default written out in prose drifts the moment somebody tunes it, and no
+  gate compares prose against a literal.
 - When adding a new doc, also add it to the file-tree and reading-order
   table above.

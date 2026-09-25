@@ -46,7 +46,7 @@ erDiagram
     SAMPLE   }o--o{ MATERIAL      : "sample_material (M:N)"
     SAMPLE         ||--o{ TEST_RESULT : "tested by (required)"
     TEST_PARAMETER ||--o{ TEST_RESULT : "uses (required)"
-    TEST_RESULT    ||--o{ FILE_METADATA : "files (cascade=ALL)"
+    TEST_RESULT    ||--o{ FILE_METADATA : "files (cascade=ALL, orphanRemoval)"
 ```
 
 Source: [`doc/diagrams/src/er-diagram.mmd`](../diagrams/src/er-diagram.mmd).
@@ -112,6 +112,14 @@ repository to derive from, and writes through Jackson's `ObjectMapper` to
 either `${user.dir}/settings.json` (dev) or
 `${user.home}/breaktester/settings.json` (docker). See
 `cms/src/main/java/ch/rupfizupfi/deck/data/SettingRepository.java`.
+
+A write failure reaches the Hilla caller as an error rather than a successful
+save — unchecked as Jackson 3's `JacksonException`, or wrapped by
+`SettingService` in an `UncheckedIOException` when the filesystem call fails
+first. A settings file that cannot be created or parsed is logged at error and
+the app keeps running on the built-in defaults. A key missing from the file
+resolves to its default, and a key that is not a `Setting.Key` to a valueless
+`Setting` whose `getType()` is null.
 
 ### Ownership marker
 

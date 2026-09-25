@@ -1,5 +1,7 @@
 package ch.rupfizupfi.deck.filesystem;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -9,37 +11,53 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
 public class CSVStoreService {
-    private static final Logger log = Logger.getLogger(CSVStoreService.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(CSVStoreService.class);
 
-    protected long minTimeStamp = 0;
+    private static final String FORCE_CSV_SUFFIX = "_force.csv";
+    private static final String GAPS_SIDECAR_SUFFIX = "_gaps.json";
+
     protected final StorageLocationService storageLocationService;
 
     public CSVStoreService(StorageLocationService storageLocationService) {
         this.storageLocationService = storageLocationService;
     }
 
-    public String generateFilePathForTestResult(long testResultId) {
-        String filePath = Paths.get(getBasePathForTestResult(testResultId), System.currentTimeMillis() + "_force.csv").toString();
-        Paths.get(filePath).getParent().toFile().mkdirs();
-        return filePath;
+    /**
+     * The two files one run writes: the force CSV and the sidecar that records the gaps in it.
+     * Both names carry the same millis prefix, taken once here, so they pair up by construction
+     * rather than by reconstructing one name from the other. {@code gapsSidecarPath} is where a
+     * sidecar would go - a run that never loses the sensor writes none.
+     */
+    public record TestRunFiles(String forceCsvPath, String gapsSidecarPath) {
     }
 
+    public TestRunFiles generateRunFilesForTestResult(long testResultId) {
+        Path directory = Paths.get(getBasePathForTestResult(testResultId));
+        directory.toFile().mkdirs();
+        long stamp = System.currentTimeMillis();
+        return new TestRunFiles(directory.resolve(stamp + FORCE_CSV_SUFFIX).toString(),
+                directory.resolve(stamp + GAPS_SIDECAR_SUFFIX).toString());
+    }
+
+    /** Every caller streams the result, so an unlistable result path yields an empty array. */
     public String[] listCSVFilesForTestResult(long testResultId) {
         Path path = Paths.get(getBasePathForTestResult(testResultId));
-        if (path.toFile().exists()) {
-            return path.toFile().list();
+        if (Files.isDirectory(path)) {
+            // The result directory also holds <millis>_test.log and <millis>_gaps.json, so the
+            // listing filters on the force suffix.
+            String[] names = path.toFile().list((dir, name) -> name.endsWith(FORCE_CSV_SUFFIX));
+            return names == null ? new String[0] : names;
         } else {
             return new String[0];
         }
     }
 
     public String readCSVDataForTestResult(long testResultId, String fileName) {
-        Path path = Paths.get(getBasePathForTestResult(testResultId), fileName);
+        Path path = resolveWithin(Paths.get(getBasePathForTestResult(testResultId)), fileName);
         if (path.toFile().exists()) {
             try {
                 return Files.readString(path);
@@ -52,8 +70,6 @@ public class CSVStoreService {
     }
 
     public String getPeaksFromResultFiles(long id) {
-        this.minTimeStamp = (System.currentTimeMillis() / 1000) - 60 * 60 * 24 * 4;
-
         String[] paths = this.listCSVFilesForTestResult(id);
         var results = Arrays.stream(paths)
                 .map(path -> getPeakFromResultFile(id, path))
@@ -63,40 +79,64 @@ public class CSVStoreService {
         return String.join(",", results);
     }
 
+    /**
+     * Peak force of one CSV in kN, or null for a file too short to trust. A row whose two columns
+     * are not both numeric is skipped, so no malformed line reaches the caller as an exception.
+     *
+     * <p>Lines split on {@code \R}: the file is written by command-deck's {@code LoadCellThread}
+     * on the bench and may be read on a different OS, so both line endings must parse.
+     */
     protected String getPeakFromResultFile(long id, String path) {
         Path file = Paths.get(path);
         String data = this.readCSVDataForTestResult(id, file.getFileName().toString());
 
-        if (data.contains("@")) {
-            return null;
-        }
-
-        List<String> lines = Arrays.asList(data.split(System.lineSeparator()));
+        List<String> lines = Arrays.asList(data.split("\\R"));
         if (lines.size() < 100) {
             return null;
         }
 
-        var peake = lines.stream().map(line -> line.split(",")).filter(cols -> cols.length == 2 && isValidTimeStamp(cols[0]))
+        var peakKiloNewton = lines.stream().map(line -> line.split(","))
+                .filter(cols -> cols.length == 2 && isTimestamp(cols[0]) && isNumber(cols[1]))
                 .map(cols -> Double.parseDouble(cols[1]) / 1000)
                 //remove values above 300, as the load cell can go maximal to 200kN (20 Tonnes)
                 .filter(value -> value < 300)
                 .max(Double::compareTo).orElse(0.0);
 
-        return String.valueOf(peake);
+        return String.valueOf(peakKiloNewton);
     }
 
-    protected boolean isValidTimeStamp(String millisecondsString) {
+    /** A row is force data only if its first column is epoch millis; the age of the run is irrelevant. */
+    private static boolean isTimestamp(String millisecondsString) {
         try {
-            long milliseconds = Long.parseLong(millisecondsString);
-            return this.minTimeStamp < milliseconds / 1000;
+            Long.parseLong(millisecondsString);
+            return true;
         } catch (NumberFormatException e) {
             return false;
         }
     }
 
+    /** A row carries force only if its second column parses; a malformed one is skipped, not thrown. */
+    private static boolean isNumber(String forceString) {
+        try {
+            Double.parseDouble(forceString);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /** A caller-supplied file name resolves inside its result directory or not at all. */
+    private static Path resolveWithin(Path base, String name) {
+        Path resolved = base.resolve(name).normalize();
+        if (!resolved.startsWith(base.normalize())) {
+            throw new SecurityException("File name escapes its directory: " + name);
+        }
+        return resolved;
+    }
+
     private String getBasePathForTestResult(long testResultId) {
         String path = storageLocationService.getResultDataLocation().resolve(Long.toString(testResultId)).toString();
-        log.info("Base path for test result: " + path);
+        log.debug("Base path for test result {}: {}", testResultId, path);
         return path;
     }
 }

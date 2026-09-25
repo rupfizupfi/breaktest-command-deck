@@ -109,7 +109,7 @@ adds three load-bearing pieces on top of `overrideVaadinConfig`:
 - `command-deck/vite.config.ts:1-69`
 - `command-deck/customFileSystemRouterPlugin.ts:104-143`
 - `cms/vite.config.ts:1-12`
-- `command-deck/src/main/frontend/routes.tsx:1-38`
+- `command-deck/src/main/frontend/routes.tsx:1-11`
 - `build.gradle:64-67` (`vaadin { productionMode; optimizeBundle }`)
 - `cms/src/main/resources/application.properties:1-17`
 - `command-deck/pnpm-workspace.yaml:2-102` (`overrides` block pinning `@vaadin/*`)

@@ -1,11 +1,11 @@
 %% Round-trip of a single Hilla @BrowserCallable method invocation.
-%% Walked example: TestRunnerService.start(testId) on dev-split.
+%% Walked example: TestRunnerService.start(testId) on main @ 2026-08-29.
 
 sequenceDiagram
     autonumber
     participant View as RunView<br/>(views/run.tsx)
     participant Generated as Frontend/generated/<br/>TestRunnerService.ts
-    participant Client as connect-client.default.ts<br/>(ConnectClient)
+    participant Client as connect-client.ts<br/>(ConnectClient + rpcErrorPolicy)
     participant Net as fetch (browser)
     participant Spring as Spring DispatcherServlet
     participant Hilla as com.vaadin.hilla<br/>EndpointController
@@ -20,7 +20,7 @@ sequenceDiagram
     Hilla->>Sec: check JSR-250 annotations
     alt unauthenticated
         Sec-->>Net: 401 (no body)
-        Note right of View: hilla-react-auth observes 401<br/>and the @layout / login.tsx redirect kicks in
+        Note right of View: throws UnauthorizedResponseError —<br/>the .protect() guard in routes.tsx only redirects<br/>to /login on the next navigation
     else authorized
         Sec->>Bean: invoke start(testId)
         Bean-->>Hilla: void

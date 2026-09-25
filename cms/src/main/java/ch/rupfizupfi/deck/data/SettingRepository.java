@@ -3,6 +3,8 @@ package ch.rupfizupfi.deck.data;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -13,12 +15,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.logging.Logger;
 
 @Service
 public class SettingRepository {
-    private static final Logger log = Logger.getLogger(SettingRepository.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(SettingRepository.class);
     private static final String SETTINGS_FILE = "settings.json";
 
     @Value("${spring.profiles.active:dev}")
@@ -37,8 +39,8 @@ public class SettingRepository {
     );
 
     private final ObjectMapper objectMapper;
-    private List<Setting<?>> settingsCache;
-    private boolean initialized = false;
+    private volatile List<Setting<?>> settingsCache;
+    private volatile boolean initialized = false;
 
     @Autowired
     public SettingRepository(ObjectMapper objectMapper) {
@@ -48,11 +50,12 @@ public class SettingRepository {
 
     protected void init() {
         if (!initialized) {
-            log.info("init settings: " + getSettingFilePath());
+            log.info("init settings: {}", getSettingFilePath());
             try {
                 initializeSettingsFile();
-            } catch (IOException e) {
-                log.throwing(SettingRepository.class.getName(), "init", e);
+            } catch (IOException | JacksonException e) {
+                // A bench must still run a test with an unwritable settings file.
+                log.error("Cannot create settings file {}, using built-in defaults", getSettingFilePath(), e);
             }
             initialized = true;
         }
@@ -62,8 +65,6 @@ public class SettingRepository {
         Path settingsFilePath = getSettingFilePath();
         if (Files.notExists(settingsFilePath)) {
             // The parent is storage-root relative and may not exist yet on a fresh machine.
-            // Without this, createFile throws, init() swallows it, and every later read silently
-            // returns defaults — the settings file can then never be written.
             Files.createDirectories(settingsFilePath.getParent());
             Files.createFile(settingsFilePath);
             objectMapper.writeValue(settingsFilePath.toFile(), defaultSettings);
@@ -87,10 +88,6 @@ public class SettingRepository {
         return settingsCache;
     }
 
-    public List<Setting<?>> getSettings() {
-        return getSettings(false);
-    }
-
     public List<Setting<?>> syncAndGetSettings() {
         return getSettings(true);
     }
@@ -101,11 +98,18 @@ public class SettingRepository {
     }
 
     public List<Setting<?>> getAllSettings() {
-        return getSettings();
+        return getSettings(false);
     }
 
-    public <T> Setting<?> getSetting(String key) {
-        return getSettings().stream().filter(setting -> setting.getKey().equals(key)).findFirst().orElseGet(Setting::new);
+    /** The stored setting, else the built-in default for the key, else a valueless {@link Setting} carrying the key. */
+    public Setting<?> getSetting(String key) {
+        return findByKey(getSettings(false), key)
+                .or(() -> findByKey(defaultSettings, key))
+                .orElseGet(() -> Setting.create(key, null));
+    }
+
+    private static Optional<Setting<?>> findByKey(List<Setting<?>> settings, String key) {
+        return settings.stream().filter(setting -> key.equals(setting.getKey())).findFirst();
     }
 
     public <T> void saveSetting(Setting<T> setting) throws IOException {
@@ -141,7 +145,7 @@ public class SettingRepository {
             });
         } catch (JacksonException e) {
             // Jackson 3 reports read failures as unchecked JacksonException rather than IOException.
-            log.throwing(SettingRepository.class.getName(), "loadSettingsFromJson", e);
+            log.error("Cannot read settings file {}, using built-in defaults", file, e);
             return defaultSettings;
         }
     }

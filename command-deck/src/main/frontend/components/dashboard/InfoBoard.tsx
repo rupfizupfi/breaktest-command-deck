@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {DeviceInfoService, SuckService} from "Frontend/generated/endpoints";
 import {getService} from "Frontend/service/StatusService";
 import {IMessage} from "@stomp/rx-stomp";
@@ -7,6 +7,7 @@ import './InfoBoard.css';
 import {Notification} from "@vaadin/react-components/Notification";
 import {useLiveStatus} from "Frontend/service/useLiveStatus";
 import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
+import {latestForce, parseBatch} from "Frontend/service/loadCellBatch";
 
 interface Info {
     id: number;
@@ -33,7 +34,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
     const [force, setForce] = useState<number | null>(null);
     const [enabled, setEnabled] = useState<boolean>(false);
     const [suckEnabled, setSuck] = useState<boolean>(false);
-    const {loadCell, frequencyConverter, connected} = useLiveStatus();
+    const {loadCell, frequencyInverter, connected} = useLiveStatus();
 
     useEffect(() => {
         if (!enabled) {
@@ -42,13 +43,14 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
 
         const subscription = service.loadCellObservable.subscribe({
             next: (value: IMessage) => {
-                const newStatus: object[] = JSON.parse(value.body);
-                // @ts-ignore
-                setForce(newStatus[newStatus.length - 1].force);
+                const latest = latestForce(parseBatch(value.body));
+                if (latest !== undefined) {
+                    setForce(latest);
+                }
             }
         });
 
-        const infoSubscription = service.frequencyConverterInfoObservable.subscribe((value: IMessage) => {
+        const infoSubscription = service.frequencyInverterInfoObservable.subscribe((value: IMessage) => {
             const newInfo: Info = JSON.parse(value.body);
             setFCInfo(newInfo);
         });
@@ -64,19 +66,47 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         };
     }, [enabled]);
 
-    // The backend only publishes converter info while broadcasting is enabled, so silence is only
+    const suckSeeded = useRef(false);
+
+    useEffect(() => {
+        // Mount, and every socket re-open. Not on the way down: that call would go to the server the
+        // socket just lost, and rpcErrorPolicy would toast it on every reconnect cycle.
+        if (!connected && suckSeeded.current) {
+            return;
+        }
+        suckSeeded.current = true;
+
+        let cancelled = false;
+        const read = () => SuckService.isEnabled().then(on => {
+            if (!cancelled) {
+                setSuck(on);
+            }
+        });
+
+        read();
+        // SuckJob switches the relay seconds after a run finishes, so only a poll keeps the checkbox
+        // showing what the service holds rather than the outcome of the last click here.
+        const poll = connected ? window.setInterval(read, 2000) : undefined;
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(poll);
+        };
+    }, [connected]);
+
+    // The backend only publishes inverter info while broadcasting is enabled, so silence is only
     // meaningful once we have asked for it.
-    const converterStale = enabled && info !== null && frequencyConverter.stale;
+    const inverterStale = enabled && info !== null && frequencyInverter.stale;
 
     const infoDom = info ? (
         <>
             <h3 className="lumo-typography">Status: {info.id}</h3>
-            {converterStale && (
+            {inverterStale && (
                 <p className="feed-warning">
-                    no update for {formatAge(frequencyConverter.staleForSeconds)} &mdash; the values below are not live
+                    no update for {formatAge(frequencyInverter.staleForSeconds)} &mdash; the values below are not live
                 </p>
             )}
-            <ul className={converterStale ? "info-list feed-values--stale" : "info-list"}>
+            <ul className={inverterStale ? "info-list feed-values--stale" : "info-list"}>
                 <li className="info-item"><span>Speed:</span> <span>{info.speed * .375} mm/min</span></li>
                 <li className="info-item"><span>Ramp:</span> <span>{info.useSecondRamp ? 'second' : 'first'}</span></li>
                 <li className="info-item"><span>Direction:</span> <span>{info.directionIsForward ? 'push' : 'pull'}</span></li>
@@ -100,7 +130,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
                     <span>Force:</span>
                     <span>
                         <StaleValue status={loadCell} hasValue={force !== null}>
-                            {((force ?? 0) / 1000).toFixed(3)} Kn
+                            {((force ?? 0) / 1000).toFixed(3)} kN
                         </StaleValue>
                     </span>
                 </li>
@@ -114,14 +144,30 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             <br/>
             <label>
                 Suck: <Checkbox theme="primary" checked={suckEnabled} onChange={function (e) {
-                setSuck(e.target.checked);
-                (e.target.checked ? SuckService.enable().then(confirm => {
-                    if (confirm) {
-                        Notification.show('it works')
-                    } else {
-                        Notification.show('action seems not possible')
-                    }
-                }) : SuckService.disable());
+                // The backend's relay state is the only truth about the vacuum, and React rewrites
+                // the element only on a state change, so the outcome goes to both.
+                const checkbox = e.target;
+                if (checkbox.checked) {
+                    SuckService.enable().then(energized => {
+                        setSuck(energized);
+                        checkbox.checked = energized;
+                        if (!energized) {
+                            Notification.show('Vacuum could not be switched on - relay port not found or not writable');
+                        }
+                    }).catch(() => {
+                        checkbox.checked = suckEnabled;
+                    });
+                } else {
+                    SuckService.disable().then(off => {
+                        setSuck(!off);
+                        checkbox.checked = !off;
+                        if (!off) {
+                            Notification.show('Vacuum could not be switched off - check the relay');
+                        }
+                    }).catch(() => {
+                        checkbox.checked = suckEnabled;
+                    });
+                }
             }}/>
             </label>
         </div>

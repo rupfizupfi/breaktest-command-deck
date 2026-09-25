@@ -1,5 +1,5 @@
 %% Venn-style comparison of authored frontend code in :cms vs :command-deck.
-%% dev-split, 2026-04-25.
+%% main, 2026-08-29.
 %% Mermaid does not have a true Venn diagram; render as a 3-column flowchart.
 
 flowchart LR
@@ -8,7 +8,7 @@ flowchart LR
         cms_components[components/: autocrud, combobox, control,<br/>dashboard/{LogComponent, ResultViewer},<br/>owner, placeholder]
         cms_util[util/: auth.ts, model.ts, service.ts]
         cms_model[model/: init.ts, owner/, sample/]
-        cms_themes[themes/]
+        cms_themes[themes/breaktest-command-deck<br/>duplicated byte-for-byte in deck — not aliased]
     end
 
     subgraph SHARED["Shared via alias 'cms' -> ../cms/src/main/frontend"]
@@ -24,6 +24,6 @@ flowchart LR
     CMS -.alias 'cms'.-> SHARED
     SHARED -.imported via alias.-> DECK
 
-    note["@layout.tsx is duplicated nearly verbatim<br/>(deck adds &lt;InfoBoard/&gt;) — candidate for extraction"]
+    note["@layout.tsx is duplicated nearly verbatim<br/>(deck adds &lt;InfoBoard/&gt; and &lt;SimulatedModeBanner/&gt;)<br/>— candidate for extraction"]
     deck_views -.see.-> note
     cms_views -.see.-> note

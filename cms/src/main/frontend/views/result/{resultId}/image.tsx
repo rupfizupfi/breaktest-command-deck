@@ -1,11 +1,12 @@
 import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
 import {FileMetadataService, TestResultService} from "Frontend/generated/endpoints";
 import {useParams} from "react-router";
-import React, {useEffect, useState} from "react";
+import {useEffect, useState} from "react";
 import Placeholder from "cms/components/placeholder/Placeholder";
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
 import {Button, VerticalLayout} from "@vaadin/react-components";
 import {Upload} from "@vaadin/react-components/Upload";
+import {Notification} from "@vaadin/react-components/Notification.js";
 import FileMetadata from "Frontend/generated/ch/rupfizupfi/deck/data/FileMetadata";
 import './image.css';
 
@@ -21,13 +22,12 @@ export default function ImageUploadView() {
     const [testResult, setTestResult] = useState<TestResult>();
     const [images, setImages] = useState<FileMetadata[]>([]);
 
-    function handleFileRemove(file: any) {
-        const images = testResult?.files || [];
-        const index = images.indexOf(file);
-        images.splice(index, 1);
-        testResult!.files = images;
-        FileMetadataService.delete(file.id);
-        setImages([...images]);
+    function handleFileRemove(file: FileMetadata) {
+        if (file.id === undefined) {
+            return;
+        }
+        FileMetadataService.delete(file.id)
+            .then(() => setImages(current => current.filter(image => image.id !== file.id)));
     }
 
     useEffect(() => {
@@ -54,17 +54,30 @@ export default function ImageUploadView() {
                         <a href={`/api/files/image/${file.filePath}`} download>
                             <span>{file.fileName}</span>
                         </a>
-                        <Button onClick={() => handleFileRemove(file)}>Delete</Button>
+                        <Button disabled={file.id === undefined} onClick={() => handleFileRemove(file)}>Delete</Button>
                     </li>
                 ))}
             </ul>
             <Upload
                 target="/api/files/upload"
                 maxFiles={5}
-                onUploadResponse={(event) => {
+                onUploadResponse={async (event) => {
                     const fileMetadata = JSON.parse(event.detail.xhr.response) as FileMetadata;
-                    FileMetadataService.connectToTestResult(fileMetadata, testResult.id as number);
-                    setImages([...images, fileMetadata]);
+                    const testResultId = testResult.id;
+                    if (testResultId === undefined) {
+                        Notification.show(`Could not attach ${fileMetadata.fileName}: the test result has no id.`, {theme: 'error'});
+                        return;
+                    }
+                    try {
+                        if (!await FileMetadataService.connectToTestResult(fileMetadata, testResultId)) {
+                            Notification.show(`Could not attach ${fileMetadata.fileName}: the server refused it.`, {theme: 'error'});
+                            return;
+                        }
+                    } catch (error) {
+                        Notification.show(`Could not attach ${fileMetadata.fileName}: ${error}`, {theme: 'error'});
+                        return;
+                    }
+                    setImages(current => [...current, fileMetadata]);
                 }}
             />
         </VerticalLayout>

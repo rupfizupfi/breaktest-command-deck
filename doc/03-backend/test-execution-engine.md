@@ -21,7 +21,7 @@ thread they drive) are in [`test-types.md`](test-types.md).
 - [`TestRunnerThread.run()`](#testrunnerthreadrun)
 - [`TestContext` — the signal bus](#testcontext--the-signal-bus)
 - [Startup checks](#startup-checks)
-- [Unrunnable parameter types fail silently](#unrunnable-parameter-types-fail-silently)
+- [Unrunnable parameter types](#unrunnable-parameter-types)
 - [Where to look in the code](#where-to-look-in-the-code)
 - [Open questions](#open-questions)
 
@@ -67,7 +67,7 @@ sequenceDiagram
             LCT->>TC: sendSignal(PULL_SIGNAL)
         end
         TC-->>Test: handleSignal(sig)
-        Test->>CFW: cfw11Pull / cfw11Release / finish()
+        Test->>CFW: drivePull / driveRelease / finish()
         Test->>Topic: testLogger.log(...)
     end
 
@@ -84,7 +84,7 @@ sequenceDiagram
 (`command-deck/src/main/java/ch/rupfizupfi/deck/api/services/TestRunnerService.java:13`)
 is `@BrowserCallable @PermitAll`. It owns *one* `TestRunnerThread` (created
 once via `TestRunnerFactory.createTestRunnerThread()` in the constructor).
-Three methods: `start(int testId)` looks up the `TestResult` row and hands it
+Three methods: `start(Long testId)` looks up the `TestResult` row and hands it
 to the thread; `status()` returns whether the thread is running plus the
 active `TestResult` (or `null`); `stop()` asks the thread to wind down.
 
@@ -118,14 +118,17 @@ It also exposes `createLoadCellThread(TestContext, LoadCellDevice)`,
 is **not** a `Thread`; it owns one.
 
 1. `startThread(TestResult)` creates a `TestLogger`, calls `begin()` (opens
-   the per-test log file under the result-data location), and starts a daemon
-   `Thread` named `TestRunnerThread`.
+   the per-test log file under the result-data location), and starts the
+   `Thread` named `TestRunnerThread`. Every failure on that path releases the
+   run scope and throws, so a start that began no run reaches the operator as
+   an error rather than as a silent success.
 2. The thread sleeps 50 ms — empirically enough for the React client to
    subscribe to `/topic/logs` so users see the first lines. This is a race,
    not a guarantee (OQ-23, see
    [`../04-frontend/state-and-realtime.md`](../04-frontend/state-and-realtime.md)).
-3. Switches on `testResult.testParameter.type` to pick the subclass. Unknown
-   types fall through — see [below](#unrunnable-parameter-types-fail-silently).
+3. Switches on `testResult.testParameter.type` to pick the subclass. An
+   unknown type faults the run naming the type — see
+   [below](#unrunnable-parameter-types).
 4. Calls `runStartupChecks()` → `setup()` → `getContext().processSignals()`.
 5. `processSignals()` blocks on `signalQueue.take()` forever; the only exits
    are `InterruptedException` (from `stopThread()`) or `FinishTestException`
@@ -135,6 +138,12 @@ is **not** a `Thread`; it owns one.
    `MotorSafetyController.safeStop`, whose tier 2 drops the device-service
    handle and opens a fresh one through `DriveProvider` to force the motor off.
    **This is the most safety-critical block in the codebase.**
+7. The same `finally` settles a terminal state, records the run outcome and
+   ends the `TestLogger`, so the log descriptor is closed on every exit — a
+   natural finish, a fault and an operator Stop alike. `TestLogger.end()` claims
+   the writer in a single read, so it is idempotent even against a concurrent
+   `end()` — which is what lets `stopThread()` end the same logger — and `log()`
+   absorbs a rejected STOMP broadcast as well as a file-write failure.
 
 `stopThread()` puts a sentinel `0` on the queue via
 `TestContext.sendSignal(0)`, which `CyclicTest.handleSignal` translates into
@@ -151,56 +160,58 @@ in-memory bus:
 * `addSignalListener(...)` / `removeSignalListener(...)` — fan out to
   `AbstractTest` subclasses.
 * Signal values: `RELEASE_SIGNAL = 1`, `PULL_SIGNAL = 2`, `0` = stop.
-* `sendSignal` is a no-op when the same signal arrives twice in a row.
+  `SENSOR_LOST_SIGNAL = 3` is declared and **never sent** — every consumer acts
+  on whatever it pops, so a bookkeeping-only value would be indistinguishable
+  from a command; `TestStateMachine` carries that instead.
+* `sendSignal` is a no-op when the same signal arrives twice in a row, **except
+  for `0`** — which also bypasses the dispatch gate. Without both exemptions the
+  watchdog's stop swallowed the operator's Stop.
 
 Limit values (`upperLimit`, `lowerLimit`) are held in Newtons and mutated by
 `CyclicTest.handleSignal` to compensate for overshoot: measured min/max
 diverge from target, so the limit is nudged to turn the motor around earlier
-next cycle.
+next cycle. `TestContext` refuses a **non-finite** limit outright, and
+`LoadCellThread` skips a non-finite sample rather than comparing it: a NaN makes
+every comparison false, which used to mean no signal ever fired again with the
+motor still driving.
 
 ## Startup checks
 
 `AbstractCheck`
 (`command-deck/.../testrunner/startup/check/AbstractCheck.java`) defines a
-single `execute() throws CheckFailedException`. Two implementations run today:
+single `execute() throws CheckFailedException`. Three implementations run today:
 
 * `FileSystemCheck` — the result-data directory exists and is writable.
 * `LoadCellCheck` — the load cell delivers a *fresh* measurement within 2 s.
   Opening the device is not evidence: the driver opens the port on its own
   thread, so a device that is not plugged in still connects and reports itself
   connected.
+* `FrequencyInverterCheck` — one `getControlParameters` read through the shared
+  drive handle proves the inverter answers. Nothing is written, and the connect
+  is balanced so the run's own connect still opens a fresh reference count.
 
 `AbstractTest.runStartupChecks()` aggregates failures into one combined
 `CheckFailedException`.
 
 To add a check: subclass `AbstractCheck` and return it from
-`TestRunnerFactory.getStartupChecks()`. There is **no** Spring `@Component`
-auto-discovery — the factory hand-instantiates them. Nothing yet checks that
-the frequency converter is present (OQ-44, see
-[`hardware-integration.md`](hardware-integration.md)).
+`TestRunnerFactory.getStartupChecks()` — no `@Component` auto-discovery.
 
-## Unrunnable parameter types fail silently
+## Unrunnable parameter types
 
 `TestRunnerThread.run()` dispatches on the free-form
-`testResult.testParameter.type` string:
+`testResult.testParameter.type` string, and the `default` branch throws:
 
 ```java
-test = switch (testResult.testParameter.type) {
-    case "cyclic"      -> ... CyclicTest ...
-    case "timeCyclic"  -> ... TimeCyclicTest ...
-    case "destructive" -> ... DestructiveTest ...
-    default -> test;          // stays null
-};
-if (test != null) { ... }
+default -> throw new IllegalArgumentException(
+        "unknown test parameter type: " + testResult.testParameter.type);
 ```
 
 The free-form column is deliberate (see
 [`persistence-model.md`](persistence-model.md)) — users create parameter
-types that have no runner. The **silence** is not: starting a run with an
-unrunnable type leaves `test == null`, skips to `finally`, and the operator
-sees a test that appears to start and immediately end with no explanation.
-The fix is an operator-visible message on the `default` branch, not an enum.
-(OQ-35)
+types that have no runner. Starting a run with one writes
+`unknown test parameter type: <type>` to the test log and settles the run
+`FAULT` with the same reason, which `TestStateBroadcaster` carries to the
+operator. The type stays a string; an enum was refused.
 
 ## Where to look in the code
 
@@ -217,12 +228,7 @@ Test implementations and the measurement thread: [`test-types.md`](test-types.md
 
 ## Open questions
 
-1. **Unrunnable type gives no feedback** — see above. (OQ-35)
-2. **`stopThread()` NPEs when `test == null`.** If setup hasn't completed,
-   `this.test.getContext().sendSignal(0)` at `TestRunnerThread.java:82`
-   dereferences null. The `if (this.running)` guard doesn't cover it —
-   `running` is set before `test` is assigned. (OQ-51)
-3. **The safe-stop escalation opens a second drive handle** on the same USB
+1. **The safe-stop escalation opens a second drive handle** on the same USB
    device (`MotorSafetyController#stopWithFreshHandle` → `DriveProvider.open()`).
    Tier 2 closes the old handle first, under the drive lock, so the overlap is
    meant to be zero. Decided 2026-08-16: **investigate before changing
@@ -231,12 +237,11 @@ Test implementations and the measurement thread: [`test-types.md`](test-types.md
    whether it's tidy.
    Outcome is a documented finding plus either a reuse refactor or an inline
    note explaining why a fresh handle is correct. (OQ-50)
-4. **Reflection-based factory** reads `getConstructors()[0]`. It works
-   because each subclass has exactly one public constructor; adding a second
-   changes behaviour with no error. Look the constructor up explicitly.
-   (OQ-49)
-5. **The engine's structure itself** — two locks on one drive handle, per-run
+2. **Reflection-based factory.** Constructor lookup requires exactly one public
+   constructor and refuses the run naming the count found — `Class#getConstructors`
+   defines no order. An unresolvable parameter is named with its index and type.
+3. **The engine's structure itself** — two locks on one drive handle, per-run
    safety state in a `@Service`, three near-identical `setup()` bodies.
    Proposed restructuring, not decided:
    [hardware-layer-redesign](../06-feature-work/hardware-layer-redesign/README.md),
-   which would also resolve OQ-49 by deletion. (OQ-64)
+   which would delete the reflective factory outright. (OQ-64)

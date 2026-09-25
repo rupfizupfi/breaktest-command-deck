@@ -1,14 +1,25 @@
 package ch.rupfizupfi.deck.security;
 
+import com.vaadin.flow.spring.security.RequestUtil;
 import com.vaadin.flow.spring.security.VaadinSecurityConfigurer;
+import com.vaadin.hilla.route.RouteUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authorization.AuthenticatedAuthorizationManager;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+
+import java.util.Set;
+import java.util.function.Function;
 
 @EnableWebSecurity
 @Configuration
@@ -24,7 +35,8 @@ public class SecurityConfiguration {
      * by {@link VaadinSecurityConfigurer} into an application-owned filter chain bean.
      */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, RequestUtil requestUtil,
+                                           ObjectProvider<RouteUtil> routeUtil) throws Exception {
         // Disable CSRF protection for specific endpoints
         http.csrf(csrf -> csrf.ignoringRequestMatchers(
                 PathPatternRequestMatcher.withDefaults().matcher("/api/files/uploads"),
@@ -48,9 +60,41 @@ public class SecurityConfiguration {
                 .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/status")).authenticated()
         );
 
+        // Vaadin 25.2 matches a Hilla view's rolesAllowed against granted authorities verbatim.
+        // Registered ahead of Vaadin's own rule, this one applies the ROLE_ prefix the way
+        // isUserInRole does, so rolesAllowed keeps naming Role enum values.
+        http.authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(requestUtil::isSecuredHillaRoute)
+                .access(hillaRouteAccess(request -> {
+                    RouteUtil routes = routeUtil.getIfAvailable();
+                    return routes == null ? Set.<String>of() : routes.getAllowedAuthorities(request);
+                }))
+        );
+
         return http
                 .with(VaadinSecurityConfigurer.vaadin(), vaadin -> vaadin.loginView("/login"))
                 .build();
+    }
+
+    /**
+     * Grants a Hilla route request to any authority in {@code allowedRoles}, prefixed with
+     * {@code ROLE_} unless already present, and to any authenticated user when the route names
+     * no role.
+     */
+    static AuthorizationManager<RequestAuthorizationContext> hillaRouteAccess(
+            Function<HttpServletRequest, Set<String>> allowedRoles) {
+        return (authentication, context) -> {
+            Set<String> roles = allowedRoles.apply(context.getRequest());
+            if (roles.isEmpty()) {
+                return AuthenticatedAuthorizationManager.<RequestAuthorizationContext>authenticated()
+                        .authorize(authentication, context);
+            }
+            String[] authorities = roles.stream()
+                    .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
+                    .toArray(String[]::new);
+            return AuthorityAuthorizationManager.<RequestAuthorizationContext>hasAnyAuthority(authorities)
+                    .authorize(authentication, context);
+        };
     }
 
 }

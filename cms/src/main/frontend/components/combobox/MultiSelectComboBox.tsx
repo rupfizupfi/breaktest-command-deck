@@ -6,7 +6,6 @@ import {
     MultiSelectComboBoxProps
 } from "@vaadin/react-components";
 import React from "react";
-import {useSignal} from "@vaadin/hilla-react-signals";
 import {AutoComboService} from "cms/components/combobox/service";
 
 type AutoComboBoxProps<T> = MultiSelectComboBoxProps<T> & {
