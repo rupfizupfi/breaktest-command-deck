@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -24,8 +25,6 @@ class CSVStoreServiceTest {
 
     @BeforeEach
     void createFreshService() {
-        // Fresh instance per test: the production bean is a singleton with a mutable
-        // minTimeStamp field, so shared state would let one test's peak scan taint another.
         StorageLocationService storageLocationService = mock(StorageLocationService.class);
         when(storageLocationService.getResultDataLocation()).thenReturn(resultDataRoot);
         service = new CSVStoreService(storageLocationService);
@@ -41,14 +40,23 @@ class CSVStoreServiceTest {
         // endsWith, and a contains-based rewrite would let this backup into the export.
         Files.writeString(directory.resolve("1_force.csv.bak"), "1000,2000\n");
 
-        // This filter is the only guard before the Excel export's unguarded
-        // Double.parseDouble: a log or sidecar in the listing would reach it as force data.
+        // The Excel export reads every listed file as force data, so a log or sidecar in the
+        // listing would contribute its lines to a run's peak.
         assertThat(service.listCSVFilesForTestResult(RESULT_ID)).containsExactly("1_force.csv");
     }
 
     @Test
     void listingForAMissingDirectoryIsEmptyNotNull() {
         assertThat(service.listCSVFilesForTestResult(999L)).isNotNull().isEmpty();
+    }
+
+    @Test
+    void listingForAResultPathThatIsAFileIsEmptyNotNull() throws IOException {
+        Files.writeString(resultDataRoot.resolve(String.valueOf(RESULT_ID)), "1000,2000\n");
+
+        // The results grid and the project XLSX export both stream this array straight away.
+        assertThat(service.listCSVFilesForTestResult(RESULT_ID)).isNotNull().isEmpty();
+        assertThat(service.getPeaksFromResultFiles(RESULT_ID)).isEmpty();
     }
 
     @Test
@@ -98,6 +106,24 @@ class CSVStoreServiceTest {
         assertThat(service.getPeaksFromResultFiles(RESULT_ID)).isEqualTo("250.0");
     }
 
+    /** The peak of a finished run is a fact about the run, so an archived result still reports it. */
+    @Test
+    void peakIsFoundInAFileOlderThanFourDays() throws IOException {
+        long fourHundredDaysAgo = System.currentTimeMillis() - 400L * 24 * 60 * 60 * 1000;
+        writeForceCsvStartingAt("\n", fourHundredDaysAgo, 120, 250_000);
+
+        assertThat(service.getPeaksFromResultFiles(RESULT_ID)).isEqualTo("250.0");
+    }
+
+    @Test
+    void rowsWithNonNumericTimestampsAreSkipped() throws IOException {
+        // A header carries no epoch millis in column 0, so it is not force data.
+        Files.writeString(resultDirectory().resolve("1_force.csv"),
+                "time,force\n" + forceCsvContent("\n", System.currentTimeMillis(), 120, 250_000));
+
+        assertThat(service.getPeaksFromResultFiles(RESULT_ID)).isEqualTo("250.0");
+    }
+
     @Test
     void fileWithFewerThan100LinesYieldsNoPeak() throws IOException {
         // A short file is a run that barely started; its noise must not become an Excel peak.
@@ -107,12 +133,20 @@ class CSVStoreServiceTest {
     }
 
     @Test
-    void fileContainingAnAtSignYieldsNoPeak() throws IOException {
-        // '@' marks a device-config preamble: the file is not plain force data, whatever its size.
+    void aStraySymbolLineDoesNotCostTheFileItsPeak() throws IOException {
         Files.writeString(resultDirectory().resolve("1_force.csv"),
-                "@device-config\n" + forceCsvContent("\n", 120, 250_000));
+                "@device-config\n" + forceCsvContent("\n", System.currentTimeMillis(), 120, 250_000));
 
-        assertThat(service.getPeakFromResultFile(RESULT_ID, "1_force.csv")).isNull();
+        assertThat(service.getPeakFromResultFile(RESULT_ID, "1_force.csv")).isEqualTo("250.0");
+    }
+
+    @Test
+    void rowsWithNonNumericForceAreSkipped() throws IOException {
+        Files.writeString(resultDirectory().resolve("1_force.csv"),
+                System.currentTimeMillis() + ",abc\n"
+                        + forceCsvContent("\n", System.currentTimeMillis(), 120, 250_000));
+
+        assertThat(service.getPeakFromResultFile(RESULT_ID, "1_force.csv")).isEqualTo("250.0");
     }
 
     @Test
@@ -120,26 +154,60 @@ class CSVStoreServiceTest {
         assertThat(service.readCSVDataForTestResult(RESULT_ID, "missing_force.csv")).isEmpty();
     }
 
+    // The file name is caller-supplied: TestResultService.readCSVData hands it through from any
+    // logged-in user, so containment is what keeps the read inside the result directory.
+    @Test
+    void readingATraversingNameIsRefused() {
+        assertThatExceptionOfType(SecurityException.class)
+                .isThrownBy(() -> service.readCSVDataForTestResult(RESULT_ID, "../8/1_force.csv"));
+    }
+
+    @Test
+    void readingAnAbsoluteNameIsRefused() throws IOException {
+        Path outside = Files.writeString(resultDataRoot.resolve("secret.txt"), "1000,2000\n");
+
+        assertThatExceptionOfType(SecurityException.class)
+                .isThrownBy(() -> service.readCSVDataForTestResult(RESULT_ID, outside.toString()));
+    }
+
+    @Test
+    void readingAPlainNameReadsTheFile() throws IOException {
+        Files.writeString(resultDirectory().resolve("1_force.csv"), "1000,2000\n");
+
+        assertThat(service.readCSVDataForTestResult(RESULT_ID, "1_force.csv")).isEqualTo("1000,2000\n");
+    }
+
+    @Test
+    void readingANameThatNormalizesBackInsideTheBaseReadsTheFile() throws IOException {
+        Files.writeString(resultDirectory().resolve("1_force.csv"), "1000,2000\n");
+
+        assertThat(service.readCSVDataForTestResult(RESULT_ID, "sub/../1_force.csv")).isEqualTo("1000,2000\n");
+    }
+
     private Path resultDirectory() throws IOException {
         return Files.createDirectories(resultDataRoot.resolve(Long.toString(RESULT_ID)));
     }
 
     private void writeForceCsv(String lineEnding, int lines, long... milliNewtonValues) throws IOException {
+        writeForceCsvStartingAt(lineEnding, System.currentTimeMillis(), lines, milliNewtonValues);
+    }
+
+    private void writeForceCsvStartingAt(String lineEnding, long firstMillis, int lines, long... milliNewtonValues)
+            throws IOException {
         Files.writeString(resultDirectory().resolve("1_force.csv"),
-                forceCsvContent(lineEnding, lines, milliNewtonValues));
+                forceCsvContent(lineEnding, firstMillis, lines, milliNewtonValues));
     }
 
     /**
-     * Lines of {@code <epoch-millis>,<milli-newtons>}. Timestamps start at now, so they pass the
-     * four-day recency window {@code getPeaksFromResultFiles} arms; the first values come from
-     * {@code milliNewtonValues}, the rest are a quiet 1000 (1 kN).
+     * Lines of {@code <epoch-millis>,<milli-newtons>} one millisecond apart from
+     * {@code firstMillis}. The first values come from {@code milliNewtonValues}, the rest are a
+     * quiet 1000 (1 kN).
      */
-    private static String forceCsvContent(String lineEnding, int lines, long... milliNewtonValues) {
+    private static String forceCsvContent(String lineEnding, long firstMillis, int lines, long... milliNewtonValues) {
         StringBuilder csv = new StringBuilder();
-        long now = System.currentTimeMillis();
         for (int i = 0; i < lines; i++) {
             long value = i < milliNewtonValues.length ? milliNewtonValues[i] : 1_000;
-            csv.append(now + i).append(',').append(value).append(lineEnding);
+            csv.append(firstMillis + i).append(',').append(value).append(lineEnding);
         }
         return csv.toString();
     }
