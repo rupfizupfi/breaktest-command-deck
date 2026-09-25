@@ -42,6 +42,11 @@ dependencies {
     developmentOnly driverPluginJars
 }
 
+tasks.named('bootRun') {
+    // The dev H2 URL is working-directory relative; both modules must resolve it to the same file.
+    workingDir = rootProject.projectDir
+}
+
 // The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
 // task dependency on it — with device-api coming from an included build, a standalone
 // `hillaGenerate` (script/typecheck.ps1) then fails with "querying ... before task

@@ -2,6 +2,10 @@ package ch.rupfizupfi.deck;
 
 import ch.rupfizupfi.deck.api.services.SampleService;
 import ch.rupfizupfi.deck.api.services.TestResultService;
+import ch.rupfizupfi.deck.data.Customer;
+import ch.rupfizupfi.deck.data.CustomerRepository;
+import ch.rupfizupfi.deck.data.Material;
+import ch.rupfizupfi.deck.data.MaterialRepository;
 import ch.rupfizupfi.deck.data.UserRepository;
 import ch.rupfizupfi.deck.security.CheckUserCanOnlyAccessOwnDataAspect;
 import ch.rupfizupfi.deck.security.UserDetailsServiceImpl;
@@ -52,6 +56,12 @@ class ApplicationContextTest {
     @Autowired
     UserRepository userRepository;
 
+    @Autowired
+    CustomerRepository customerRepository;
+
+    @Autowired
+    MaterialRepository materialRepository;
+
     @Test
     void datasourceIsInMemoryH2NotTheDevFile() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
@@ -69,6 +79,21 @@ class ApplicationContextTest {
         // the wiring belongs to this test.
         assertThat(context.containsBean("dataSourceScriptDatabaseInitializer")).isTrue();
         assertThat(userRepository.count()).isPositive();
+    }
+
+    @Test
+    void seededTablesAcceptAnApplicationInsert() {
+        // data.sql's trailing RESTART statements move each seeded table's identity past its
+        // seeded ids; without them save() collides on the primary key and throws
+        // DataIntegrityViolationException. Two of the five seeded tables stand for all.
+        Customer customer = new Customer();
+        customer.organization = "Post-seed insert";
+
+        Material material = new Material();
+        material.name = "Post-seed insert";
+
+        assertThat(customerRepository.save(customer).getId()).isGreaterThan(1L);
+        assertThat(materialRepository.save(material).getId()).isGreaterThan(8L);
     }
 
     @Test

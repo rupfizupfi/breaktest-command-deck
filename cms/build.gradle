@@ -10,6 +10,11 @@ jar {
     enabled = true
 }
 
+tasks.named('bootRun') {
+    // The dev H2 URL is working-directory relative; both modules must resolve it to the same file.
+    workingDir = rootProject.projectDir
+}
+
 dependencies {
     // Persistence tests run against real PostgreSQL (Testcontainers), not H2 — the dev/prod
     // split is H2/Postgres and H2 semantics are not what production sees. Versions come from
