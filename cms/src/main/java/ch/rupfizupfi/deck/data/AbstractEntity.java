@@ -1,17 +1,14 @@
 package ch.rupfizupfi.deck.data;
 
 import jakarta.persistence.*;
-import org.springframework.lang.Nullable;
 
 @MappedSuperclass
 public abstract class AbstractEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Nullable
     private Long id;
 
     @Version
-    @Nullable
     private int version;
 
     public Long getId() {
