@@ -114,7 +114,7 @@ skipped `finish()` — an exception thrown from `setup()`, for instance. Any
 writing it three times, are part of
 [hardware-layer-redesign](../06-feature-work/hardware-layer-redesign/README.md) (OQ-64).
 
-Otherwise none of its own. The runner-side items (OQ-35, OQ-49, OQ-50, OQ-51) are in
+Otherwise none of its own. The runner-side item (OQ-50) is in
 [`test-execution-engine.md`](test-execution-engine.md#open-questions);
 load-cell recovery has shipped —
 [`loadcell-recovery-design.md`](../06-feature-work/testrunner-safety/loadcell-recovery-design.md).

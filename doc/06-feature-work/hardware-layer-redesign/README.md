@@ -51,11 +51,11 @@ Each row is a cause, not a symptom. Anchors are current code.
 | **Per-run state in a singleton** | `MotorSafetyController` is a `@Service` holding `stopLatched` / `motorEnergized` / `lastResult`, so `TestRunnerThread.java:72` must remember to reset it, and `lastResult` exists only to tolerate `cleanup()` running twice | A per-run `SafetyGate`; nothing to clear, and no result cache |
 | **One class, four jobs** | `MotorSafetyController` = lock façade (`:65-71`) + energize gate + tier machine + incident prose (`:320-352`), ~480 lines | Four types, one job each |
 | **Escalation policy in the sensor layer** | `LoadCellThread` imports `MotorSafetyController` and decides to stop the motor itself (`:386`) | Watchdog emits a `Fault`; the run supervisor decides. Removes the only upward dependency |
-| **Reflective service location** | `TestRunnerFactory.java:34-65` walks `getConstructors()[0]` and parameter types, while `TestRunnerThread.java:29-34` already switches on the type string explicitly | A `Map<String, TestProgram>`. Resolves OQ-49 by deletion |
+| **Reflective service location** | `TestRunnerFactory` resolves the sole public constructor's parameters from the context, while `TestRunnerThread.java:29-34` already switches on the type string explicitly | A `Map<String, TestProgram>`, deleting the reflection |
 
 Smaller, folded into the steps that touch them: `LoadCellThread.stop()` exists but nothing calls
-it — `AbstractTest.java:71` uses the weaker `setRunning(false)`; `System.gc()` in
-`AbstractTest.java:102`; signals are bare ints with `signal - 1` index maths
+it — `AbstractTest.java:71` uses the weaker `setRunning(false)`;
+signals are bare ints with `signal - 1` index maths
 (`TimeCyclicTest.java:83`); `TestContext.java:45` dedupes on an unsynchronised mutable int.
 
 ## The dependency rule
@@ -90,7 +90,7 @@ Five steps. Each is independently shippable and verifiable with `script/typechec
 | 1 | ~~`Drive` + `Cfw11Drive`, rewrite the call sites~~ — **shipped** as [`driver-api-extraction`](../virtual-devices/driver-api-extraction.md), which also made both jars optional. `DriveSession` (the revoking lease) is what remains | the escaping vendor type; the ordering rule survives | done |
 | 2 | `RefCounted<H>`; both devices shrink | ~120 duplicated lines, the unbounded join. `Device.getHardwareComponent()` is already gone | low |
 | 3 | Split `MotorSafetyController` → `SafetyGate` + `StopSequence` + `StopReport` | `clearStopLatch()`, the `lastResult` cache, 4× logging | **highest** — it is the safety path; behaviour-preserving only, tier semantics frozen |
-| 4 | `TestProgram` + `DriveSetup` + `TestRun` | 3× `setup()`, the reflective factory, the shadowed field, `System.gc()` | medium — touches all three test types |
+| 4 | `TestProgram` + `DriveSetup` + `TestRun` | 3× `setup()`, the reflective factory, the shadowed field | medium — touches all three test types |
 | 5 | Typed `Signal` + `Rpm`; watchdog → `Fault` → supervisor | int signals, the last upward dependency | medium |
 
 Step 3 is the one that cannot be verified by the existing gates: tier 2 and tier 3 have never
@@ -128,7 +128,5 @@ an oversight.
 |---|---|
 | **OQ-64** | Whether to adopt this redesign at all. Owner-owed: it restructures the safety path. |
 | **OQ-63** | The `TimeCyclicTest` speed divisor. Found while auditing the duplicated conversion; independent of the redesign and worth fixing first. |
-| **OQ-49** | `getConstructors()[0]` — resolved by step 4, by deleting the reflection. |
 | **OQ-50** | Two drive handles on one device. `DriveSession.useFresh` preserves today's behaviour exactly, so this stays **open and owed**; the redesign neither fixes nor worsens it. |
 | **OQ-62** | Simulated devices. Shared step 1, now shipped; see [`../virtual-devices/README.md`](../virtual-devices/README.md). |
-| **OQ-51** | `stopThread()` NPE. Step 4's `TestRun` owns the lifecycle and removes the null window, but do not wait for this doc to fix it. |

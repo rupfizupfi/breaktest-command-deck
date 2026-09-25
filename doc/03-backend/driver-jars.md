@@ -34,10 +34,10 @@ beans — see
 
 | | `dscusb.jar` | `usbmodbus.jar` |
 |---|---|---|
-| Provides | `ch.rupfizupfi.dscusb.dscusb.CellValueStream`; `Measurement` and `CommandExecutionException` one level up | `ch.rupfizupfi.usbmodbus.Cfw11` |
-| Deck plugin package | `ch.rupfizupfi.dscusb.deck` — `CellValueStreamAdapter`, `DeckLoadCellAutoConfiguration` | `ch.rupfizupfi.usbmodbus.deck` — `Cfw11Drive`, `DeckDriveAutoConfiguration` |
+| Provides | `ch.rupfizupfi.dscusb.dscusb.CellValueStream`, itself a `LoadCellStream`; `CommandExecutionException` one level up | `ch.rupfizupfi.usbmodbus.Cfw11` |
+| Deck plugin package | `ch.rupfizupfi.dscusb.deck` — `DeckLoadCellAutoConfiguration` | `ch.rupfizupfi.usbmodbus.deck` — `Cfw11Drive`, `DeckDriveAutoConfiguration` |
 | In git | no — `/drivers/*.jar` is gitignored | no — gitignored, licence-restricted |
-| Published | as `ch.rupfizupfi.dscusb:dscusb` on GitHub Packages — the mechanism is in place, the **first version lands when the driver PR merges** | **never** — may not be redistributed |
+| Published | as `ch.rupfizupfi.dscusb:dscusb` on GitHub Packages — `0.2.0` is up, `0.3.0` publishes when the driver branch merges | **never** — may not be redistributed |
 | Reaches the bench via | copy into `drivers/` → `LOADER_PATH` | copy into `drivers/` → `LOADER_PATH` |
 | Sibling repo | `dscusb` | `usbmodbus` |
 | Buildable on this machine | yes, from a clean checkout | yes, from a clean checkout |
@@ -55,10 +55,9 @@ bench.** That is settled rather than open: the bench controller stays a Windows 
 and the deck runs natively on it
 ([`bench-deployment.md`](../05-ops/bench-deployment.md)). Rewriting the drivers onto
 serial to make a Linux deck possible is recorded as a future option only
-([`dscusb-serial-port`](../06-feature-work/dscusb-serial-port/README.md)). The `docker`
-deck profile is not unusable but differently employed: **tests and simulations**, at
-`deck.hardware.mode=simulated`, with no driver in the image
-([`docker-and-profiles.md`](../05-ops/docker-and-profiles.md)).
+([`dscusb-serial-port`](../06-feature-work/dscusb-serial-port/README.md)). That leaves
+the `docker` deck profile for tests and simulations at `deck.hardware.mode=simulated`,
+with no driver in the image ([`docker-and-profiles.md`](../05-ops/docker-and-profiles.md)).
 
 Each driver's auto-configuration therefore refuses to register off Windows and
 logs why. Registering and failing later would let `HardwareModeCheck` pass and put
@@ -77,11 +76,11 @@ on the next driver build. Without that sibling checkout each falls back to the
 published `ch.rupfizupfi.deck:device-api`, which pins a version rather than
 tracking the contract, so a build there proves nothing about drift.
 
-The deck loads them at launch from the `loader.path` directories
-([gradle-build.md](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath)),
-so a missing jar is a *startup* failure, never a compile failure, and the fix is a
-restart. On a dev or bench machine one directory serves every path — `drivers/`,
-read by `bootRun`, `run-bench.ps1` and `driverPluginTest` alike
+A missing jar is therefore a *startup* failure, never a compile failure, and the fix
+is a restart
+([gradle-build.md](../02-modules/gradle-build.md#driver-plugins-loaderpath-not-the-classpath)).
+On a dev or bench machine one directory serves every path — `drivers/`, read by
+`bootRun`, `run-bench.ps1` and `driverPluginTest` alike
 ([`drivers/README.md`](../../drivers/README.md)).
 
 ## The jar on the machine is checked at startup
@@ -100,36 +99,34 @@ built before the check existed loads clean and proves nothing.
 before trusting its result, instantiates each auto-configuration so a skewed jar
 reports the driver's own message, and with both jars present boots the real
 context at `deck.hardware.mode=real` to assert the vendor providers displaced the
-simulators. It touches no hardware. Run it after copying a jar in; a stale jar
-looks exactly like a current one.
+simulators. It touches no hardware. Run it after copying a jar in — from `0.3.0`
+both manifests carry `Implementation-Version`, the only way to date a jar by hand.
 
 ## `dscusb.jar` — load cell
 
 Published from the sibling repo as `ch.rupfizupfi.dscusb:dscusb` — by its CI on
 merge to `main` whenever `version` in its `gradle.properties` changes, or by hand
 with `./gradlew publish` there (needs `GITHUB_ACTOR` and a `write:packages` token).
-`0.2.0` shipped; `0.3.0` follows OQ-74 (below). **Nothing in this repo resolves it
-any more:** the deck image carries no driver, being the simulation deployment, and
-the bench copies jars into `drivers/` by hand — so `stageDrivers`, its version pin
-and the GitHub Packages repository it needed are gone. Publishing now serves
-consumers with no sibling checkout: a second machine, or the driver's own CI.
+`0.2.0` is published; `0.3.0` — everything marked below — sits on the sibling's
+`feat/deck-plugin` and publishes on merge. **Nothing here resolves it any more:** the
+deck image carries no driver, being the simulation deployment, and the bench copies
+jars in by hand — so `stageDrivers`, its version pin and the GitHub Packages
+repository it needed are gone. Publishing now serves consumers with no sibling
+checkout: a second machine, or the driver's own CI.
 
 Publishing is the delivery path, **not** the conformance check — that is still the
-driver repo's own compile against the live contract, so a version published from a
-stale checkout compiles against a stale one with nothing downstream to catch it.
+driver repo's compile against the live contract, so a version published from a stale
+checkout compiles against a stale one with nothing downstream to catch it. For bench
+work there is no need to publish at all: `./gradlew shadowJar` in the sibling repo and
+copy `build/libs/dscusb.jar` into `drivers/`. No launch path resolves `mavenLocal`.
 
-For bench work there is no need to publish: `./gradlew shadowJar` in the sibling
-repo and copy `build/libs/dscusb.jar` into `drivers/`. `publishToMavenLocal` is no
-longer part of this — `mavenLocal` was dropped once one directory served every
-launch path.
-
-**The package layout is split, and only part of it moved.** `CellValueStream`,
-`Connection`, `DSCUSB` and `DSCUSBDrv64` sit in `ch.rupfizupfi.dscusb.dscusb`,
-beside a `t24` sibling package for the wireless base station the deck does not use.
-`Measurement` and `CommandExecutionException` are shared by both backends and stay
-one level up in `ch.rupfizupfi.dscusb`. `CellValueStreamAdapter` (in the `dscusb`
-repo's own `…dscusb.deck` package) imports from both, which is the whole blast
-radius of that move — the deck owns its own `Measurement`.
+**The package layout is split.** `CellValueStream`, `Connection`, `LoadCellSource`
+(its seam onto the DLL, so the read loop is testable without it), `DSCUSB` and
+`DSCUSBDrv64` sit in `ch.rupfizupfi.dscusb.dscusb`, beside a `t24` package for the
+wireless base station the deck does not use; `CommandExecutionException` sits one
+level up, shared. Since `0.3.0` `CellValueStream` implements `LoadCellStream` itself
+— no adapter — and both backends carry the deck's `Measurement`, making `device-api`
+a `compileOnly` dependency of the whole repo, not just its `…dscusb.deck` package.
 
 **We load the optional DLL, not the COM-port one.** Mantracourt ship two:
 `MantraASCII2.DLL` over the FTDI virtual COM port, and `DSCUSBDrv.DLL` addressing
@@ -157,42 +154,41 @@ outright — unreachable through this DLL, so unexploited (OQ-80). Protocol, the
   original exception is rethrown unwrapped, so the trip reason still names the
   driver's own code. Droppable: `-200`, `-300`, `-500`, `-600`, `-700`, `-800`.
 - **Terminal, and still ending the stream:** `-1`, `-2`, `-100`, `-400`, and any
-  unknown code — stopping with a named cause beats retrying a condition the
-  table cannot reason about. `-100` is terminal despite reading as transient:
-  the vendor documentation says the DLL *"will halt all processing while waiting
-  for a response from the instrument"* with a default timeout of 300 ms, so a
-  `-100` has already punched a hole longer than the deck's watchdog by the time
-  it is thrown. Retrying cannot save a run that is already over, and dropping it
-  would leave `isReading()` true — bare silence with no named cause. Note the
-  vendor only documents `0/-1/-100/-200/-400` for `READCOMMAND`; `-300`, `-500`,
-  `-600` and `-700` come from the driver header, so classifying those is a
-  judgement about meaning, not an observation.
+  unknown code — stopping with a named cause beats retrying a condition the table
+  cannot reason about. `-100` is terminal despite reading as transient: the vendor
+  docs say the DLL *"will halt all processing while waiting for a response from
+  the instrument"* with a default timeout of 300 ms, so a `-100` has already
+  punched a hole longer than the deck's watchdog when thrown. Retrying cannot
+  save a run already over, and dropping it would leave `isReading()` true —
+  bare silence with no named cause. The vendor documents only `0/-1/-100/-200/-400`
+  for `READCOMMAND`; the rest come from the driver header, so classifying those is
+  judgement about meaning, not observation.
 - `LoadCellStream.droppedSampleCount()` is the **only** trace a recovered burst
-  leaves: the stream keeps reading, `lastError()` stays null, and the sample
-  timestamps show a hole without saying whether the driver rejected readings or
-  the bus was merely slow. `LoadCellDevice.readData` logs it on change and
-  `LoadCellThread`'s incident line carries it. Nothing bounds the *total*
-  dropped fraction of a run — OQ-81.
+  leaves: the stream reads on, `lastError()` stays null, and the timestamps show
+  a hole without saying whether the driver rejected readings or the bus was just
+  slow. `LoadCellDevice.readData` logs it on change, `LoadCellThread`'s incident
+  line carries it, and nothing bounds a run's *total* dropped fraction — OQ-81.
+- **`stopReading()` returns only once the reader has released the process-global
+  DLL port**, which is what `Device.reset()`'s close-then-reopen relies on. A
+  reader abandoned past the join bound never closes it — the next open owns it.
 - **A stopped stream can never be restarted.** Reconnection must construct a new
   `CellValueStream`; this is why `LoadCellStreamProvider` is a factory, and the
   constraint the
   [recovery design](../06-feature-work/testrunner-safety/loadcell-recovery-design.md)
   is built around.
-- `isReading()` / `getLastError()` expose why the reader stopped. The adapter
-  flattens the throwable into a `StreamFailure`, and
+- `isReading()` / `lastError()` expose why the reader stopped. The stream
+  flattens its own throwable into a `StreamFailure`, and
   `LoadCellDevice#getStreamFailure` turns that into a named cause for the trip
   reason — **diagnosis only**: what escalates is always the silence, so a sensor
   that dies without explanation trips identically.
 
 ## `usbmodbus.jar` — frequency inverter
 
-Never committed, never published, never baked into an image — the licence does not
-permit redistribution. It reaches exactly one place: build it in the sibling repo
-and copy `build/libs/usbmodbus.jar` into `drivers/` on the bench machine. No image
-carries it and no host mount delivers it to a container. A fresh clone builds and a
-fresh image builds without it; neither can drive the machine.
-Vendor, licence holder and required version are recorded nowhere (OQ-43); only
-the project owner can close that.
+Never committed, never published, never baked into an image — the licence does not permit redistribution.
+It reaches exactly one place: build it in the sibling repo and copy `build/libs/usbmodbus.jar` into
+`drivers/` on the bench machine. No image carries it and no host mount delivers it to a container.
+A fresh clone builds and a fresh image builds without it; neither can drive the machine.
+Vendor, licence holder and required version are recorded nowhere (OQ-43); only the project owner can close that.
 
 The blocker is narrower than "the jar". It is the **vendor** libraries the
 sibling repo's shadow build bundles — `CommunicationLib.jar` and
@@ -211,28 +207,32 @@ that repo is private. Making it public would redistribute them.
 - The no-arg constructor **opens the USB device**. There is no unopened instance, so
   a fresh handle means a new object; this is what `DriveProvider` being a factory
   buys, and what tier 2's `stopWithFreshHandle` relies on.
-- `close()` releases it, and only if that instance opened it. The second
-  constructor takes a caller-owned `ModbusUsbHelper` and closes nothing — the seam
-  for a virtual Modbus slave or a test double.
-- **Every comms failure arrives as a checked `NegativeConfirmationException`** —
-  `"Send Not OK"` (includes USB not connected), `"Read Not OK"`, `"Timeout"`,
-  `"Frame error"`. Reads and writes share one path, so a timed-out *write* throws
-  too; nothing here is fire-and-forget. Retries exist but are off
-  (`maximumRetries` defaults to 0), leaving one attempt at a 100 ms timeout.
-- **That exception is not a `RuntimeException`**, and Kotlin lets it cross into Java
-  undeclared. `FrequencyInverterDevice#readData` catches only `DriveUnavailableException` and
-  `RuntimeException`, so a comms error **escapes the poll loop and kills the
-  info-polling thread**, leaving the dashboard on stale values. The safety paths are
-  fine — `MotorSafetyController#verifyStopped` and `commandStop` catch `Throwable`.
-  Traced and proposed for review in the `usbmodbus` repo's comms-failure-handling doc.
-- `Cfw11`'s `catch (NullPointerException)` returning `"0"` looks like it masks a dead
-  link as a real zero. It does not: no null is reachable along that chain, so the
-  catch never fires. Dead code, not a live defect.
+- `close()` releases it, and only if that instance opened it. The second constructor takes a
+  caller-owned `ModbusUsbHelper` and closes nothing — the seam for a virtual Modbus slave or a test double.
+- **Both getter maps have required key sets**: `getMotorData` must carry `speed`, `current`,
+  `voltage`, `torque`; `getControlParameters` `start`, `generalEnable`, `useSecondRamp`,
+  `directionIsForward`. A missing key is a poll failure naming it, never a zero reading.
+- **Every comms failure arrives checked**, as one of three types: `NegativeConfirmationException`
+  (`"Send Not OK"`, `"Read Not OK"`, `"Timeout"`, `"Frame error"`), `ModbusExceptionResponseException`
+  (the slave answered with an exception PDU) and `ModbusUnexpectedResponseException` (wrong function
+  code or byte count). Reads and writes share one path, so a timed-out *write* throws too. Retries
+  exist but are off (`maximumRetries` defaults to 0), leaving one attempt at a 100 ms timeout.
+- **None of the three is a `RuntimeException`** and Kotlin lets them cross into Java undeclared, so
+  both poll loops — `FrequencyInverterDevice#readData` and `LoadCellDevice#readData` — catch `Exception`:
+  a driver failure idles that tick and the poll thread survives, the drive logging once per outage.
+  `Cfw11Drive` wraps all three unchecked in `Cfw11CommunicationException`, so every other call site
+  sees a `RuntimeException`. Safety paths catch `Throwable` (`MotorSafetyController#verifyStopped`,
+  `commandStop`); traced in the `usbmodbus` repo's comms-failure-handling doc.
+- **A value too wide for its 16-bit register is refused**, unchecked (`Cfw11RangeException`), before
+  any register is written — a speed reference outside the signed range included, so 4000 rpm is a
+  refusal rather than full-scale reverse.
+- **A frame carrying fewer registers than asked for is refused**, unchecked
+  (`Cfw11ProtocolException`), never yielding a reading — every read shares one path.
 
 `CommunicationLib.jar` is also where `devicemanager.VirtualDeviceConnection`
 lives — an in-memory Modbus slave reporting vendor `WEG` / product `VDW-00`.
 The deck does **not** use it: with the drivers optional, no vendor code loads in
-dev at all, so the simulated provider declares its own identity for `Cfw11Check`
+dev at all, so the simulated provider declares its own identity for `FrequencyInverterCheck`
 (OQ-44). The injecting constructor above is what an optional wire-level fidelity
 path would need; nothing consumes it yet.
 

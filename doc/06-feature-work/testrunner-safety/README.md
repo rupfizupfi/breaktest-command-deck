@@ -21,11 +21,11 @@ Source: 14-agent safety audit (2026-08-16) of the test execution engine
 
 | Phase | Scope | Status |
 |---|---|---|
-| 2 | `TestRunnerThread` lifecycle hardening: NPE-safe stop, wedged-`running` fix, synchronized start, error propagation to caller | `[ ]` |
+| 2 | `TestRunnerThread` lifecycle hardening: NPE-safe stop, wedged-`running` fix, synchronized start, error propagation to caller | `[x]` |
 | 3 | State machine + persistence (`TestResult.runStatus`, `interruptionLog`, `StartupRecoveryRunner`) + operator incident UI with resume/abort | `[x]` |
 | 4 | Limit validation, intra-batch peak checking, ownership checks on start/stop, CSV flushing | `[ ]` |
 
-Phase 2 closes the remaining "motor drives blind" paths; 4 is defense in depth.
+Phase 4 is defense in depth.
 
 Phase 3 **shipped 2026-08-29** (OQ-45), against the owner's resume policy rather than the invented
 numbers the design first carried. Two live safety defects were fixed on the way and are worth naming
@@ -59,7 +59,7 @@ is fixed (`useEffect` + unsubscribe in `@index.tsx` and `run.tsx`, ex-OQ-24).
 
 The `dscusb` NaN rejection **landed** (2026-08-17): the driver was modernised to Gradle 9.7 /
 Kotlin 2.4.10 / JVM 26 and rebuilt. `LoadCellDevice` and `LoadCellThread` consume its
-`isReading()` / `getLastError()` to name the driver's own cause in a trip reason. Its cost — one
+`isReading()` / `lastError()` to name the driver's own cause in a trip reason. Its cost — one
 non-finite reading ending the run — was OQ-74, and is now closed the other way: `dscusb` 0.3.0
 drops a *transient* fault and reads on within an 80 ms budget, counted through
 `droppedSampleCount()`.
@@ -72,6 +72,5 @@ refuses to start a run without a fresh measurement; the dev-side answer is OQ-62
 | OQ | Relation |
 |---|---|
 | OQ-81 unbounded dropped fraction | The residual risk left by OQ-74's answer: only consecutive faults are budgeted. Needs the bench |
-| OQ-44 hardware presence checks | `Cfw11Check` follows the same pattern as `LoadCellCheck` |
-| OQ-51 stopThread NPE | Phase 2 |
+| OQ-44 hardware presence checks | `FrequencyInverterCheck` follows the same pattern as `LoadCellCheck`; the device-identity half is still owed |
 | OQ-50 dual drive handle on one device | `MotorSafetyController` tier 2 reuses the pattern via `DriveProvider.open()` — the USB dual-open finding is still owed |

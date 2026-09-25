@@ -21,16 +21,16 @@ The deck app reuses cms components by importing through the Vite alias
 
 | Domain | Component | File | Used by |
 |---|---|---|---|
-| CRUD scaffolding | `AutoCrud` | `components/autocrud/AutoCrud.tsx` | `views/customer.tsx`, `views/sample.tsx`, `views/test/*.tsx`, deck `views/run.tsx` |
+| CRUD scaffolding | `AutoCrud` | `components/autocrud/AutoCrud.tsx` | `views/customer.tsx`, `views/sample.tsx`, `views/test/*.tsx`, deck `views/run.tsx`. A copy clears `id` and sets `version` to `0`, so the clone persists as a new row; `__copy` (see `WithCopyFlag`) is what the form header reads |
 | CRUD scaffolding | `AutoCrudDialog` | `components/autocrud/AutoCrudDialog.tsx` | Internal to AutoCrud |
 | CRUD scaffolding | `mediaQuery.ts`, `util.ts`, `sample.tsx`, `test.tsx` | `components/autocrud/` | Helpers + view-specific subclasses bound to the AutoCrud abstraction |
 | Forms / inputs | `AutoComboBox` | `components/combobox/AutoComboBox.tsx` | Lookup-bound combobox driven by a Hilla service factory |
 | Forms / inputs | `MultiSelectComboBox` | `components/combobox/MultiSelectComboBox.tsx` | Multi-select variant |
 | Forms / inputs | `service.ts` (`createAutoComboBoxService`) | `components/combobox/service.ts` | Used by deck `run.tsx:49-50` to build a service-shim around `TestParameterService` / `SampleService` |
-| Forms / control | `dynamicField.tsx` | `components/control/dynamicField.tsx` | Helper that picks a renderer based on a model field |
+| Forms / control | `dynamicField.tsx` | `components/control/dynamicField.tsx` | Picks a `Setting` editor from the stored Java type. A `java.lang.String` whose opening value reads `YYYY-MM-DD` gets a `DatePicker` bound to that same text — the shape is fixed when the form opens, and the form binding owns value and change |
 | Charts / dashboard | `LogComponent` | `components/dashboard/LogComponent.tsx` | **Reused** by deck `LiveTestResult.tsx:12` for the run-view log feed — a direct cross-module import, not a shared package (keep it that way; see [`../02-modules/shared-code-strategy.md`](../02-modules/shared-code-strategy.md)) |
 | Charts / dashboard | `ResultViewer` | `components/dashboard/ResultViewer.tsx` | Renders a stored test-result CSV (post-run view) |
-| Multi-tenancy | `OnwerSelector` (sic) | `components/owner/OnwerSelector.tsx` | Picks the owner field on `DataWithOwner` records (admin-only meaningful) |
+| Multi-tenancy | `OwnerSelector` | `components/owner/OwnerSelector.tsx` | Picks the owner field on `DataWithOwner` records (admin-only meaningful) |
 | Multi-tenancy | `OwnerGridView` | `components/owner/OwnerGridView.tsx` | Tiny renderer used by `ownerGridColumn` |
 | Multi-tenancy | `createEmptyValueProxy` | `components/owner/createEmptyValueProxy.tsx` | Sets up a Vaadin Form Model with an empty `owner` field as the default |
 | Misc | `Placeholder` | `cms/src/main/frontend/components/placeholder/Placeholder.tsx` | Tiny WIP placeholder block. **In use — do not remove:** `cms/src/main/frontend/views/project/{projectId}/sample.tsx:9`, `cms/src/main/frontend/views/result/{resultId}/image.tsx:5`, `cms/src/main/frontend/views/result/{resultId}/result.tsx:7` |
@@ -58,6 +58,7 @@ Plus deck-only top-level helpers:
 | File | Purpose |
 |---|---|
 | `command-deck/src/main/frontend/service/StatusService.ts` | The STOMP singleton (see [`state-and-realtime.md`](./state-and-realtime.md)). |
+| `command-deck/src/main/frontend/service/loadCellBatch.ts` | The one `/topic/load-cell` batch parser, shared by `InfoBoard`, `views/control.tsx` and `LiveTestResult`; unit-tested in `command-deck/src/test/frontend/loadCellBatch.test.ts`. |
 
 ## Provisional — webcam tracking subsystem
 
@@ -69,8 +70,9 @@ Three files: `webcam/DistanceMeasureCam.tsx` (the React component) plus
   `requestAnimationFrame` capture loop into `creatCamshiftTracking(cv)`.
 - Implements an in-place 2-click calibration flow converting pixel
   distance to cm.
-- Has rough edges: commented imports, `@ts-ignore`, and no cleanup of the
-  `requestAnimationFrame` loop on unmount.
+- Owns the lifecycle in one mount effect: the `requestAnimationFrame` loop and
+  the dispose handle returned by `init(canvas)` both end at unmount, and
+  `startTracking` releases its native Mats on every path.
 
 Another pass is planned to lift the OpenCV pipeline out of the component
 (OQ-28). The route
@@ -81,20 +83,14 @@ re-read the source before depending on them.
 ## Where to look in the code
 - `cms/src/main/frontend/components/` (whole tree)
 - `command-deck/src/main/frontend/components/` (whole tree)
-- `command-deck/src/main/frontend/components/webcam/DistanceMeasureCam.tsx:1-125` (provisional)
+- `command-deck/src/main/frontend/components/webcam/DistanceMeasureCam.tsx` (provisional)
 - `command-deck/src/main/frontend/components/webcam/tracking/CamShiftTracking.tsx`
 - Reuse via alias examples: `command-deck/src/main/frontend/views/run.tsx:4,13,15,16,17,18`
 - Sharing of `useAuth` — `cms/src/main/frontend/util/auth.ts:1-7` imported by both `@layout.tsx`s
 
 ## Open questions
 
-1. **`OnwerSelector` is a typo for "Owner"** and it has leaked into
-   view-level imports in four files (`components/autocrud/sample.tsx`,
-   `components/autocrud/test.tsx`, `views/project/@index.tsx`, and deck's
-   `views/run.tsx` — which imports it as `OwnerSelector`, spelled
-   correctly, from the misspelled path). Rename the file and fix the
-   imports. (OQ-27)
-2. **The webcam component mixes concerns.** `DistanceMeasureCam.tsx` holds
+1. **The webcam component mixes concerns.** `DistanceMeasureCam.tsx` holds
    the `captureFrame` loop, the OpenCV pipeline and the chart consumer in
    one module. A rewrite splitting the pipeline out of React is planned
    (confirmed 2026-08-16) — the pipeline becomes a plain class and the

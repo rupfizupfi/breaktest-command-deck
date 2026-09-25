@@ -8,14 +8,14 @@ flowchart LR
     end
 
     subgraph Providers["Providers - one pair per deck.hardware.mode"]
-        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>plugin jars on loader.path, Windows only"]
+        VEND["real: Cfw11Drive / CellValueStream<br/>plugin jars on loader.path, Windows only"]
         SIM["simulated: SimulatedDrive / SimulatedLoadCellStream<br/>shared SimulatedBench"]
     end
 
     subgraph DeviceLayer["device/ - singleton DeviceService"]
         LCD["LoadCellDevice<br/>(extends Device)<br/>readData() loop, 20ms"]
         CFD["FrequencyInverterDevice<br/>(extends Device)<br/>readData() loop, 400ms"]
-        FRS["FourWayRelaySwitch<br/>(plain object)"]
+        FRS["RelaySwitch<br/>(via RelaySwitchProvider, owned by SuckService)"]
     end
 
     subgraph Broadcasters

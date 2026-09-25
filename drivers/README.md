@@ -23,12 +23,24 @@ Everything that consumes a driver reads this directory:
 | `script/run-bench.ps1` | `LOADER_PATH`, the launcher's own plugin mechanism |
 
 Which of the two providers you get is decided at runtime by `deck.hardware.mode`, not by the build:
-both auto-configurations are conditional on `real`, so in dev's default `simulated` the jars sit
-here inert. To drive the bench from a dev loop:
+both auto-configurations are conditional on `real` and treat an absent `deck.hardware.mode` as
+`real`, so only dev's explicit `simulated` leaves the jars here inert. To drive the bench from a dev
+loop:
 
 ```powershell
 ./gradlew :command-deck:bootRun --args='--deck.hardware.mode=real'
 ```
+
+Each jar carries an `Implementation-Version` manifest attribute holding the `version` from its own
+repo's `gradle.properties` — the only thing in the file that names the build it came from:
+
+```powershell
+unzip -p drivers/dscusb.jar META-INF/MANIFEST.MF
+```
+
+`driverPluginTest` refuses a jar without one, and refuses two jars whose shared bundled classes
+differ: each plugin bundles its own Kotlin stdlib and the launcher loads whichever jar it lists
+first, so the Kotlin pin has to match across the two driver repos.
 
 **Both drivers are Windows-only** (a Win32 vendor DLL, the Thesycon USBIO kernel driver) and refuse
 to register elsewhere, which is why the Linux container cannot drive the machine.

@@ -12,8 +12,7 @@ not in this one — see [`../../03-backend/driver-jars.md`](../../03-backend/dri
 ## Contents
 
 - [[x] OQ-45 · Reconnect on load-cell loss](#x-oq-45--reconnect-on-load-cell-loss)
-- [[ ] OQ-46 · Externalise the relay port description](#--oq-46--externalise-the-relay-port-description)
-- [[ ] OQ-44 · Add `Cfw11Check`](#--oq-44--add-cfw11check)
+- [[~] OQ-44 · Device identity for the inverter check](#-oq-44--device-identity-for-the-inverter-check)
 - [[ ] OQ-50 · Investigate the dual `Cfw11` handle](#--oq-50--investigate-the-dual-cfw11-handle)
 - [[ ] OQ-43 · Document `usbmodbus.jar` procurement — **owner-owed**](#--oq-43--document-usbmodbusjar-procurement--owner-owed)
 - [[x] OQ-74 · Decide whether one bad sample should end the run](#x-oq-74--decide-whether-one-bad-sample-should-end-the-run)
@@ -29,14 +28,9 @@ a `<millis>_gaps.json` sidecar, and `TestResult.runStatus` = `COMPLETED_WITH_GAP
 **Not verified on hardware.** The three recovery fault switches
 ([`fault-injection.md`](../virtual-devices/fault-injection.md)) exercise the branches; the bench does not.
 
-### [ ] OQ-46 · Externalise the relay port description
-- **File:** `command-deck/src/main/java/ch/rupfizupfi/deck/device/relayswitch/FourWayRelaySwitch.java:19`
-- **Change:** `@Value("${device.relay.port-description:CH9102}")` instead of the inline `contains("CH9102")` literal; add the default to `cms/src/main/resources/application.properties`.
-
-### [ ] OQ-44 · Add `Cfw11Check`
-- **Path:** `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/startup/check/`
-- **Change:** an `AbstractCheck` subclass that probes the frequency inverter and fails with a clear message; register it in `TestRunnerFactory.getStartupChecks()` next to `FileSystemCheck` and `LoadCellCheck`, whose shape it should follow.
-- **Design together with the simulator (OQ-62):** a simulated device must return a *distinguishable* identity, or the check passes against a fake.
+### [~] OQ-44 · Device identity for the inverter check
+- **Done:** `FrequencyInverterCheck` (`command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/startup/check/FrequencyInverterCheck.java`) connects, reads the control parameters through the shared drive handle, writes nothing, and is registered in `TestRunnerFactory.getStartupChecks()` after `LoadCellCheck`.
+- **Left:** the check proves *something answers*, not *what*. A simulated device must return a distinguishable identity (serial, model), or the check passes against a fake — design it with the simulator (OQ-62).
 
 ### [ ] OQ-50 · Investigate the dual `Cfw11` handle
 - **File:** `command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/TestRunnerThread.java` (`retryShutdownOnException`)
@@ -67,6 +61,9 @@ a `<millis>_gaps.json` sidecar, and `TestResult.runStatus` = `COMPLETED_WITH_GAP
   composite build, so the 1.1.0 override would not resolve otherwise — then `dscusb`. And the deck
   must be **redeployed before** the 0.3.0 jar is dropped in: `verifyPluginBuiltAgainst` refuses a
   plugin built against a newer minor.
+- **Both halves are written, neither is merged:** the contract and deck side on the deck's
+  `feat/loadcell-recovery`, the 80 ms budget on `dscusb`'s `feat/deck-plugin`. The order above
+  still governs.
 - **Residual risk, filed as OQ-81:** only *consecutive* faults are budgeted.
 - **Still unverified on the bench.** The deck half is exercised by `LOAD_CELL_DROPPED_SAMPLES`; the
   80 ms budget itself is `dscusb` code the simulator never reaches.

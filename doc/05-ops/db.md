@@ -80,10 +80,17 @@ spring.h2.console.enabled=true
 spring.sql.init.mode=always
 ```
 
-* The DB is a file at `./.data/deck.mv.db` relative to the **process working
-  directory** at the time of `bootRun`. Both `:cms` and `:command-deck` use
-  the same path — when run from the repo root via Gradle, they share one
-  H2 file and therefore one logical dataset.
+* The URL is relative to the **process working directory**, and both module
+  builds pin `bootRun`'s `workingDir` to the repo root. `./.data/deck.mv.db`
+  at the repo root is therefore the one dev database, whichever module is run
+  and whichever directory Gradle is invoked from — `:cms` and `:command-deck`
+  share one logical dataset.
+* A `.data/` inside a module directory is a leftover from before that pin and
+  can be deleted.
+* Dev `settings.json` resolves against the same working directory
+  (`SettingRepository`, `user.dir`), so it sits beside `.data/` at the repo
+  root. Both locations are gitignored and a default file is written on first
+  read.
 * H2 console: navigate to `http://localhost:8080/h2-console` (URL fixed by
   `spring.h2.console.enabled=true`). JDBC URL `jdbc:h2:file:./.data/deck`,
   user `sa`, no password.
@@ -156,6 +163,12 @@ database with users but missing reference data (e.g. someone truncated
 but no users will fail on the reference-data inserts. **Do not** add seed
 rows for an existing deployment without checking IDs.
 
+The file's last lines restart each seeded table's identity past its
+highest seeded id (`alter table <t> alter column id restart with <n>` —
+accepted by H2 and by Postgres for identity columns), so the first
+application insert into a seeded table gets a free id. A new seed row
+with an explicit id moves the matching restart value.
+
 `:command-deck` has **no** `data.sql` of its own — it inherits cms's from
 the `cms-library` jar on its classpath, so `classpath:data.sql` resolves
 and a deck-only boot against an empty DB *does* seed. See
@@ -207,6 +220,7 @@ data.
 | Concern | File |
 |---|---|
 | Dev datasource | `cms/src/main/resources/application-dev.properties:11` |
+| Dev working directory (pins the H2 file to the repo root) | `cms/build.gradle`, `command-deck/build.gradle` — `bootRun { workingDir }` |
 | Docker datasource | `cms/src/main/resources/application-docker.properties:7` |
 | Schema policy | both files, `spring.jpa.hibernate.ddl-auto=update` |
 | Seed | `cms/src/main/resources/data.sql` |

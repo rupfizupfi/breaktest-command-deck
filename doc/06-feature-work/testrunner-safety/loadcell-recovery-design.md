@@ -17,7 +17,7 @@ scientifically defensible and operator-confirmed.
 
 **Shipped.** Detection landed in phase 1, recovery in phase 3. Every number below is the owner's
 (2026-08-29) — the invented ones this doc first carried are gone. The failure trace it was written
-against is in [`audit-findings.md`](audit-findings.md); C5, C6 and C7 are still open there.
+against is in [`audit-findings.md`](audit-findings.md); C5 and C6 are still open there.
 
 Driver constraints, re-verified against the rebuilt `dscusb` driver jar:
 
@@ -28,7 +28,7 @@ Driver constraints, re-verified against the rebuilt `dscusb` driver jar:
   (OQ-74 — [`driver-jars.md`](../../03-backend/driver-jars.md#dscusbjar--load-cell)). A hole that
   outlasts that budget, or a terminal code, still arrives here as silence.
 - `Connection.open()` failures still happen inside the spawned thread, so a reconnect is judged
-  **primarily by fresh data**. `isReading()` / `getLastError()` are a **diagnosis, not a trigger** —
+  **primarily by fresh data**. `isReading()` / `lastError()` are a **diagnosis, not a trigger** —
   escalation stays on the timeout, so a sensor that dies without explanation trips identically
   (`LoadCellThread#describeSilence`).
 
@@ -59,9 +59,10 @@ motor still driving. A finite-but-absurd reading did the same damage arithmetica
 ## Safe stop (`MotorSafetyController`, all Cfw11 access behind one lock)
 
 Three tiers; every tier verifies via `getMotorSpeedValueAsRpm() ≈ 0` (deadline:
-`MotorSafetyController.VERIFY_DEADLINE_MS`). The tier
-reached is recorded as `SafeStopResult.Tier` — `EXISTING_HANDLE`, `FRESH_HANDLE`, `NONE` — and
-decides whether resume is even offered.
+`MotorSafetyController.VERIFY_DEADLINE_MS`). The tier reached is recorded as
+`SafeStopResult.Tier` and decides whether resume is even offered: `EXISTING_HANDLE` and
+`FRESH_HANDLE` name the software tier that produced the verdict, `OPERATOR_ESCALATION` means both
+ran without verifying a stop, and `NONE` means the tier dispatch itself failed so no tier ran.
 
 1. Existing handle: `setGeneralEnable(false)` **first** (output stage off, coast — a ramp stop
    keeps loading for `stopRampSeconds`; blind reversal could slam through zero), then
@@ -104,6 +105,9 @@ backoff at or beyond the reconnect window (logged as "reconnect failed" for a se
 **The applied values are snapshotted per run** (`RecoveryGates`, an immutable record taken at start)
 and copied verbatim into both the `interruptionLog` and the gaps sidecar. A gate that is a
 deployment fact makes a run unauditable unless the run records which value it actually used.
+`LoadCellThread`, `SensorReconnector` and `AbstractTest#canResume` read that snapshot rather than the
+bean, and `AbstractTest#startRecovery` applies the `minEnvelopeNewton` floor once, so the envelope
+every gate sees is already final.
 
 ## Recovery and resume
 
@@ -111,7 +115,10 @@ deployment fact makes a run unauditable unless the run records which value it ac
 reopen → new `CellValueStream`) → fresh measurement timestamped after the reset →
 `LoadCellThread#beginRecoveryGate` for `plausibilityGateMillis` of continuous plausible samples,
 including the drift test above. **Never auto-tare under load** — it would zero out real force and
-corrupt every later limit decision; a failed gate keeps `canResume=false`, abort only.
+corrupt every later limit decision; a failed gate keeps `canResume=false`, abort only. The caller's
+wait for the verdict is bounded by the window plus one attempt's worst case, and run teardown
+(`shutdownNow()`) cancels a queued attempt, so a wedged reset can leak the reconnector thread but
+never the run's recovery worker or its verdict.
 
 | Test type | Policy |
 |---|---|
@@ -156,6 +163,13 @@ Every transition is logged, broadcast, and persisted by `TestResultStatusPersist
 `TestResult.runStatus` + `interruptionLog`. The log is a JSON **object**, not an array of
 transitions: an array has nowhere to carry the applied `RecoveryGates`. `runStatus` gains
 `COMPLETED_WITH_GAPS` so a resumed run can never be mistaken for a clean one.
+
+The document (`schema` 2) carries the gates, every transition so far, `gapCount`, and
+`droppedSampleCount` — readings the load-cell driver discarded rather than delivered, the only trace
+an absorbed transient fault leaves. It is the count of the stream live at that transition, and
+`Device.reset()` opens a new stream at zero: a `SENSOR_LOST` entry carries the dying stream's drops,
+a `FINISHED` entry the last stream's. Recorded fact only — no drop count changes `runStatus`, and
+what a run-fraction cap would look like is OQ-81.
 
 `StartupRecoveryRunner` (`ApplicationRunner`) marks orphaned non-terminal rows `ABORTED` on boot and,
 only when such rows exist and hardware mode is real, issues a defensive de-energize on a **detached

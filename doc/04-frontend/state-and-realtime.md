@@ -107,7 +107,7 @@ Three topics are pushed today:
 
 | Topic | Producer | Frame body |
 |---|---|---|
-| `/topic/load-cell` | `device/loadcell/ForceBroadcaster.java` | JSON array of `{timestamp, force}` measurements, flushed once the buffer's oldest sample passes 60 ms (tested on the 20 ms reader tick, so not a fixed rate) |
+| `/topic/load-cell` | `device/loadcell/ForceBroadcaster.java` | JSON array of `{timestamp, force}` measurements, flushed once the buffer's oldest sample passes 60 ms (tested on the 20 ms reader tick, so not a fixed rate) and again when the load-cell device closes, so a run's tail never opens the next run's chart |
 | `/topic/frequency-inverter-info` | `device/frequencyinverter/DeviceInfoBroadcaster.java` | JSON `Info` object (speed, motor current/voltage/torque, ...) |
 | `/topic/logs` | `testrunner/TestLogger.java` (subscribed to via `Status.logObservable`) | plain string per log line |
 
@@ -146,15 +146,17 @@ view. Its lifecycle:
    `onClick` (line 93) calls `setTestResultData(readyTestResultData)`. That
    prop change re-renders `<LiveTestResult/>` with a non-null `testResult`.
 4. **`LiveTestResult` resolves the test.**
-   `components/dashboard/LiveTestResult.tsx:32-47` decides whether to use the
+   `components/dashboard/LiveTestResult.tsx:51-97` decides whether to use the
    user-clicked test or recover an already-running one via
    `TestRunnerService.status()`. If anything is running, a `<TestResultGraph/>`
    is mounted.
 5. **`TestResultGraph` sets up the stream**
-   (`LiveTestResult.tsx:62-105`). On mount:
-   - subscribes to `loadCellObservable` — each `IMessage.body` is a
-     JSON array of `{timestamp, force}` points pushed up the rxjs chain into
-     `setDataPoints`.
+   (`LiveTestResult.tsx:99-151`). On mount:
+   - subscribes to `loadCellObservable` — each `IMessage.body` is a JSON array of
+     `{timestamp, force}` samples handed to `ingest` in
+     `components/dashboard/traceBuffer.ts`, which appends them to the single point
+     array Chart.js holds by reference and evicts a block at a time once the run
+     fills it.
    - subscribes to `logObservable` &rarr; appends to the `LogComponent`.
    - calls `TestRunnerService.start(testResult.id!)` — **the actual
      "go" signal**. The Hilla call returns void; the proof of life is the
@@ -171,6 +173,27 @@ view. Its lifecycle:
    call); Close fires `reset()` which sets `testResultData = undefined` and
    unmounts `<LiveTestResult/>`, triggering the cleanup path.
 
+**Holes in the trace.** `ingest` inserts one `y: NaN` separator whenever
+consecutive samples sit more than `GAP_MS` apart — the interval
+`LoadCellThread`'s no-data watchdog uses, so every break the chart draws is one
+the backend would also declare. `spanGaps` stays `false`, so the line breaks
+there and nothing is drawn across an interval where nothing was measured. The
+separator moves neither the running max nor the last value, so the Force/Max
+readouts never see a NaN. Min-max decimation runs only because the chart sets
+`parsing: false` — Chart.js returns from the plugin before decimating whenever
+parsing is on, and the buffer already holds the `{x, y}` points parsing would
+otherwise produce. It engages past 4× the canvas width in points and keeps only
+each x bucket's ends, min and max: a separator sharing a bucket with real
+samples is none of those, so a sub-pixel hole in a long trace can lose its
+break.
+
+**One parser for the batch.** Every `/topic/load-cell` consumer — `InfoBoard`,
+the control board and `LiveTestResult` — reads the payload through
+`command-deck/src/main/frontend/service/loadCellBatch.ts`, which pins the
+`force`/`timestamp` wire keys on the frontend and yields an empty batch for a
+body that is not a JSON array, so a subscription callback never throws. An empty
+batch yields no force at all, so a readout keeps its last value.
+
 ### Why the par block matters
 
 In the sequence diagram above, the WebSocket subscribe and the Hilla
@@ -182,8 +205,10 @@ RPC and the WebSocket lifecycle.
 
 ## Where to look in the code
 - `command-deck/src/main/frontend/views/run.tsx:25-104`
-- `command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx:32-171`
+- `command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx:94-199`
+- `command-deck/src/main/frontend/components/dashboard/traceBuffer.ts` (the trace buffer and its gap separator; unit-tested in `command-deck/src/test/frontend/traceBuffer.test.ts`)
 - `command-deck/src/main/frontend/components/dashboard/InfoBoard.tsx:34-61` (`/topic/frequency-inverter-info` consumer)
+- `command-deck/src/main/frontend/service/loadCellBatch.ts` (the `/topic/load-cell` batch parser; unit-tested in `command-deck/src/test/frontend/loadCellBatch.test.ts`)
 - `command-deck/src/main/frontend/service/StatusService.ts:1-239`
 - `command-deck/src/main/java/.../api/services/TestRunnerService.java:11-44`
 - `command-deck/src/main/java/.../testrunner/TestRunnerThread.java:23-78`

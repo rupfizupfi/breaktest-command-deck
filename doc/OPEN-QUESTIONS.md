@@ -19,7 +19,6 @@ record.
 - [Security and tenancy](#security-and-tenancy)
 - [Investigations — outcome is a documented finding](#investigations--outcome-is-a-documented-finding)
 - [Decided, awaiting implementation](#decided-awaiting-implementation)
-- [Mechanical cleanups](#mechanical-cleanups)
 - [Blocked or undecided](#blocked-or-undecided)
 
 ---
@@ -33,15 +32,14 @@ touching those files twice.
 
 | Work item | Members | Order / gate |
 |---|---|---|
-| **Hardware seam** — `Drive` + `LoadCellStream` behind providers | OQ-62 | **Shipped**, see [driver-api-extraction](06-feature-work/virtual-devices/driver-api-extraction.md): the seam exists, both jars are optional to build (OQ-43's build half closed), and it also served as step 1 of [virtual-devices](06-feature-work/virtual-devices/README.md) and of [hardware-layer-redesign](06-feature-work/hardware-layer-redesign/README.md). The simulated providers and the fault switches have shipped too — what remains under OQ-62 is only the relay fake |
-| **Thread lifecycle and liveness** | OQ-51, OQ-67, OQ-68, OQ-69, OQ-70, OQ-71, OQ-72 | One defect class — one flag standing for N threads, nothing joining anything, teardown that throws before it clears state — across three files. Phase 2 of [testrunner-safety](06-feature-work/testrunner-safety/README.md) owns part. **OQ-68 first**: it is a phase-1 regression, not backlog |
+| **Hardware seam** — `Drive` + `LoadCellStream` behind providers | OQ-62 | **Shipped**, see [driver-api-extraction](06-feature-work/virtual-devices/driver-api-extraction.md): the seam exists, both jars are optional to build (OQ-43's build half closed), and it also served as step 1 of [virtual-devices](06-feature-work/virtual-devices/README.md) and of [hardware-layer-redesign](06-feature-work/hardware-layer-redesign/README.md). The simulated providers, the fault switches and the relay fake have shipped too — what remains under OQ-62 is only record/replay of real sessions |
+| **Thread lifecycle and liveness** | OQ-68, OQ-70 | One defect class — one flag standing for N threads, nothing joining anything, teardown that throws before it clears state — across three files. Phase 2 of [testrunner-safety](06-feature-work/testrunner-safety/README.md) has **shipped**, closing the `TestRunnerThread` half (start-path failure propagates, an unknown type faults the run by name, the test log closes on every exit, both `System.gc()` calls gone). **OQ-68 first**: it is a phase-1 regression, not backlog. OQ-72 closed: `LoadCellDevice#closeConnection` flushes the observers, so the tail batch leaves with the run that produced it. OQ-67 closed: each CFW11 poll thread now owns its stop flag, so a thread abandoned by the bounded join stays stopped and publishes nothing. OQ-69 closed: teardown no longer depends on a healthy component - `closeConnection` clears the field before it calls `stopReading()`, `TestLogger.log()` absorbs a rejected broadcast, `end()` claims the writer in one read, and `cleanup()` reaches `LoadCellThread#stop()`, which interrupts and joins |
 | **Frontend realtime** | OQ-23 | Live frames reach the browser again, so the first-batch race is observable — and worth measuring before it is fixed blind |
 | **Load-cell recovery** | OQ-81 | **Shipped** — OQ-45's recovery and OQ-74's drop-and-continue both landed (2026-08-29), design of record in [loadcell-recovery-design](06-feature-work/testrunner-safety/loadcell-recovery-design.md). What survives is the residual risk OQ-81, which only the bench can settle |
-| **Safety-path restructure** | OQ-64, OQ-63, OQ-49, OQ-50 | OQ-63 is a live defect — **pull it out and fix it now**, independent of the undecided OQ-64. Redesign step 3 cannot be exercised until the seam and simulator exist |
+| **Safety-path restructure** | OQ-64, OQ-63, OQ-50 | OQ-63 is a live defect — **pull it out and fix it now**, independent of the undecided OQ-64. Redesign step 3 cannot be exercised until the seam and simulator exist |
 | **Driver repos** (`dscusb`, `usbmodbus`) | OQ-43, OQ-80 | Sibling repos, not this one — OQ-80 is `dscusb`-side work, gated on a bench check. Both now build from a clean checkout and both plugin jars are reproducible from their committed source (OQ-75, OQ-76 closed), so a CFW11-side change is no longer gated on a build migration. Only procurement remains |
 | **Ops and deployment** | OQ-61, OQ-4, OQ-34, OQ-56 | Independent of everything above |
-| **Security** | OQ-37, OQ-36 | Independent |
-| **Mechanical batch** | OQ-27, OQ-38, OQ-42, OQ-82 | One commit, no decisions left |
+| **Security** | OQ-37 | Independent |
 
 One gate sits above the list and is **owner-owed**, not codeable:
 
@@ -63,19 +61,13 @@ They are still uncalibrated against the bench.
 
 | Id | Item | Owner doc |
 |---|---|---|
-| **OQ-51** | `stopThread()` NPEs when `test == null` — the `if (this.running)` guard doesn't cover it, because `running` is set before `test` is assigned. | [test-execution-engine](03-backend/test-execution-engine.md) |
-| **OQ-35** | Starting a run with a parameter type that has no runner leaves `test == null` and ends silently. Needs operator-visible feedback (**not** an enum — the free-form column is deliberate). | [test-execution-engine](03-backend/test-execution-engine.md) |
 | **OQ-63** | `TimeCyclicTest` divides speed by `375`, the other two runners by `0.375` (mm/rev — `TestParameter.speed` is mm/min). Its setpoints are 1000× low and the analyse-run `INITIAL_SPEED / 375` rounds to **0 rpm**. Verified in code, not on the bench. | [test-types](03-backend/test-types.md) |
 | **OQ-23** | The 50 ms sleep before pushing measurements drops the first batch if the client is slow to subscribe. | [state-and-realtime](04-frontend/state-and-realtime.md) |
 | **OQ-52** | `data.sql` is not idempotent. The initializer guard hides the common case, but a partially-seeded database can never recover. | [db](05-ops/db.md) |
 | **OQ-19** | `mergeRoutesArrays` silently drops a parent route's own metadata (deck copy wins). | [routing-and-layout](04-frontend/routing-and-layout.md) |
 | **OQ-21** | Colliding route children are silently resolved first-seen-wins. | [routing-and-layout](04-frontend/routing-and-layout.md) |
-| **OQ-67** | A CFW11 poll thread abandoned by the bounded join can be resurrected by a later `tryStartThread()`: `isRunning` is one flag for what may be N threads, and `idProvider++` is a plain non-volatile `int`. Two publishers can put a stale frame on the topic *after* a fresh one. | [staleness-findings](06-feature-work/testrunner-safety/staleness-and-lifecycle-findings.md) |
 | **OQ-68** | `Device.markConnectionLost()` zeroes the reference count including holders that still exist, so the *next* run's `disconnect()` reaches 0 and closes a handle the dashboard is still using. | [staleness-findings](06-feature-work/testrunner-safety/staleness-and-lifecycle-findings.md) |
-| **OQ-69** | `LoadCellThread` runs forever if `cleanup()` throws before `setRunning(false)` — `log()` can throw, `stop()` has no callers, nothing joins it. Leaks a thread, an open CSV writer and a pinned load-cell reference each time. | [staleness-findings](06-feature-work/testrunner-safety/staleness-and-lifecycle-findings.md) |
 | **OQ-70** | `DeviceInfoService.isEnabled` is one process-global flag rather than per-client, so one operator closing their dashboard stops broadcasting for every other tab. | [hardware-integration](03-backend/hardware-integration.md) |
-| **OQ-72** | `ForceBroadcaster` flushes only when a new batch arrives, so the last ≤60 ms of a run is stranded and re-broadcast on the first sample of the next run. | [staleness-findings](06-feature-work/testrunner-safety/staleness-and-lifecycle-findings.md) |
-| **OQ-77** | `TestRunnerService.start`/`stop` take `int` while `TestResult.id` is `Long`, capping runnable ids at 2³¹ with a silent failure past it. Latent (ids are small today), found while driving a simulated run. | [test-execution-engine](03-backend/test-execution-engine.md) |
 
 ## Security and tenancy
 
@@ -84,8 +76,7 @@ Live hardware telemetry is the deliberate exception.
 
 | Id | Item | Owner doc |
 |---|---|---|
-| **OQ-37** | `@CheckUserCanOnlyAccessOwnData` covers only `SampleService` and `TestParameterService`. Audit every owner-scoped service and make the answer uniform. | [security-and-tenancy](03-backend/security-and-tenancy.md) |
-| **OQ-36** | The aspect silently no-ops when the AOP target isn't a `CrudRepositoryService` — a future annotation could be purely decorative. | [security-and-tenancy](03-backend/security-and-tenancy.md) |
+| **OQ-37** | Every owned CRUD service extends `CrudRepositoryServiceForOwnerData`, which scopes `get`, `list`, `delete`, `save` and `saveAll` by specification, and `TestResultService`'s CSV reads gate on the scoped `get`. The bulk forms are covered too: `deleteAll` resolves every id through the scoped `get` and refuses the whole batch on one foreign id, and `FileMetadataService` routes `saveAll`/`deleteAll` through its own per-row check. What is left: `FileMetadataService` hand-rolls that rule through the file's `TestResult` on every entry point, because `FileMetadata` is no `DataWithOwner`; and `@RolesAllowed` on a `@BrowserCallable` method is enforced only over HTTP, so a role audit needs a request-path test. The per-service table is in the owner doc. | [security-and-tenancy](03-backend/security-and-tenancy.md) |
 
 ## Investigations — outcome is a documented finding
 
@@ -97,7 +88,6 @@ Live hardware telemetry is the deliberate exception.
 | **OQ-17** | Can the Hilla generator run standalone (no JVM boot) for a CI-only TS typecheck? Answered: yes — `hillaGenerate` boots only an AOT context, and `.github/workflows/build.yml` runs `script/typecheck.ps1` on that basis. Close it. | [build-and-tooling](04-frontend/build-and-tooling.md) |
 | **OQ-16** | Measure the production bundle with `optimizeBundle` on and off before flipping it. | [build-and-tooling](04-frontend/build-and-tooling.md) |
 | **OQ-80** | The DSCUSB has a **continuous output mode** we do not use: `SOUT` broadcast at the configured rate, toggled with XON/XOFF, valid one-to-one — which is exactly this bench. It would remove polling entirely, and the cell is rated 200 samples/second where request/response at that rate is tight. Unreachable through `DSCUSBDrv64.dll`, so exploiting it means the serial path. **Unverified on the USB variant** — the mode is documented for the DCell & DSC family; the `STN=998` "streams without XON" claim could not be confirmed at all. Owner-flagged as interesting for near-term use; needs a bench check before anything is built. | [dscusb-serial-port](06-feature-work/dscusb-serial-port/README.md) |
-| **OQ-83** | `AutoCrud.defaultCopyItem` (`cms/src/main/frontend/components/autocrud/AutoCrud.tsx:96`) clears `id` but keeps `version`, so the Copy button posts a stale non-zero version with a null id. Insert path, so probably inert — establish whether Hibernate seeds the version on persist or writes the stale value, then fix or close. | [component-inventory](04-frontend/component-inventory.md) |
 | **OQ-84** | Migrating `data/package-info.java` off the Spring-7-deprecated `@NonNullApi` to JSpecify `@NullMarked` is **not** a like-for-like swap: Hilla's `NonnullPluginConfig` default matcher list has no `org.jspecify.annotations.NullMarked` entry, and `@NonNullApi` at `(false, 10)` is the only thing making every non-annotated entity field non-optional in the generated TS. A blind swap would flip the whole `data` package to optional and change `AutoForm` required-field behaviour across every CRUD view. Needs a `nonnullAnnotation` config or a different approach. | [hilla-generated-layer](04-frontend/hilla-generated-layer.md) |
 
 ## Decided, awaiting implementation
@@ -109,23 +99,9 @@ The decision is made; only the work is outstanding.
 | **OQ-61** | Point the on-machine deck at the **cloud** Postgres. The URL is externalised now (`${DB_URL:...}`, with `DECK_DB_URL` on the deck service and no fallback on failure), so what remains is **owner-owed**: supplying the cloud host, and deciding what a link dropped *mid-run* does to a running test. | [docker-and-profiles](05-ops/docker-and-profiles.md) |
 | **OQ-34** | Delete the profile-picture feature — column, `data.sql` rows, and the UI that reads it. (Decided against migrating to `FileMetadata`.) | [persistence-model](03-backend/persistence-model.md) |
 | **OQ-4** | Dedupe `application*.properties`: cms copies canonical, deck copies deleted. Confirm classpath order for the profile-specific files first. | [module-layout](02-modules/module-layout.md) |
-| **OQ-62** | Simulated devices so a test can run with no hardware. **Shipped except step 5:** plant model, both providers, mode enforcement, separated result root, and the fault switches that make every `LoadCellThread` detector and all three safe-stop tiers trippable on demand. What remains is only the relay fake and record/replay of real sessions — the design rates it lowest value, the relay being one fire-and-forget ASCII byte. Plant parameters stay **invented and uncalibrated**. [virtual-devices](06-feature-work/virtual-devices/README.md). | [hardware-integration](03-backend/hardware-integration.md) |
-| **OQ-46** | Move the `CH9102` relay port-description literal to configuration. | [hardware-integration](03-backend/hardware-integration.md) |
-| **OQ-44** | Add `Cfw11Check` alongside `FileSystemCheck` and `LoadCellCheck`. | [hardware-integration](03-backend/hardware-integration.md) |
-| **OQ-71** | `TestLogger.end()` only runs from `stopThread()`, so a naturally-finished run leaks its log descriptor; `System.gc()` in `AbstractTest.destroy()` is the only thing reclaiming them. Fix `end()` first, then delete that call **and** the one in `retryShutdownOnException()`, which inserts a stop-the-world pause into the emergency stop. | [test-execution-engine](03-backend/test-execution-engine.md) |
+| **OQ-62** | Simulated devices so a test can run with no hardware. **Shipped except half of step 5:** plant model, all three providers, mode enforcement, separated result root, the fault switches that make every `LoadCellThread` detector and all three safe-stop tiers trippable on demand, and the relay fake behind `SuckService` as the relay's single owner. What remains is record/replay of real sessions, which the design rates lowest value. Plant parameters stay **invented and uncalibrated**. [virtual-devices](06-feature-work/virtual-devices/README.md). | [hardware-integration](03-backend/hardware-integration.md) |
+| **OQ-44** | `FrequencyInverterCheck` ships alongside `FileSystemCheck` and `LoadCellCheck`, proving the drive answers a read-only round trip. What remains is the device-identity handshake (serial, model) the check would need to tell the real drive from a simulated one. | [hardware-integration](03-backend/hardware-integration.md) |
 | **OQ-28** | Split the OpenCV pipeline out of `DistanceMeasureCam.tsx`. Planned, not scheduled. | [component-inventory](04-frontend/component-inventory.md) |
-| **OQ-49** | Replace `getConstructors()[0]` with an explicit constructor lookup. | [test-execution-engine](03-backend/test-execution-engine.md) |
-
-## Mechanical cleanups
-
-Zero-risk, no decision left in them.
-
-| Id | Item | Owner doc |
-|---|---|---|
-| **OQ-38** | Replace `System.out.println` in `CheckUserCanOnlyAccessOwnDataAspect` with SLF4J at debug. | [security-and-tenancy](03-backend/security-and-tenancy.md) |
-| **OQ-82** | Drop the redundant `@Nullable` from `AbstractEntity.id`/`version` and the then-unused `org.springframework.lang.Nullable` import (deprecated since Spring 7). Hilla scores `@Id` and `@Version` at the same `(nullable, 20)`, so the generated TS should not move; on the primitive `int version` the annotation is also simply false. Not worth a dedicated verify cycle — bundle into the next pass that already regenerates, and prove it by snapshot-diffing both `generated/` trees across a `typecheck.ps1` run. | [persistence-model](03-backend/persistence-model.md) |
-| **OQ-27** | Rename `OnwerSelector` → `OwnerSelector` and fix its four importers. | [component-inventory](04-frontend/component-inventory.md) |
-| **OQ-42** | Comment why `SettingService` implements `CrudService` directly. | [hilla-services](03-backend/hilla-services.md) |
 
 ## Blocked or undecided
 

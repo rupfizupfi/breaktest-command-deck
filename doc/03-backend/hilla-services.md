@@ -21,7 +21,6 @@ document the auth annotations that gate each service.
 - [Where to look in the code](#where-to-look-in-the-code)
 - [The REST surface — complete list](#the-rest-surface--complete-list)
 - [`ControllerEndpoint` is a hardware input, not a stub](#controllerendpoint-is-a-hardware-input-not-a-stub)
-- [Open questions](#open-questions)
 
 ## Diagram — server surface, two channels
 
@@ -84,16 +83,16 @@ CRUD bases means most services have no Java body at all.
 |---|---|---|---|---|
 | `CustomerService` | cms | `@PermitAll` | `CrudRepositoryService<Customer, ...>` | open CRUD |
 | `ProjectService` | cms | `@PermitAll` | `CrudRepositoryServiceForOwnerData<Project, ...>` | owner-filtered list/get/delete |
-| `SampleService` | cms | `@PermitAll` + `@CheckUserCanOnlyAccessOwnData` | `CrudRepositoryService<Sample, ...>` | aspect on get/save/delete |
-| `TestParameterService` | cms | `@PermitAll` + `@CheckUserCanOnlyAccessOwnData` | `CrudRepositoryService<TestParameter, ...>` | aspect on get/save/delete |
-| `TestResultService` | cms | `@PermitAll` | `CrudRepositoryServiceForOwnerData<TestResult, ...>` | adds `listCSVResults`, `readCSVData` |
+| `SampleService` | cms | `@PermitAll` | `CrudRepositoryServiceForOwnerData<Sample, ...>` | owner-filtered list/get/delete |
+| `TestParameterService` | cms | `@PermitAll` | `CrudRepositoryServiceForOwnerData<TestParameter, ...>` | owner-filtered list/get/delete |
+| `TestResultService` | cms | `@PermitAll` | `CrudRepositoryServiceForOwnerData<TestResult, ...>` | adds `listCSVResults`, `readCSVData`, both gated on the scoped `get` |
 | `MaterialService` | cms | `@PermitAll` | `CrudRepositoryService<Material, ...>` | reference data |
 | `GearTypeService` | cms | `@PermitAll` | `CrudRepositoryService<GearType, ...>` | reference data |
 | `GearStandardService` | cms | `@PermitAll` | `CrudRepositoryService<GearStandard, ...>` | reference data |
-| `FileMetadataService` | cms | `@PermitAll` | `CrudRepositoryService<FileMetadata, ...>` | metadata only — bytes via `/api/files/...` |
+| `FileMetadataService` | cms | `@PermitAll` | `CrudRepositoryService<FileMetadata, ...>` | metadata only — bytes via `/api/files/...`; `connectToTestResult` re-parents only a stored row the caller may access |
 | `UserService` | cms | `@RolesAllowed("ROLE_ADMIN")` | `CrudRepositoryService<User, ...>` | overrides `save` to bcrypt `newPassword` |
-| `SettingService` | cms | `@PermitAll` | implements `CrudService` directly | file-backed settings (no JPA) |
-| `TestRunnerService` | command-deck | `@PermitAll` | — | exposes `start(testId)`, `status()`, `stop()` |
+| `SettingService` | cms | `@PermitAll` | implements `CrudService` directly | file-backed settings (no JPA); `list` filters, sorts and pages in memory |
+| `TestRunnerService` | command-deck | `@PermitAll` | — | exposes `start(testId: Long)`, `status()`, `stop()`, `resume()`, `abort()` |
 | `DeviceInfoService` | command-deck | `@PermitAll` | — | toggles broadcaster on/off |
 | `SuckService` | command-deck | `@PermitAll` | — | toggles 4-way relay |
 
@@ -119,11 +118,11 @@ path.
   exposes `getCrudRepository()` so the AOP aspect can resolve a repository
   from a CRUD service join-point target.
 * `CrudRepositoryServiceForOwnerData<T extends DataWithOwner, R>`
-  (`cms/.../hilla/crud/CrudRepositoryServiceForOwnerData.java:17`) — the
+  (`cms/.../hilla/crud/CrudRepositoryServiceForOwnerData.java:24`) — the
   owner-aware subclass detailed in
   [`security-and-tenancy.md`](security-and-tenancy.md). It overrides `get`,
   `list`, `delete` to AND an `owner = currentUser OR owner IS NULL`
-  specification.
+  specification, and `save`/`saveAll` to hold a write to the same rule.
 
 The Hilla framework requires the entity ID type as a generic parameter; this
 codebase fixes it to `Long` everywhere.
@@ -135,8 +134,8 @@ All three live in `cms/src/main/java/ch/rupfizupfi/deck/api/rest/`:
 | Class | Path | Purpose | Auth |
 |---|---|---|---|
 | `ControllerEndpoint` | `GET /api/ControllerEndpoint/press/{button}` | input from the physical button box on the tester | `@AnonymousAllowed` |
-| `FileEndpoint` | `POST /api/files/uploads`, `POST /api/files/upload`, `GET /api/files/image/{fileName}` | multipart upload + download | `@AnonymousAllowed` |
-| `DownloadResults` | `GET /api/DownloadEndpoint/get`, `GET /api/DownloadEndpoint/project/{projectId}` | XLSX export of test results via Apache POI | `@PermitAll` |
+| `FileEndpoint` | `POST /api/files/uploads`, `POST /api/files/upload`, `GET /api/files/image/{fileName}` | multipart upload + download; an upload that cannot be stored leaves no `FileMetadata` row | `@AnonymousAllowed` |
+| `DownloadResults` | `GET /api/DownloadEndpoint/project/{projectId}` | XLSX export of test results via Apache POI | `@PermitAll` |
 
 The REST surface exists because:
 
@@ -176,9 +175,9 @@ over the same Vaadin-protected origin.
    session token.
 3. The Vaadin filter chain validates the session, then the Hilla dispatcher
    resolves `SampleService.save` and reflects it.
-4. Spring AOP intercepts: `CheckUserCanOnlyAccessOwnDataAspect.checkUserAccess`
-   inspects the `Sample` argument. Sample implements `DataWithOwner`; if
-   `sample.owner != null && != currentUser`, throw.
+4. `CrudRepositoryServiceForOwnerData.save` scopes the write: a non-null
+   `sample.owner` other than the caller, or an id the scoped `get` does not
+   resolve, throws `SecurityException`.
 5. The (inherited) `save` method on `CrudRepositoryService` saves via
    `SampleRepository`.
 6. The persisted `Sample` is JSON-serialised back; `OwnerSerializer` collapses
@@ -209,8 +208,7 @@ therefore all anonymous (see
 | `POST /api/files/uploads` | `FileEndpoint` | Multi-file upload → `List<FileMetadata>`. CSRF-exempt. |
 | `POST /api/files/upload` | `FileEndpoint` | Single-file upload → `FileMetadata`. CSRF-exempt. |
 | `GET /api/files/image/{fileName}` | `FileEndpoint` | Serve an uploaded image. |
-| `GET /api/DownloadEndpoint/get` | `DownloadResults` | Returns a string; diagnostic. |
-| `GET /api/DownloadEndpoint/project/{projectId}` | `DownloadResults` | CSV export of a project's results (`projectId` constrained to digits). |
+| `GET /api/DownloadEndpoint/project/{projectId}` | `DownloadResults` | XLSX export of a project's results via Apache POI (`projectId` constrained to digits). The "Peaks (kN)" column carries the peak of every force CSV in each result directory, whatever the age of the run. |
 | `GET /api/ControllerEndpoint/press/{button}` | `ControllerEndpoint` | Physical button box input — see below. |
 
 `vaadin.exclude-urls=/api/**` in `application.properties` keeps these
@@ -229,10 +227,3 @@ Do not delete it, and do not move it behind authentication — see the
 firmware, its wiring, and what each `{button}` value is expected to do are
 not documented anywhere; today the endpoint only logs, so no behaviour
 depends on those semantics yet.
-
-## Open questions
-
-1. **`SettingService` implements `CrudService` directly** rather than
-   extending `CrudRepositoryService`, because `Setting` is not a JPA
-   entity. Add a one-line comment so the next reader doesn't take it for
-   an oversight. (OQ-42)

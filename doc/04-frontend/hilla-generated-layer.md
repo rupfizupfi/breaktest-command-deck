@@ -125,9 +125,9 @@ Three files, one continuous round-trip.
    @BrowserCallable
    @PermitAll
    public class TestRunnerService {
-       public void start(int testId) {
+       public void start(Long testId) {
            testRunnerThread.startThread(
-               testResultRepository.findById((long) testId)
+               testResultRepository.findById(testId)
                    .orElseThrow(() -> new RuntimeException("Test not found"))
            );
        }
@@ -139,22 +139,22 @@ Three files, one continuous round-trip.
    `command-deck/src/main/frontend/generated/TestRunnerService.ts:1-7`
    ```ts
    import client_1 from "../connect-client.js";
-   async function start_1(testId: number, init?: EndpointRequestInit_1): Promise<void> {
+   async function start_1(testId: number | undefined, init?: EndpointRequestInit_1): Promise<void> {
        return client_1.call("TestRunnerService", "start", { testId }, init);
    }
    export { start_1 as start, /* status, stop */ };
    ```
-   Notice how `int testId` becomes `testId: number` and the `void` return is
+   Notice how `Long testId` becomes `testId: number | undefined` and the `void` return is
    preserved. Hilla also generated a sibling
    `ch/rupfizupfi/deck/api/services/TestRunnerService/StatusResponse.ts`
    for the inner DTO (because `status()` returns one).
 
 3. **Call site** in a view —
-   `command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx:97`
+   `command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx:240`
    ```ts
    import { TestRunnerService } from "Frontend/generated/endpoints";
    // ...
-   TestRunnerService.start(testResult.id!);
+   TestRunnerService.start(testResult.id!).catch(() => setStopped(true));
    ```
    `Frontend/` is a Vaadin-conventional alias for `src/main/frontend/`. The
    import resolves to `generated/endpoints.ts:13`, which re-exports the file

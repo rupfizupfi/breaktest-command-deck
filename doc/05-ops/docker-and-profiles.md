@@ -135,12 +135,9 @@ unrecorded, so nothing can activate it yet (OQ-56).
 ### Image build and entrypoint
 
 **One Dockerfile, parameterised by `MODULE`.** `docker/Dockerfile` is a two-stage
-build (`gradle:9.7.0-jdk26-corretto` → `eclipse-temurin:26-jre`) and the two
-services differ only in that build arg — there were two near-identical copies until
-the deck's extra directives, all of them driver delivery, became unnecessary. The
-build resolves nothing from a private repository, so it needs **no credentials and
-no build secret**. The shared entrypoint self-signs a TLS keystore and unwraps the
-DB-password secret; details in [`docker-images.md`](docker-images.md).
+build (`gradle:9.7.0-jdk26-corretto` → `eclipse-temurin:26-jre`); the two services
+differ only in that build arg. The shared entrypoint self-signs a TLS keystore and
+unwraps the DB-password secret; details in [`docker-images.md`](docker-images.md).
 
 ### Spring profiles
 
@@ -193,12 +190,8 @@ See [`db.md`](db.md) for the database angle.
 * **Secret `db-password`** (mapped to `../.secrets/db-password.txt`). Both
   Postgres (`POSTGRES_PASSWORD_FILE`) and the app server
   (`DB_PASSWORD_FILE`) read from `/run/secrets/db-password`.
-**`db-password` is the only secret, and there is no build-time secret at all.**
-The deck build used to mount a `read:packages` PAT to fetch a driver plugin, which
-in turn needed a placeholder-file indirection so that a *missing* token could not
-fail the build. Delivering no driver to the image deleted the token, the
-placeholder, the `GITHUB_TOKEN_FILE` path variable and the `drivers-local` mount
-in one go — the image build is credential-free.
+**`db-password` is the only secret, and the image build is credential-free** — it
+resolves no driver plugin, so it needs neither a registry token nor a build secret.
 
 ### Required host preparation
 
@@ -216,6 +209,11 @@ Before `docker compose up -d`, an operator must:
    so the auto-signed cert is intended, not a fallback.
 4. Run the profile that matches the host: `cms` in the cloud, `deck` wherever
    tests and simulations run.
+5. Rotate the seeded accounts before the cms host is reachable from outside.
+   `cms/src/main/resources/data.sql` seeds `user`/`user` (role `USER`) and
+   `admin`/`admin` (roles `USER` + `ADMIN`) on any boot that finds the user table
+   empty. Change both passwords, or remove `user` and keep one admin whose
+   password you set.
 
 Nothing about driver plugins appears here any more, for either profile. The bench
 has its own, shorter list: [`bench-deployment.md`](bench-deployment.md).

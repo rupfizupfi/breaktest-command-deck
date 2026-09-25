@@ -35,14 +35,14 @@ flowchart LR
     end
 
     subgraph Providers["Providers - one pair per deck.hardware.mode"]
-        VEND["real: Cfw11Drive / CellValueStreamAdapter<br/>plugin jars on loader.path, Windows only"]
+        VEND["real: Cfw11Drive / CellValueStream<br/>plugin jars on loader.path, Windows only"]
         SIM["simulated: SimulatedDrive / SimulatedLoadCellStream<br/>shared SimulatedBench"]
     end
 
     subgraph DeviceLayer["device/ - singleton DeviceService"]
         LCD["LoadCellDevice<br/>(extends Device)<br/>readData() loop, 20ms"]
         CFD["FrequencyInverterDevice<br/>(extends Device)<br/>readData() loop, 400ms"]
-        FRS["FourWayRelaySwitch<br/>(plain object)"]
+        FRS["RelaySwitch<br/>(via RelaySwitchProvider, owned by SuckService)"]
     end
 
     subgraph Broadcasters
@@ -110,8 +110,8 @@ is a thin reference-counted lifecycle wrapper:
 This lets multiple subsystems (a UI page, a test runner, the info
 broadcaster) share one physical USB session without manually coordinating.
 Both `LoadCellDevice` and `FrequencyInverterDevice` extend it.
-`FourWayRelaySwitch` does not — relay calls are short-lived and connect /
-disconnect on each use.
+The relay does not — `SuckService` owns it and connects / disconnects
+around each hold.
 
 ### `DeviceService` — singleton coordinator
 
@@ -130,7 +130,7 @@ USB sessions close.
 ### Load cell — `DSCUSB` over USB
 
 * Driver: the `dscusb` plugin jar, published and loaded at runtime from
-  `loader.path`, reached only through its own `CellValueStreamAdapter`. Absent,
+  `loader.path`; its `CellValueStream` is the `LoadCellStream` itself. Absent,
   the build still succeeds but startup fails (no `LoadCellStreamProvider` bean).
   Its provenance, build requirements and the driver contract that decides run
   outcomes — a transient fault dropped within an 80 ms budget, a terminal one
@@ -139,10 +139,11 @@ USB sessions close.
   (`command-deck/.../device/loadcell/LoadCellDevice.java:14`). `openConnection`
   asks its `LoadCellStreamProvider` for a **new** `LoadCellStream`, calls
   `startReading()`, spins a `dataThread` polling `stream.getNextValues()` every
-  20 ms, and notifies registered `MeasurementObserver`s. `getStreamFailure()`
-  turns `isReading()` + `lastError()` into the named cause the watchdog appends
-  to a trip reason; `readData` logs `droppedSampleCount()` on change, the only
-  trace an absorbed fault leaves. Loss recovery: [`loadcell-recovery-design.md`](../06-feature-work/testrunner-safety/loadcell-recovery-design.md).
+  20 ms, and notifies registered `MeasurementObserver`s. The stream is published
+  only once `startReading()` has returned, so a failed open reports `load cell
+  stream is not open`; `closeConnection` clears the field first and absorbs a throwing
+  `stopReading()`, so the observer flush and the freshness reset always run. `getStreamFailure()`
+  turns `isReading()` + `lastError()` into the named cause the watchdog appends to a trip reason; `readData` logs `droppedSampleCount()` on change, the only trace an absorbed fault leaves. Loss recovery: [`loadcell-recovery-design.md`](../06-feature-work/testrunner-safety/loadcell-recovery-design.md).
 * Observer interface: `command-deck/.../device/loadcell/MeasurementObserver.java:7`
   — single `update(List<Measurement>)`.
 * Broadcaster: `ForceBroadcaster`
@@ -163,9 +164,9 @@ USB sessions close.
   from its sibling repo — see [`driver-jars.md`](driver-jars.md).
 * Wrapper: `FrequencyInverterDevice`
   (`command-deck/.../device/frequencyinverter/FrequencyInverterDevice.java:40`). Polls
-  motor data + control parameters every 400 ms while at least one observer
-  is registered. The `idProvider` field assigns a monotonic id to each
-  `Info` snapshot so consumers can detect dropped frames.
+  motor data + control parameters every 400 ms while at least one observer is registered.
+  `readData` catches any `Exception` from the drive, so a failing tick idles the poll — logged once per outage — instead of killing the thread. `closeConnection` drops the handle reference before closing and absorbs a throwing `close()`, so a wedged drive ends disconnected rather than still reachable through `withDrive`, and `disconnect()` stays quiet.
+  `idProvider` assigns a monotonic id to each `Info` snapshot so consumers can detect dropped frames.
 * `Info` DTO — `command-deck/.../device/frequencyinverter/Info.java`: `id, speed,
   start, generalEnable, useSecondRamp, directionIsForward, motorCurrent,
   motorVoltage, motorTorque`.
@@ -183,24 +184,24 @@ from `Device`.
 ### 4-way relay — serial via `jSerialComm`
 
 * Driver: `com.fazecast:jSerialComm:2.11.4` (declared in root `build.gradle`).
-* Wrapper: `FourWayRelaySwitch`
-  (`command-deck/.../device/relayswitch/FourWayRelaySwitch.java:5`). Auto-detects
-  the COM port by scanning `SerialPort.getCommPorts()` for a descriptive name
-  containing `CH9102` (the relay board's USB-serial chipset), throwing
-  `ComportNotFoundException` if absent. 115 200 baud, 8N1.
-* Commands: writes the ASCII byte `'0'` or `'1'` (`disableRelay1` /
-  `enableRelay1`). Used by `SuckService` (manual) and `SuckJob` (post-
-  destructive-test cleanup).
+* Handles come from `RelaySwitchProvider` — `SerialRelaySwitchProvider` in real mode,
+  `SimulatedRelaySwitch` in simulated, gated by `deck.hardware.mode` like the drive and load-cell
+  pair. The serial `FourWayRelaySwitch` runs 115 200 baud 8N1 and finds its COM port by a descriptive
+  name containing `device.relay.port-description` (`CH9102`, command-deck `application.properties`,
+  no code-side default), else `ComportNotFoundException`.
+* Commands: `enableRelay1` / `disableRelay1` write the ASCII byte `'1'` or `'0'` and return whether it was
+  written, so an unopened port reads `false` instead of passing silently. `SuckService` is the single owner:
+  the dashboard checkbox and `SuckJob` both go through it, and the checkbox polls `isEnabled()` every 2 s while the socket is up rather than remembering its last click.
 
 ### Pre-test checks
 
 The load cell is probed before a run: `LoadCellCheck`
 (`command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/startup/check/LoadCellCheck.java:16`)
-opens the device and refuses the test unless a *fresh* measurement arrives within
-2 s — `connect()` and `isConnected()` both return normally for a device that is not
-plugged in, so an arrived measurement is the only trustworthy evidence. The CFW11
-has no equivalent check (OQ-44). Mechanism and full check list:
-[`test-execution-engine.md`](test-execution-engine.md#startup-checks).
+opens the device and refuses the test unless a *fresh* measurement arrives within 2 s
+— `connect()` and `isConnected()` both succeed for a device that is not plugged in, so
+an arrived measurement is the only trustworthy evidence. `FrequencyInverterCheck` proves
+the inverter answers by reading control parameters through the shared drive handle,
+writing nothing (OQ-44). Full check list: [`test-execution-engine.md`](test-execution-engine.md#startup-checks).
 
 ### Topic summary
 
@@ -242,9 +243,8 @@ page names what it doesn't cover.
 
 | OQ | Topic |
 |---|---|
-| OQ-44 | No presence check for the CFW11 — a missing inverter surfaces only once `setup()` throws. `Cfw11Check` should follow `LoadCellCheck` |
+| OQ-44 | `FrequencyInverterCheck` proves the inverter answers; a device-identity handshake (serial, model) is still unimplemented |
 | OQ-81 | Only *consecutive* driver faults are budgeted, so nothing bounds a run's total dropped fraction — the residual risk of OQ-74's answer |
-| OQ-46 | `FourWayRelaySwitch.java:19` matches the `CH9102` literal — move it to configuration |
-| OQ-62 | The seam exists; the simulated providers do not, so no test can yet run without hardware. Decided: [simulated devices](../06-feature-work/virtual-devices/README.md), `dev` only |
+| OQ-62 | [Simulated devices](../06-feature-work/virtual-devices/README.md) run a test without hardware; record/replay of real sessions is the open half |
 | OQ-70 | `DeviceInfoService.isEnabled` is process-global, not per-client |
 | OQ-43 | `usbmodbus.jar` provenance — see above |

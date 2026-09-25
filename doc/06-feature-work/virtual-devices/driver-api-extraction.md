@@ -76,12 +76,12 @@ proving the plugin's `AutoConfiguration.imports` is discovered from `loader.path
 |---|---|---|
 | `ch.rupfizupfi.deck.device.api` — `Drive`, `DriveProvider`, `LoadCellStream`, `LoadCellStreamProvider`, `Measurement`, `StreamFailure` | `device-api/` — a **standalone included build** in this repo, coordinate `ch.rupfizupfi.deck:device-api`, zero dependencies | none |
 | `Device` subclasses, `DeviceService`, `MotorSafetyController`, all test types | `command-deck` `src/main` | none — this is the point |
-| `CellValueStreamAdapter`, `DeckLoadCellAutoConfiguration` | sibling repo `dscusb`, package `ch.rupfizupfi.dscusb.deck` | `CellValueStream`, `Measurement`, `CommandExecutionException` |
+| `DeckLoadCellAutoConfiguration` | sibling repo `dscusb`, package `ch.rupfizupfi.dscusb.deck` | `CellValueStream`, which since `0.3.0` implements `LoadCellStream` itself |
 | `Cfw11Drive`, `DeckDriveAutoConfiguration` | sibling repo `usbmodbus`, package `ch.rupfizupfi.usbmodbus.deck` | `Cfw11` |
 | `FourWayRelaySwitch` | `main`, unchanged | jSerialComm is a Maven dependency, not an optional jar |
 
-The relay is deliberately out of scope: it never needed a jar, and
-`FourWayRelaySwitch` is already subclassable for the fake.
+The relay is out of scope here: it never needed a jar. It got the same
+provider shape separately — see [`README.md`](README.md).
 
 `device-api` is standalone (own `settings.gradle`) rather than a third
 subproject: the driver repos include that directory alone, so building a driver
@@ -229,7 +229,7 @@ declaring it — a standalone `hillaGenerate` fails otherwise.
 | The jars in `drivers/` are themselves tested (`driverPluginTest`) | the plugin's own skew check cannot catch a plugin that never calls it, and a jar built before that check existed loads clean and proves nothing. Verified against the real jars: each must make the call, satisfy the contract and register a provider, and with both present the real context must boot at `deck.hardware.mode=real` with the simulators displaced |
 | Driver builds want the deck as a sibling checkout | their compile against `device-api` *is* the conformance check. They fall back to the published contract without one, but that pins a version instead of tracking it, so drift then waits until the deck's startup. Publishing `dscusb` did **not** change this either: a version published from a stale checkout compiles against a stale contract and nothing downstream catches it |
 | `usbmodbus.jar` is never published | licence. It reaches the bench as a file in `drivers/` and reaches no image at all, since no image carries a driver |
-| `LoadCellCheck` and a future `Cfw11Check` probe through the API | with no vendor code loaded in dev, a simulated provider must declare its own distinguishable identity — this forces **OQ-44** rather than deferring it |
+| `LoadCellCheck` and `FrequencyInverterCheck` probe through the API | with no vendor code loaded in dev, a simulated provider must declare its own distinguishable identity — this forces **OQ-44** rather than deferring it |
 
 ## Open questions
 
