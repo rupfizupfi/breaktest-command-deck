@@ -22,6 +22,7 @@ import java.util.Set;
  * a {@code NoSuchBeanDefinitionException} that names an interface and not a jar.
  * <p>
  * Never falls back. Absent hardware selecting a simulator is the failure mode this exists to make
+ * impossible.
  */
 @Component
 public class HardwareModeCheck implements BeanFactoryPostProcessor {

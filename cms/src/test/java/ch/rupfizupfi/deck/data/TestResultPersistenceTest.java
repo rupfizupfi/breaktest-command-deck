@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Persistence behaviour of {@link TestResult} and its {@code files} relation against real
  * PostgreSQL — the answer to OQ-32. H2 is deliberately not used: dev/prod is an H2/Postgres split
- * and repository tests written against H2 semantics are the predictable failure
+ * and repository tests written against H2 semantics are the predictable failure.
  *
  * <p>Skips (rather than fails) on machines without Docker; CI has it.
  */

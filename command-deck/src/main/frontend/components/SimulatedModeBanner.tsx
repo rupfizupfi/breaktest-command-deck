@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { HardwareModeService } from 'Frontend/generated/endpoints.js';
 
 /**
+ * Annunciates simulated hardware: the operator must never be
  * able to mistake a generated force trace for a measurement.
  *
  * Deliberately self-contained — it polls its own endpoint once and shares no state with

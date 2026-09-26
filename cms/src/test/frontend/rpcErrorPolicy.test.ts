@@ -3,6 +3,7 @@
  *
  * The DOM boundary is stubbed at the two module seams the policy touches:
  * `@vaadin/react-components/Notification.js` (a shadow-DOM web component jsdom cannot
+ * render) and `@vaadin/hilla-frontend`'s
  * ConnectClient. What the toast *looks like* is out of scope here; what the policy
  * *decides* — status→message mapping, dedupe, 401 recovery, marker lifecycle — is the
  * subject. Browser globals the policy reads (sessionStorage, window.location,

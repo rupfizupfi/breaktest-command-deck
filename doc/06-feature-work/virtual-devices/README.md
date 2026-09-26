@@ -13,9 +13,10 @@ during an incident, and so have never been observed to work.
 Device internals are owned by
 [`../../03-backend/hardware-integration.md`](../../03-backend/hardware-integration.md);
 watchdog semantics by
-[`../testrunner-safety/loadcell-recovery-design.md`](../testrunner-safety/loadcell-recovery-design.md);
-the fail-safe-mode and bypass-annunciation reasoning by
-Transport findings (why no virtual COM port helps, why the vendor types cannot be
+[`../testrunner-safety/loadcell-recovery-design.md`](../testrunner-safety/loadcell-recovery-design.md).
+The fail-safe-mode and bypass-annunciation reasoning, and the transport constraints
+(why no virtual COM port helps, why the vendor types cannot be mocked), are assumed
+here rather than re-derived.
 
 ## Contents
 
@@ -146,6 +147,7 @@ The relay is the one device out of scope there, because it never needed a jar: i
 jSerialComm, not vendor-jar. It got the same shape anyway — a `RelaySwitch` interface,
 `SerialRelaySwitchProvider` / `SimulatedRelaySwitchProvider` gated by `deck.hardware.mode`,
 and `SuckService` as the single owner that both the dashboard toggle and `SuckJob` go
+through. (An earlier count expected seven `new` sites; grep finds five:
 three vendor and these two, all now behind providers.)
 
 ## Fault injection — the reason to build this
@@ -178,7 +180,8 @@ override registered only in simulated mode) redirects everything to
 `<resultData>/simulated/`. Overriding the one accessor both writers share keeps
 cms untouched; in real mode the bean does not exist.
 
-Also outside reach, permanently: Modbus framing, CRC and inter-frame timing bugs
+Also outside reach, permanently: Modbus framing, CRC and inter-frame timing bugs.
+`TimeCyclicTest.java:141` *measures*
 control-loop latency, so its analyse phase is only as meaningful as the latency
 the bench models; it is the weakest of the three test types to simulate.
 

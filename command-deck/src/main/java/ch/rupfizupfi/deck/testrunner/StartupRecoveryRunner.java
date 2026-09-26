@@ -44,7 +44,8 @@ public class StartupRecoveryRunner {
     private final HardwareModeInfo hardwareModeInfo;
 
     /**
-     * {@code loader.path}), and boot recovery must not be the thing that turns that into a failure.
+     * A driver jar absent at launch means no provider bean at all ({@code loader.path}
+     * governs this), and boot recovery must not be the thing that turns that into a failure.
      */
     private final ObjectProvider<DriveProvider> driveProviderProvider;
 

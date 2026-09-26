@@ -119,6 +119,7 @@ Design rationale and history: [`../06-feature-work/virtual-devices/driver-api-ex
 ### Vaadin Gradle plugin
 Applied to **both** subprojects (root `build.gradle:19`). Gives each module:
 
+- `vaadinPrepareFrontend` — generates `frontend/generated/`, `vite.generated.ts`, the `package.json` `vaadin` block (see the populated `vaadin.dependencies` map in `cms/package.json:69`). Hilla TS clients for `@BrowserCallable` services land here; nothing about this is hand-edited. Never touch `generated/`.
 - `vaadinBuildFrontend` — runs Vite to bundle the React/TS app into static resources that `bootJar` packs under `META-INF/resources/`.
 - The `vaadin { productionMode }` switch — production mode bundles eagerly, dev mode delegates to a Vite dev server proxied by Spring.
 

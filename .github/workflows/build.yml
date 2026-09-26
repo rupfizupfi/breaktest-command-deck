@@ -89,7 +89,8 @@ jobs:
       # change. In CI the checkout is discarded, so the cost is nil - and this exercises the same
       # production path the Docker images build.
       #
-      # The unit suites run inside `build` (plain JUnit, no Spring context, no hardware - see
+      # The unit suites run inside `build` (plain JUnit, no Spring context, no hardware).
+      # Runs with no credentials on purpose: the GitHub Packages repository is
       # not consulted by anything any more — no task resolves a driver, so none is fetched
       # or needed. A driver is a launch-time plugin, so its absence cannot fail a build.
       - name: Build

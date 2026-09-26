@@ -50,11 +50,6 @@ doc/
 ├── _check-size.py                      enforce the size / TOC / anchor standard
 ├── _check-diagrams.py                  hold inline mermaid fences to their .mmd source
 ├── _check-inventories.py               hold a doc table to the symbol set it enumerates
-│   ├── README.md                       what this folder is, and what it is not
-│   ├── test-harness-jvm.md             a first backend suite on Java 26 + Boot 4.1
-│   ├── test-harness-frontend.md        what can test a Hilla/React frontend
-│   ├── hardware-simulation.md          running the bench with no hardware attached
-│   └── machine-safety.md               interlock/E-stop practice; the P0314 gap
 ├── 01-overview/
 │   ├── product-context.md              what the machine does, who uses it
 │   ├── system-architecture.md          C4 context + container; fresh-clone quickstart
@@ -226,29 +221,9 @@ wrong line of the right file.
 
 ---
 
-
-holds evaluations of *external* tooling — test harnesses, device simulators,
-agent configuration — considered for future adoption. **Assume nothing it
-verification gates are the one exception. Do not infer from it that this project
-uses Playwright or pymodbus; the repo still has
-no hardware abstraction layer. (CI — see
-[`02-modules/gradle-build.md`](02-modules/gradle-build.md#continuous-integration) —
-plus JUnit, Testcontainers and Vitest test layers now exist; the test-harness
-
-The caveat is about **adoption, not subject matter**. Several of its findings are
-owns them until the work they inform lands, at which point they move into the
-owning collection and the file is deleted.
-
-It also follows different conventions from the rest of `doc/`: claims carry
-HIGH/MEDIUM/LOW confidence ratings and external URLs, because most of the subject
-is other people's software on other people's release schedules.
-
----
-
 ## Doc standards (definition of done)
 
-Apply to any doc you add or edit. The canonical rules, with rationale and
-worked examples, live in
+Apply to any doc you add or edit. The canonical rules are the ones below.
 
 **Size and navigability**
 

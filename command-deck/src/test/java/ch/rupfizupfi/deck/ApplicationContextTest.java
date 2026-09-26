@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Boots the full command-deck context as {@code bootRun} does and asserts the beans a run depends
- * on. An empty {@code contextLoads()} proves only that nothing threw
+ * on. An empty {@code contextLoads()} proves only that nothing threw,
+ * so every method names what it pins.
  *
  * <p>Profile {@code dev} is not a convenience here, it is the only legal choice:
  * {@code HardwareModeCheck} permits {@code deck.hardware.mode=simulated} only when every active

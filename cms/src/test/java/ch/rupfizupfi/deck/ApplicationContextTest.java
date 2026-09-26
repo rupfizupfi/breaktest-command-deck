@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Boots the full cms context exactly as {@code bootRun} does — profile {@code dev}, the production
  * wiring, the {@code data.sql} seed path — and asserts the load-bearing beans exist. An empty
+ * {@code contextLoads()} proves only that nothing threw, so
  * every method here names the bean it pins.
  *
  * <p>The one deliberate divergence from a real dev boot is the datasource: profile {@code dev}

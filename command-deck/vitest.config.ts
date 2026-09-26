@@ -8,6 +8,7 @@
  * Vaadin's config wires Flow plugins that need generated/ scaffolding and a dev-mode
  * folder layout, and command-deck's also merges cms's file routes. Component tests against
  * @vaadin web components need Vitest browser mode (jsdom cannot do shadow DOM) and are a
+ * later rung, not yet built.
  */
 import { defineConfig } from 'vitest/config';
 
