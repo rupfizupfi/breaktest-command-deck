@@ -75,9 +75,9 @@ export default function RunView() {
     const localSampleService = createAutoComboBoxService(SampleService, "name");
 
     return (
-        <VerticalLayout theme="spacing-l stretch evenly h-full min-h-full">
+        <VerticalLayout theme="spacing-l stretch evenly">
             <AutoCrud
-                className="w-full h-full min-h-full"
+                className="w-full min-h-full"
                 service={TestResultService}
                 model={TestResultModel}
                 gridProps={{

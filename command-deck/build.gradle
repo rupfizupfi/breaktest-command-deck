@@ -43,8 +43,17 @@ dependencies {
 }
 
 tasks.named('bootRun') {
-    // The dev H2 URL is working-directory relative; both modules must resolve it to the same file.
-    workingDir = rootProject.projectDir
+    // Both modules must resolve the dev H2 file to the same path. Handing it over as an absolute
+    // path via env var (read by spring.datasource.url's ${DECK_H2_DIR:...} placeholder) instead of
+    // forcing the process's working directory to rootProject.projectDir: Vaadin's DevModeInitializer
+    // resolves the @Theme frontend folder relative to that same working directory at runtime, so
+    // overriding it here broke theme discovery for this module.
+    environment 'DECK_H2_DIR', "${rootProject.projectDir}/.data"
+    // Vaadin's DevModeInitializer shells out to pnpm for frontend installs from inside this
+    // process. Without a TTY (IDE run configs, CI), pnpm refuses to purge/relink node_modules
+    // and aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY instead of prompting - CI=true
+    // is pnpm's own documented way to say "non-interactive, don't ask".
+    environment 'CI', 'true'
 }
 
 // The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
