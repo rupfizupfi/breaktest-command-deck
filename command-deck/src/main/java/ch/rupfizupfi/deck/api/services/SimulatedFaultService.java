@@ -10,12 +10,11 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Arms and clears the bench's fault switches, so the detectors and the safe-stop escalation ladder
- * can be exercised on demand instead of only during a real incident.
+ * Arms and clears the bench's fault switches, so the detectors and the safe-stop escalation can be
+ * exercised on demand.
  * <p>
- * The bean exists <b>only</b> in simulated mode, on the same condition as the simulated providers —
- * so on a real bench this endpoint is not merely forbidden, it does not exist. Admin-only on top of
- * that, because arming a fault mid-run is indistinguishable from breaking the machine.
+ * Exists only in simulated mode, on the same condition as the simulated providers, so a real bench
+ * has no such endpoint. Admin-only as well.
  */
 @BrowserCallable
 @RolesAllowed("ADMIN")

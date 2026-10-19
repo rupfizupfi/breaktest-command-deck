@@ -10,6 +10,7 @@ import Sample from "Frontend/generated/ch/rupfizupfi/deck/data/Sample";
 import {OwnerGridView} from "cms/components/owner/OwnerGridView";
 import OwnerSelector from "cms/components/owner/OwnerSelector";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
+import CurrentUserGate from "cms/components/owner/CurrentUserGate";
 
 createEmptyValueProxy(SampleModel);
 
@@ -19,7 +20,7 @@ export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Elem
     const materialService = createAutoComboBoxService(MaterialService, "name");
     const gearStandardService = createAutoComboBoxService(GearStandardService, "name");
 
-    return <AutoCrud
+    return <CurrentUserGate><AutoCrud
         service={service}
         model={SampleModel}
         gridProps={{
@@ -51,5 +52,5 @@ export function buildAutoCrud(service:CrudService<Value<SampleModel>>): JSX.Elem
                     renderer: ({field}) => <AutMultiSelectComboBox {...field} itemIdPath="id" itemValuePath="id" itemLabelPath="name" service={materialService}/>,
                 }
             }
-        }}/>
+        }}/></CurrentUserGate>
 }

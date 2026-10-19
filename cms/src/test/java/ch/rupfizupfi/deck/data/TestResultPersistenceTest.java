@@ -1,14 +1,14 @@
 package ch.rupfizupfi.deck.data;
 
+import com.vaadin.hilla.crud.JpaFilterConverter;
+import com.vaadin.hilla.crud.filter.PropertyStringFilter;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -18,13 +18,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Persistence behaviour of {@link TestResult} and its {@code files} relation against real
- * PostgreSQL — the answer to OQ-32. H2 is deliberately not used: dev/prod is an H2/Postgres split
- * and repository tests written against H2 semantics are the predictable failure.
- *
- * <p>Skips (rather than fails) on machines without Docker; CI has it.
+ * Persistence behaviour of {@link TestResult} and its {@code files} relation against PostgreSQL,
+ * the production database (OQ-32), on the schema the migrations build. Skips on machines without
+ * Docker.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -33,29 +32,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TestResultPersistenceTest {
 
     /**
-     * Pinned tag: the compose file's unpinned {@code postgres} gives no version to mirror.
-     * No type parameter — Testcontainers 2.x made {@code PostgreSQLContainer} non-generic.
-     *
-     * <p>{@code @Container} stops the container after this class while the cached Spring context
-     * — datasource included — outlives it, so a second Postgres slice test must share this exact
-     * configuration (ideally this container), never duplicate it.
+     * {@code @Container} stops the container after this class while the cached Spring context
+     * outlives it, so another Postgres slice test must share this configuration, not duplicate it.
      */
     @Container
     @ServiceConnection
-    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
-
-    /**
-     * Replaces {@code Application} as the slice's configuration source. Without it the slice walks
-     * up to {@code Application} and instantiates its {@code dataSourceScriptDatabaseInitializer}
-     * @Bean, whose override calls {@code UserRepository#count()} during bean initialization —
-     * before Hibernate has created the schema. {@code spring.sql.init.mode=never} cannot prevent
-     * that call, only this can. {@code @EnableAutoConfiguration} keeps entity/repository scanning
-     * anchored to this package, where every cms entity lives.
-     */
-    @Configuration(proxyBeanMethods = false)
-    @EnableAutoConfiguration
-    static class SliceConfig {
-    }
+    static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine");
 
     @Autowired
     TestEntityManager em;
@@ -64,13 +46,17 @@ class TestResultPersistenceTest {
     TestResultRepository repository;
 
     @Autowired
-    ApplicationContext context;
+    TestParameterRepository testParameters;
+
+    @Autowired
+    Flyway flyway;
 
     @Test
-    void applicationDataSqlInitializerBeanStaysOutOfTheSlice() {
-        // Guard for the SliceConfig comment above: if this bean reappears, the slice is loading
-        // Application again and the data.sql initializer runs against a schema that may not exist.
-        assertThat(context.containsBean("dataSourceScriptDatabaseInitializer")).isFalse();
+    void flywayBuiltTheSchemaFromV1RatherThanBaselining() {
+        // Hibernate validated this schema at startup; that proves V1 only if Flyway ran it.
+        assertThat(flyway.info().applied())
+                .extracting(migration -> migration.getVersion().getVersion())
+                .startsWith("1", "2");
     }
 
     @Test
@@ -118,8 +104,7 @@ class TestResultPersistenceTest {
         em.flush();
         em.clear();
 
-        // orphanRemoval = true holds on Postgres: the removed child's row is gone, not left
-        // behind with a null FK.
+        // orphanRemoval deletes the row rather than nulling its FK.
         assertThat(fileRowCount()).isEqualTo(1);
         assertThat(em.find(TestResult.class, result.getId()).files)
                 .extracting(FileMetadata::getFileName)
@@ -128,8 +113,6 @@ class TestResultPersistenceTest {
 
     @Test
     void findByRunStatusInMatchesOnlyNonTerminalRowsAndSkipsNullStatus() {
-        // The StartupRecoveryRunner orphan sweep: crashed processes leave IN_PROGRESS or
-        // INTERRUPTED behind; pre-column rows have null status and must stay out of the sweep.
         TestResult inProgress = persistedTestResult();
         inProgress.runStatus = RunStatus.IN_PROGRESS;
         TestResult interrupted = persistedTestResult();
@@ -148,16 +131,14 @@ class TestResultPersistenceTest {
     }
 
     @Test
-    void findByProjectIdWalksSampleToProjectAndReturnsOnlyThatProjectsResults() {
-        // The repository's only hand-written JPQL: TestResult carries no project column, the
-        // query joins result -> sample -> project. Each persistedTestResult() builds its own
-        // customer/project/sample graph, so the second result is the other-project control.
+    void inProjectWalksSampleToProjectAndReturnsOnlyThatProjectsResults() {
+        // Each persistedTestResult() builds its own project, so the second is the control.
         TestResult inProject = persistedTestResult();
         TestResult otherProject = persistedTestResult();
         em.flush();
         em.clear();
 
-        List<TestResult> found = repository.findByProjectId(inProject.sample.project.getId());
+        List<TestResult> found = repository.findAll(TestResultRepository.inProject(inProject.sample.project.getId()));
 
         assertThat(found)
                 .extracting(AbstractEntity::getId)
@@ -172,14 +153,74 @@ class TestResultPersistenceTest {
         em.flush();
         em.clear();
 
-        // The raw column value is the constant's name — the property RunStatus's javadoc promises
-        // so that reordering the enum can never reinterpret historical rows.
         Object stored = em.getEntityManager()
                 .createNativeQuery("select run_status from test_result where id = :id")
                 .setParameter("id", result.getId())
                 .getSingleResult();
         assertThat(stored).isEqualTo("COMPLETED_WITH_GAPS");
         assertThat(em.find(TestResult.class, result.getId()).runStatus).isEqualTo(RunStatus.COMPLETED_WITH_GAPS);
+    }
+
+    @Test
+    void testTypeIsStoredByItsWireNameSoTheColumnBytesAreThoseOfTheFreeFormString() {
+        for (TestType type : TestType.values()) {
+            TestParameter parameter = persistedTestParameter(type);
+            em.flush();
+            em.clear();
+
+            assertThat(storedType(parameter)).isEqualTo(type.wireName());
+            assertThat(em.find(TestParameter.class, parameter.getId()).type).isEqualTo(type);
+        }
+        assertThat(TestType.values()).extracting(TestType::wireName)
+                .containsExactly("destructive", "cyclic", "timeCyclic");
+    }
+
+    @Test
+    void aStoredTypeOutsideTheThreeFailsTheLoadNamingIt() {
+        TestParameter parameter = persistedTestParameter(TestType.CYCLIC);
+        em.flush();
+        em.clear();
+        em.getEntityManager()
+                .createNativeQuery("update test_parameter set type = 'fatigue-draft' where id = :id")
+                .setParameter("id", parameter.getId())
+                .executeUpdate();
+
+        assertThatThrownBy(() -> em.find(TestParameter.class, parameter.getId()))
+                .hasStackTraceContaining("unknown test parameter type: fatigue-draft");
+    }
+
+    /** The three test views filter the parameter grid with {@code filterValue: TestType.X}, the constant name. */
+    @Test
+    void aHillaFilterOnTheConstantNameMatchesOnlyRowsOfThatType() {
+        TestParameter cyclic = persistedTestParameter(TestType.CYCLIC);
+        persistedTestParameter(TestType.TIME_CYCLIC);
+        persistedTestParameter(TestType.DESTRUCTIVE);
+        em.flush();
+        em.clear();
+
+        PropertyStringFilter filter = new PropertyStringFilter();
+        filter.setPropertyId("type");
+        filter.setFilterValue(TestType.CYCLIC.name());
+        filter.setMatcher(PropertyStringFilter.Matcher.EQUALS);
+
+        assertThat(testParameters.findAll(JpaFilterConverter.toSpec(filter, TestParameter.class)))
+                .extracting(AbstractEntity::getId)
+                .containsExactly(cyclic.getId());
+    }
+
+    private TestParameter persistedTestParameter(TestType type) {
+        TestParameter parameter = new TestParameter();
+        parameter.type = type;
+        parameter.speed = 10;
+        em.persist(parameter);
+        return parameter;
+    }
+
+    private Object storedType(TestParameter parameter) {
+        return em.getEntityManager()
+                .createNativeQuery("select type from test_parameter where id = :id")
+                .setParameter("id", parameter.getId())
+                .getSingleResult();
     }
 
     private long fileRowCount() {
@@ -207,7 +248,7 @@ class TestResultPersistenceTest {
         em.persist(sample);
 
         TestParameter parameter = new TestParameter();
-        parameter.type = "destructive";
+        parameter.type = TestType.DESTRUCTIVE;
         parameter.speed = 10;
         em.persist(parameter);
 

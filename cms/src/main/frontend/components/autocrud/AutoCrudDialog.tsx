@@ -17,8 +17,6 @@ interface AutoCrudDialogProps {
 export function AutoCrudDialog(props: AutoCrudDialogProps): JSX.Element {
     const { header, children, opened, onClose } = props;
     return (
-        // Vaadin 25 removed `overlayClass` and takes header content via the `header` prop
-        // (`headerRenderer` is now a ComponentType rather than a render callback).
         <Dialog
             opened={opened}
             header={

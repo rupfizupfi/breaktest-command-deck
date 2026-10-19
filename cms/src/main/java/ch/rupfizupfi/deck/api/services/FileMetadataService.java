@@ -6,6 +6,7 @@ import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.hilla.crud.CrudRepositoryService;
 import ch.rupfizupfi.deck.hilla.crud.OwnerDataHelper;
+import ch.rupfizupfi.deck.hilla.crud.PageCap;
 import ch.rupfizupfi.deck.security.UserUtils;
 import ch.rupfizupfi.deck.service.FileService;
 import com.vaadin.hilla.BrowserCallable;
@@ -17,6 +18,7 @@ import jakarta.persistence.criteria.Subquery;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,15 +51,32 @@ public class FileMetadataService extends CrudRepositoryService<FileMetadata, Fil
         return stored;
     }
 
+    @Override
+    public boolean exists(Long id) {
+        return this.getRepository().findById(id).filter(this::isAccessible).isPresent();
+    }
+
     /**
      * An id must name a row the caller may read, and a target test result must resolve through the
-     * owner-scoped {@link TestResultService#get}.
+     * owner-scoped {@link TestResultService#get}. {@code filePath} names the bytes {@link #delete}
+     * removes, so it is server-owned: an update keeps the stored path and display name, a new row
+     * gets none. {@code testResult} is {@code @JsonIgnore}d, so a browser payload never carries it;
+     * an update without one keeps the stored link.
      */
     @Override
     @Nullable
     public FileMetadata save(FileMetadata value) {
         if (value.getId() != null) {
-            this.getRepository().findById(value.getId()).ifPresent(this::validateAccess);
+            this.getRepository().findById(value.getId()).ifPresent(stored -> {
+                validateAccess(stored);
+                value.setFilePath(stored.getFilePath());
+                value.setFileName(stored.getFileName());
+                if (value.getTestResult() == null) {
+                    value.setTestResult(stored.getTestResult());
+                }
+            });
+        } else {
+            value.setFilePath(null);
         }
 
         var testResult = value.getTestResult();
@@ -105,9 +124,20 @@ public class FileMetadataService extends CrudRepositoryService<FileMetadata, Fil
             return super.list(pageable, filter);
         }
 
-        Specification<FileMetadata> spec = this.toSpec(filter);
+        return this.getRepository().findAll(readableBy(this.toSpec(filter)), PageCap.clamp(pageable)).getContent();
+    }
 
-        spec = spec.and((root, query, criteriaBuilder) -> {
+    @Override
+    public long count(@Nullable Filter filter) {
+        if (UserUtils.isAdmin()) {
+            return super.count(filter);
+        }
+        return this.getRepository().count(readableBy(this.toSpec(filter)));
+    }
+
+    /** ANDs the read rule of {@link #validateAccess} onto {@code spec} as a query. */
+    private Specification<FileMetadata> readableBy(Specification<FileMetadata> spec) {
+        return spec.and((root, query, criteriaBuilder) -> {
             Subquery<Long> subquery = query.subquery(Long.class);
             Root<TestResult> subRoot = subquery.from(TestResult.class);
             subquery.select(subRoot.get("id"))
@@ -118,8 +148,6 @@ public class FileMetadataService extends CrudRepositoryService<FileMetadata, Fil
                     root.get("testResult").get("id").in(subquery)
             );
         });
-
-        return this.getRepository().findAll(spec, pageable).getContent();
     }
 
     /**
@@ -147,18 +175,31 @@ public class FileMetadataService extends CrudRepositoryService<FileMetadata, Fil
         return true;
     }
 
+    /**
+     * The row storing the bytes named {@code filePath}, if the caller may read it under the rule of
+     * {@link #validateAccess}; empty when no row names those bytes. The image endpoint serves only
+     * what this resolves, so a stored name alone grants nothing.
+     */
+    @Transactional(readOnly = true)
+    public Optional<FileMetadata> findReadable(String filePath) {
+        return this.getRepository().findByFilePath(filePath).filter(this::isAccessible);
+    }
+
     protected void validateAccess(FileMetadata fileMetadata) {
+        if (!isAccessible(fileMetadata)) {
+            throw new SecurityException("You do not have permission to access this record");
+        }
+    }
+
+    private boolean isAccessible(FileMetadata fileMetadata) {
         if (UserUtils.isAdmin()) {
-            return;
+            return true;
         }
 
         if (fileMetadata.getTestResult() == null || fileMetadata.getTestResult().getOwner() == null) {
-            return;
+            return true;
         }
 
-        var owner = fileMetadata.getTestResult().getOwner();
-        if (!owner.equals(ownerDataHelper.getAuthenticatedUser())) {
-            throw new SecurityException("You do not have permission to access this record");
-        }
+        return fileMetadata.getTestResult().getOwner().equals(ownerDataHelper.getAuthenticatedUser());
     }
 }

@@ -22,7 +22,10 @@ public class SuckService {
         this.relays = relays;
     }
 
-    /** The relay's state as this service last set it; nothing reads it back from the hardware. */
+    /**
+     * The relay's state as this service last set it; nothing reads it back from the hardware. A
+     * refused off command keeps it true, since the relay may still be energized.
+     */
     public synchronized boolean isEnabled() {
         return isEnabled;
     }
@@ -55,7 +58,9 @@ public class SuckService {
 
     /**
      * Whether the relay is de-energized when this returns. The port closes either way, so the next
-     * {@link #enable()} opens a fresh one rather than reusing a handle whose write just failed.
+     * {@link #enable()} opens a fresh one rather than reusing a handle whose write just failed. A
+     * refused off command leaves the vacuum reported on, so calling this again opens a fresh port
+     * and resends the off byte instead of returning true untouched.
      */
     public synchronized boolean disable() {
         if (!isEnabled) {
@@ -64,10 +69,23 @@ public class SuckService {
 
         RelaySwitch relay = suckSwitch;
         suckSwitch = null;
-        isEnabled = false;
+        if (relay == null) {
+            try {
+                relay = relays.open();
+            } catch (ComportNotFoundException e) {
+                return false;
+            }
+            if (!relay.connect()) {
+                relay.disconnect();
+                return false;
+            }
+        }
 
         boolean off = relay.disableRelay1();
         relay.disconnect();
+        if (off) {
+            isEnabled = false;
+        }
         return off;
     }
 }

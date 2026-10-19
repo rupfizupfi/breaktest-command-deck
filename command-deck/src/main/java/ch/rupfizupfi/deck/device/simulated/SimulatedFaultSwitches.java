@@ -13,8 +13,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Which faults the bench is currently injecting.
  * <p>
- * Process-scoped and never persisted: a fault must not survive a restart, or a developer who left
- * one armed yesterday debugs a machine that is lying to them today.
+ * Process-scoped and never persisted, so no fault survives a restart.
  */
 @Component
 @ConditionalOnProperty(name = "deck.hardware.mode", havingValue = "simulated")
@@ -25,9 +24,8 @@ public class SimulatedFaultSwitches {
     private final Set<SimulatedFault> active = Collections.synchronizedSet(EnumSet.noneOf(SimulatedFault.class));
 
     /**
-     * Bumped whenever {@link SimulatedFault#DRIVE_STALE_HANDLE} is armed. A handle carries the value
-     * it was opened with, so "opened before the fault" is expressible — which is what lets tier 2's
-     * fresh handle succeed where tier 1's failed.
+     * Bumped whenever {@link SimulatedFault#DRIVE_STALE_HANDLE} is armed. A handle keeps the value it
+     * was opened with, so tier 2's fresh handle succeeds where tier 1's fails.
      */
     private final AtomicLong driveGeneration = new AtomicLong();
 
@@ -63,6 +61,18 @@ public class SimulatedFaultSwitches {
                 active.clear();
             }
         }
+    }
+
+    /**
+     * Disarms a one-shot fault as it fires; true if it was armed. Two callers race for it, and only
+     * one gets it.
+     */
+    boolean consume(SimulatedFault fault) {
+        if (active.remove(fault)) {
+            logger.warn("SIMULATED FAULT FIRED: {} - {}", fault, fault.description());
+            return true;
+        }
+        return false;
     }
 
     long driveGeneration() {

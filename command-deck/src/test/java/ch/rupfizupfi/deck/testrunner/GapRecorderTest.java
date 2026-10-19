@@ -35,7 +35,7 @@ class GapRecorderTest {
     }
 
     private static RecoveryGates gates() {
-        return new RecoveryGates(10_000, List.of(1_000L), 60_000, 30_000, 100, 0.02, 2, 1_000, true);
+        return new RecoveryGates(10_000, List.of(1_000L), 60_000, 30_000, 100, 0.02, 2, 1_000, true, 100, 10, 1_000);
     }
 
     private Path sidecar() {
@@ -63,8 +63,7 @@ class GapRecorderTest {
         GapRecorder recorder = recorderIn(resultDirectory);
         recorder.recordRunOutcome("COMPLETED");
 
-        // The clean-run promise: a run that never lost the sensor leaves its result
-        // directory exactly as it was, so no consumer changes behaviour for those runs.
+        // A run that never lost the sensor leaves its result directory untouched.
         assertThat(fileNamesIn(resultDirectory)).isEmpty();
     }
 
@@ -87,8 +86,7 @@ class GapRecorderTest {
         assertThat(((Number) gap.get("lastKnownForceNewton")).doubleValue()).isEqualTo(12.5);
         assertThat(((Number) gap.get("startMillis")).longValue()).isPositive();
         assertThat(gap.get("outcome")).isEqualTo("HOLDING");
-        // Schema-1 wire shape: an open entry serializes endMillis as an explicit null, never
-        // an absent key — readers depend on the shape, and the schema field versions it.
+        // Schema-1 wire shape: an open entry has an explicit null endMillis, never an absent key.
         assertThat(gap).containsKey("endMillis");
         assertThat(gap.get("endMillis")).isNull();
     }
@@ -97,18 +95,21 @@ class GapRecorderTest {
     void gatesAreCopiedVerbatimIntoTheSidecar() throws IOException {
         recorderIn(resultDirectory).beginGap("load cell stream ended", 12.5f);
 
-        // The gates are the audit half of the document: the gap list can only be judged
-        // against them once the deployment's config has moved on (see GapRecorder.Document).
-        assertThat(readSidecar().get("gates")).isEqualTo(Map.of(
-                "reconnectWindowMillis", 10_000,
-                "backoffMillis", List.of(1_000),
-                "safeHoldTimeoutMillis", 60_000,
-                "maxHoldForResumeMillis", 30_000,
-                "plausibilityGateMillis", 100,
-                "driftFraction", 0.02,
-                "maxLossesPerRun", 2,
-                "minEnvelopeNewton", 1_000.0,
-                "resumeEnabled", true));
+        // The gates let the gap list be judged after the deployment's config has changed
+        // (see GapRecorder.Document).
+        assertThat(readSidecar().get("gates")).isEqualTo(Map.ofEntries(
+                Map.entry("reconnectWindowMillis", 10_000),
+                Map.entry("backoffMillis", List.of(1_000)),
+                Map.entry("safeHoldTimeoutMillis", 60_000),
+                Map.entry("maxHoldForResumeMillis", 30_000),
+                Map.entry("plausibilityGateMillis", 100),
+                Map.entry("driftFraction", 0.02),
+                Map.entry("maxLossesPerRun", 2),
+                Map.entry("minEnvelopeNewton", 1_000.0),
+                Map.entry("resumeEnabled", true),
+                Map.entry("maxSampleIntervalMillis", 100),
+                Map.entry("plausibilityGateMinSamples", 10),
+                Map.entry("maxFrozenMillis", 1_000)));
     }
 
     @Test
@@ -153,9 +154,8 @@ class GapRecorderTest {
         recorder.endGap("RESUMED", 12.9f, 0.4f, 0.004, 2, null, null);
         recorder.recordRunOutcome("COMPLETED_WITH_GAPS");
 
-        // Safety-adjacent: CSVStoreService.getPeakFromResultFile feeds any 100+-line file
-        // to an unguarded Double.parseDouble, and the *_force.csv filter is the only other
-        // guard. A pretty-printed sidecar would be one refactoring away from that path.
+        // One line keeps the sidecar under CSVStoreService.getPeakFromResultFile's 100-line
+        // threshold, besides the *_force.csv filter.
         String raw = Files.readString(sidecar());
         assertThat(raw).doesNotContain("\n").doesNotContain("\r");
         assertThat(Files.readAllLines(sidecar())).hasSize(1);
@@ -177,9 +177,8 @@ class GapRecorderTest {
 
     @Test
     void failingWriteNeverEscapes() {
-        // Parent directory does not exist and is never created: every write() attempt fails.
-        // write() runs on the incident path, between motor stop and operator notification,
-        // so a failing sidecar write must not break the escalation it is describing.
+        // Parent directory does not exist, so every write() fails. write() runs between motor stop
+        // and operator notification, so a failure must not break the escalation.
         GapRecorder recorder = recorderIn(resultDirectory.resolve("missing").resolve("nested"));
 
         assertThatCode(() -> recorder.beginGap("load cell stream ended", 12.5f))

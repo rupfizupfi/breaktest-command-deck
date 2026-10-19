@@ -18,12 +18,10 @@ import java.util.function.LongSupplier;
  * Mirrors the run's state machine into {@code test_result}: {@link RunStatus} for querying, and a
  * JSON {@code interruptionLog} document for the post-incident read.
  * <p>
- * The log is an object rather than a bare array of transitions because the applied
- * {@link RecoveryGates} belong in it. The gates are a deployment fact — they decide whether a
- * sensor loss was survivable at all — and a transition list without them cannot be audited later,
- * when the deployment has moved on.
+ * The log is an object rather than an array so it can carry the applied {@link RecoveryGates},
+ * without which the transitions cannot be audited later.
  * <p>
- * One instance per run: it owns the accumulated transition list.
+ * One instance per run.
  */
 public class TestResultStatusPersister implements TestStateListener {
 
@@ -40,24 +38,20 @@ public class TestResultStatusPersister implements TestStateListener {
     private final IntSupplier gapCount;
 
     /**
-     * Counted by the load-cell stream live at the transition; {@code Device.reset()} opens a new
-     * stream at zero, so a SENSOR_LOST entry carries the dying stream's drops and a FINISHED entry
-     * the last stream's.
+     * Per stream: {@code Device.reset()} opens a new stream at zero, so each entry carries the drops
+     * of the stream live at that transition.
      */
     private final LongSupplier droppedSampleCount;
 
     /**
-     * The whole document is rewritten on every transition, so the transitions are accumulated here
-     * and re-serialized. Reading the column back to append would mean a read-modify-write from the
-     * measurement thread, the state machine's thread and the executor at once, and the loser of that
-     * race silently drops transitions from the incident record.
+     * Accumulated here and re-serialized on every transition; reading the column back to append would
+     * race between threads and drop transitions.
      */
     private final List<TransitionEntry> transitions = new ArrayList<>();
 
     /**
-     * @param persistExecutor MUST be single-threaded. Ordering is the point: the saves carry whole
-     *                        documents and overwrite each other, so out-of-order execution would
-     *                        leave the run showing an earlier state than it reached.
+     * @param persistExecutor must be single-threaded: each save overwrites the whole document, so
+     *                        out-of-order saves would regress the stored state
      */
     public TestResultStatusPersister(long testResultId,
                                      TestResultRepository repository,
@@ -76,10 +70,8 @@ public class TestResultStatusPersister implements TestStateListener {
     }
 
     /**
-     * Serializes on the caller's thread but never persists on it. SENSOR_LOST is recorded by the
-     * measurement thread while the motor is still coasting; a JPA call there blocks that thread for
-     * the connection timeout whenever the deck points at a remote Postgres, which would delay the
-     * incident handling itself. This is a safety property, not a throughput one.
+     * Serializes on the caller's thread but never persists on it: SENSOR_LOST arrives on the
+     * measurement thread, which a database timeout must not block.
      */
     @Override
     public void onTransition(TestStateMachine.TransitionRecord record) {
@@ -89,18 +81,15 @@ public class TestResultStatusPersister implements TestStateListener {
             synchronized (transitions) {
                 transitions.add(new TransitionEntry(record.sequence(), name(record.from()),
                         name(record.to()), record.atEpochMillis(), record.reason(), record.actor()));
-                // Snapshot taken under the same lock that appended, so the document a save carries
-                // can never be missing the transition that triggered it.
+                // Under the append lock, so the document always includes its own transition.
                 document = objectMapper.writeValueAsString(new LogDocument(
                         SCHEMA_VERSION, gates, List.copyOf(transitions), gapCount.getAsInt(),
                         droppedSampleCount.getAsLong()));
             }
             persistExecutor.execute(() -> persist(status, document));
         } catch (Exception e) {
-            // Nothing here may escape into the listener fan-out: this runs on the incident path, and
-            // a failed status write must never be able to abort the stop that is in flight.
-            // writeValueAsString throws unchecked JacksonException in Jackson 3, and a shut-down
-            // executor throws RejectedExecutionException; both land here.
+            // Must not escape into the fan-out on the incident path. JacksonException (unchecked in
+            // Jackson 3) and RejectedExecutionException both land here.
             logger.error("failed to record state transition {} for test result {}", record, testResultId, e);
         }
     }
@@ -127,8 +116,7 @@ public class TestResultStatusPersister implements TestStateListener {
         return switch (state) {
             case STARTING, RUNNING, RESUMING, STOPPING -> RunStatus.IN_PROGRESS;
             case SENSOR_LOST, SAFE_HOLD -> RunStatus.INTERRUPTED;
-            // Decided here and not at read time: the gap counter belongs to the run and is gone once
-            // the process is.
+            // Decided now: the gap counter is gone once the process is.
             case FINISHED -> gapCount.getAsInt() > 0 ? RunStatus.COMPLETED_WITH_GAPS : RunStatus.COMPLETED;
             case ABORTED -> RunStatus.ABORTED;
             case FAULT -> RunStatus.FAULT;

@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.device;
 
+import ch.rupfizupfi.deck.device.api.Drive;
 import ch.rupfizupfi.deck.device.api.DriveProvider;
 import ch.rupfizupfi.deck.device.api.LoadCellStreamProvider;
 import org.springframework.context.annotation.Bean;
@@ -8,10 +9,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -27,11 +30,9 @@ import java.util.stream.Stream;
  * Reads what the driver plugin jars in {@code drivers/} declare, so the tests can report which jars
  * they checked and skip with a reason when there are none.
  *
- * <p>Reads the jars, and deliberately names no class inside one. A plugin announces itself the way
- * Spring Boot requires — an {@code AutoConfiguration.imports} entry — and announces which contract
- * it serves through the {@code @Bean} return types on the class that entry points at. Both are read
- * here from the jar and from {@code device-api}'s own types, which is what keeps this module free of
- * any compile-time knowledge of a vendor driver while still being able to verify one.
+ * <p>Names no class inside a jar: plugins are found through their {@code AutoConfiguration.imports}
+ * entry and the {@code @Bean} return types of the class it names, so this module needs no
+ * compile-time knowledge of a vendor driver.
  */
 final class DriverPlugins {
 
@@ -70,12 +71,10 @@ final class DriverPlugins {
     }
 
     /**
-     * The auto-configuration classes a jar declares, loaded from the test classpath — which the
-     * {@code driverPluginTest} task extends with exactly these jars, standing in for
-     * {@code loader.path}.
+     * The auto-configuration classes a jar declares, loaded from the test classpath, which the
+     * {@code driverPluginTest} task extends with these jars in place of {@code loader.path}.
      *
-     * @throws AssertionError if the jar declares a class that is not on the classpath, which would
-     *                        mean the task and the jar disagree about what is being tested
+     * @throws AssertionError if the jar declares a class that is not on the classpath
      */
     static List<Class<?>> autoConfigurationClasses(Path jar) {
         List<Class<?>> classes = new ArrayList<>();
@@ -108,8 +107,8 @@ final class DriverPlugins {
 
     /**
      * Which contract types the given auto-configuration classes offer to register, read off their
-     * {@code @Bean} method return types. This is what a plugin promises; whether it delivers is what
-     * {@link DriverPluginBootTest} boots a context to find out.
+     * {@code @Bean} method return types. Whether they actually register is {@link DriverPluginBootTest}'s
+     * job.
      */
     static Set<Class<?>> declaredProviderTypes(List<Class<?>> autoConfigurations) {
         Set<Class<?>> declared = new LinkedHashSet<>();
@@ -137,9 +136,7 @@ final class DriverPlugins {
     }
 
     /**
-     * The jar's main-attribute {@code Implementation-Version}, or null when the jar carries no
-     * manifest or no such attribute. It is the only thing in a plugin jar that names the build it
-     * came from.
+     * The jar's main-attribute {@code Implementation-Version}, or null when absent.
      */
     static String implementationVersion(Path jar) {
         try (JarFile jarFile = new JarFile(jar.toFile())) {
@@ -185,15 +182,10 @@ final class DriverPlugins {
      * Whether any class in the jar calls {@code DeviceApi.verifyPluginBuiltAgainst} — that is,
      * whether the plugin performs the contract-skew check at all.
      *
-     * <p>Without this, verifying a plugin is circular. The skew check lives in the plugin's own
-     * initializer by design (the version it was built against exists only as a constant javac
-     * inlined into its class file), so a jar that never calls it loads clean and proves nothing,
-     * and a test that merely instantiates its auto-configuration reports a pass it did not earn.
+     * <p>A jar that never makes the call loads clean, so instantiating it alone proves nothing.
      *
-     * <p>A constant-pool scan of the raw class bytes rather than reflection: the method name appears
-     * as a UTF8 entry in every class that references it, which is exactly the question being asked,
-     * and it needs no bytecode library. Every class in the jar is searched, not just the
-     * auto-configuration, because the contract only asks that the plugin make the call — not where.
+     * <p>Scans the raw class bytes for the method name's constant-pool entry, which needs no bytecode
+     * library. Every class is searched, since the contract does not say where the call lives.
      */
     static boolean verifiesItselfAgainstTheContract(Path jar) {
         byte[] needle = "verifyPluginBuiltAgainst".getBytes(StandardCharsets.UTF_8);
@@ -204,6 +196,58 @@ final class DriverPlugins {
         } catch (IOException e) {
             throw new UncheckedIOException("cannot read " + jar, e);
         }
+    }
+
+    /**
+     * Every concrete {@link Drive} in the jar, mapped to whether it overrides
+     * {@link Drive#enableLinkLossStop}. One that does not inherits the contract's throwing default:
+     * it loads clean, but the deck refuses to energize it.
+     */
+    static Map<String, Boolean> driveImplementations(Path jar) {
+        return driveImplementationsOverriding(jar, "enableLinkLossStop", Duration.class);
+    }
+
+    /**
+     * Every concrete {@link Drive} in the jar, mapped to whether it overrides the named contract
+     * {@code default} method rather than inheriting the contract's fallback.
+     *
+     * <p>Candidates are found by the interface's name in the class bytes, so only those few are
+     * loaded, and without initialization.
+     */
+    static Map<String, Boolean> driveImplementationsOverriding(Path jar, String method,
+                                                              Class<?>... parameterTypes) {
+        byte[] needle = Drive.class.getName().replace('.', '/').getBytes(StandardCharsets.UTF_8);
+        Map<String, Boolean> drives = new LinkedHashMap<>();
+        try (JarFile jarFile = new JarFile(jar.toFile())) {
+            List<String> candidates = jarFile.stream()
+                    .filter(entry -> entry.getName().endsWith(".class"))
+                    .filter(entry -> containsBytes(jarFile, entry, needle))
+                    .map(entry -> entry.getName()
+                            .substring(0, entry.getName().length() - ".class".length())
+                            .replace('/', '.'))
+                    .toList();
+            for (String name : candidates) {
+                Class<?> type;
+                try {
+                    type = Class.forName(name, false, DriverPlugins.class.getClassLoader());
+                } catch (ClassNotFoundException | LinkageError e) {
+                    continue;
+                }
+                if (type.isInterface() || Modifier.isAbstract(type.getModifiers())
+                        || !Drive.class.isAssignableFrom(type)) {
+                    continue;
+                }
+                try {
+                    Class<?> owner = type.getMethod(method, parameterTypes).getDeclaringClass();
+                    drives.put(name, owner != Drive.class);
+                } catch (NoSuchMethodException e) {
+                    throw new AssertionError("Drive#" + method + " is missing from the contract", e);
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + jar, e);
+        }
+        return drives;
     }
 
     private static boolean containsBytes(JarFile jarFile, JarEntry entry, byte[] needle) {

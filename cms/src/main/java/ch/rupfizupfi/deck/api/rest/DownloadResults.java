@@ -1,10 +1,13 @@
 package ch.rupfizupfi.deck.api.rest;
 
+import ch.rupfizupfi.deck.api.services.ProjectService;
 import ch.rupfizupfi.deck.data.Project;
-import ch.rupfizupfi.deck.data.ProjectRepository;
 import ch.rupfizupfi.deck.data.SampleRepository;
+import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
+import ch.rupfizupfi.deck.hilla.crud.OwnerDataHelper;
+import ch.rupfizupfi.deck.security.UserUtils;
 import jakarta.annotation.security.PermitAll;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -12,6 +15,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +27,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
@@ -30,21 +39,28 @@ import java.util.stream.Collectors;
 public class DownloadResults {
     private static final Logger log = LoggerFactory.getLogger(DownloadResults.class);
 
-    protected final ProjectRepository projectRepository;
+    protected final ProjectService projectService;
     protected final SampleRepository sampleRepository;
     protected final TestResultRepository testResultRepository;
     protected final CSVStoreService csvStoreService;
+    protected final OwnerDataHelper ownerDataHelper;
 
-    public DownloadResults(ProjectRepository projectRepository, SampleRepository sampleRepository, TestResultRepository testResultRepository, CSVStoreService csvStoreService) {
-        this.projectRepository = projectRepository;
+    public DownloadResults(ProjectService projectService, SampleRepository sampleRepository, TestResultRepository testResultRepository, CSVStoreService csvStoreService, OwnerDataHelper ownerDataHelper) {
+        this.projectService = projectService;
         this.sampleRepository = sampleRepository;
         this.testResultRepository = testResultRepository;
         this.csvStoreService = csvStoreService;
+        this.ownerDataHelper = ownerDataHelper;
     }
 
+    /**
+     * A project the owner-scoped {@link ProjectService#get} does not resolve is a 404, so a foreign id
+     * discloses nothing. A resolved project can still be shared ({@code owner = null}) and hold
+     * other owners' results, so the rows go through the same owner scope; admins see every row.
+     */
     @RequestMapping(value = "/project/{projectId:[\\d]+}", method = RequestMethod.GET)
     public ResponseEntity<Resource> getResultsForProject(@PathVariable long projectId) {
-        var project = projectRepository.findById(projectId).orElse(null);
+        var project = projectService.get(projectId).orElse(null);
         if (project == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
         }
@@ -59,7 +75,8 @@ public class DownloadResults {
             ByteArrayResource resource = new ByteArrayResource(out.toByteArray());
 
             HttpHeaders headers = new HttpHeaders();
-            headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=results_" + project.name + "_" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".xlsx");
+            String fileName = "results_" + project.name + "_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".xlsx";
+            headers.setContentDisposition(ContentDisposition.attachment().filename(fileName, StandardCharsets.UTF_8).build());
             headers.add(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
             return ResponseEntity.ok().headers(headers).contentLength(resource.contentLength()).body(resource);
@@ -130,13 +147,13 @@ public class DownloadResults {
         }
 
         int rowNum = 1;
-        for (var testResult : testResultRepository.findByProjectId(projectId)) {
+        for (var testResult : readableResultsOf(projectId)) {
             var testParameter = testResult.testParameter;
             var sample = testResult.sample;
             Row row = sheet2.createRow(rowNum++);
             row.createCell(0).setCellValue(testResult.getId());
             row.createCell(1).setCellValue(sample.name);
-            row.createCell(2).setCellValue(testResult.testParameter.type);
+            row.createCell(2).setCellValue(testResult.testParameter.type == null ? null : testResult.testParameter.type.wireName());
             row.createCell(3).setCellValue(csvStoreService.getPeaksFromResultFiles(testResult.getId()));
             row.createCell(4).setCellValue(testResult.description);
             row.createCell(5).setCellValue(testResult.resultText);
@@ -162,6 +179,12 @@ public class DownloadResults {
         for (int i = 0; i < headers.length; i++) {
             sheet2.autoSizeColumn(i);
         }
+    }
+
+    /** The project's results the caller may read: all of them for an admin, otherwise own and unowned rows. */
+    private List<TestResult> readableResultsOf(long projectId) {
+        Specification<TestResult> inProject = TestResultRepository.inProject(projectId);
+        return testResultRepository.findAll(UserUtils.isAdmin() ? inProject : ownerDataHelper.addOwnerCriteriaToSpec(inProject));
     }
 
     private <T> void setNullableCellValue(Cell cell, T value) {

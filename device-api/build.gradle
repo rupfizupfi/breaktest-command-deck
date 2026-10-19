@@ -1,14 +1,17 @@
-// The hardware contract and nothing else. Zero dependencies is load-bearing: every consumer
-// (the deck, dscusb, usbmodbus) substitutes ch.rupfizupfi.deck:device-api for this build, and a
-// dependency added here lands on all of their classpaths.
+// The hardware contract, and the JDK-only call gate gated drive providers share (the support
+// package). Keep it dependency-free: every consumer (the deck, dscusb, usbmodbus)
+// substitutes this build, so a dependency here lands on all of their classpaths. The test fixtures
+// are the exception that proves it: their dependencies reach only a consumer's test classpath,
+// never its main one or a plugin jar.
 plugins {
     id 'java-library'
+    id 'java-test-fixtures'
     id 'maven-publish'
 }
 
 group = 'ch.rupfizupfi.deck'
 // Semver against the driver repos as providers — the bump rules live in the api package-info.
-version = '1.1.0'
+version = '1.7.0'
 
 java {
     toolchain {
@@ -16,25 +19,45 @@ java {
     }
 }
 
-// ContractVersion is generated rather than hand-written so the Java constant cannot drift from the
-// Gradle version above. That matters because DeviceApi's startup skew check compares this version
-// against the one javac inlined into a driver jar — a stale hand-edited constant would make the
-// check agree with a driver that does not match. Generating a source file keeps the zero-dependency
-// property intact.
+// ContractVersion is generated so the constant DeviceApi's skew check compares cannot drift from
+// the Gradle version above.
 def generateContractVersion = tasks.register('generateContractVersion', WriteContractVersion) {
-    // Read now, not lazily: a Provider closing over `project` would be a configuration-cache
-    // violation, and the version is a constant in this file anyway.
+    // Read eagerly: a Provider closing over `project` breaks the configuration cache.
     contractVersion = project.version.toString()
     outputDir = layout.buildDirectory.dir('generated/sources/contract-version/java/main')
 }
 sourceSets.main.java.srcDir(generateContractVersion)
 
-// Published by .github/workflows/device-api.yml on a version bump, and by hand with
-// `./gradlew -p device-api publish` (GITHUB_ACTOR/GITHUB_TOKEN set). Consumed only where there is
-// no sibling deck checkout — CI, a second machine. The composite include stays the dev-time
-// mechanism: published versions pin what a checkout-less consumer compiles against, they do not
-// replace the live-source conformance check. See
-// doc/06-feature-work/virtual-devices/driver-api-extraction.md#contract-evolution.
+repositories {
+    mavenCentral()
+}
+
+// DriveContractTest and LoadCellStreamContractTest: abstract JUnit classes every provider - the
+// deck's simulator and both driver repos - extends with a fixture of its own, so a provider that
+// drifts from the contract fails a test rather than a run. Consumers take them with
+// testImplementation(testFixtures(...)); the versions are the floor, a consumer's own BOM wins.
+dependencies {
+    testFixturesApi 'org.junit.jupiter:junit-jupiter-api:6.0.3'
+    testFixturesApi 'org.assertj:assertj-core:3.27.7'
+
+    // device-api's own suite (the support package's scheduler). Test scope only, so it reaches no
+    // consumer; :command-deck:test runs it, which puts it in the jvm gate.
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    // Never UP-TO-DATE: the jvm gate reaches this suite only through :command-deck:test's
+    // dependsOn, and a gate run that skipped it would vouch for results it never produced (~5 s).
+    outputs.upToDateWhen { false }
+}
+
+// Published by .github/workflows/device-api.yml on a version bump, or by hand with
+// `./gradlew -p device-api publish` (GITHUB_ACTOR/GITHUB_TOKEN set). Used only where there is no
+// sibling deck checkout; dev builds use the composite include. See
+// doc/dev/backend/device-api.md#contract-evolution.
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -56,9 +79,8 @@ publishing {
 /**
  * Writes ch.rupfizupfi.deck.device.api.ContractVersion from this build's version.
  *
- * The constant must stay a String literal initialiser: that is what makes it a compile-time
- * constant, which is what makes javac inline it into a driver's own class file. DeviceApi's
- * javadoc owns why that inlining is the whole mechanism.
+ * The constant must stay a String literal so javac inlines it into driver class files; see
+ * DeviceApi's javadoc.
  */
 abstract class WriteContractVersion extends DefaultTask {
 
@@ -78,8 +100,8 @@ package ch.rupfizupfi.deck.device.api;
 /**
  * The version of this contract, generated from device-api's Gradle version - do not edit.
  *
- * <p>{@link #VALUE} is a compile-time constant, so javac inlines it into every class that reads
- * it. {@link DeviceApi} depends on exactly that and explains why.
+ * <p>{@link #VALUE} is a compile-time constant, so javac inlines it into every reader; see
+ * {@link DeviceApi}.
  */
 public final class ContractVersion {
 

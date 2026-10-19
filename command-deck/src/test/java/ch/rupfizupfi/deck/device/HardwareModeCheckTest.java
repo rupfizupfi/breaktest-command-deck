@@ -9,21 +9,15 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Pins which deployments may run a simulator. This is a safety boundary, not a convenience: the
- * whole point of {@link HardwareModeCheck} is that a bench must never be driven by a simulator and a
+ * Pins which deployments may run a simulator: a bench must never be driven by a simulator, and a
  * simulated run must never be mistaken for a real one.
  *
- * <p>The interesting cases all live in the gap between two profiles that share one properties file.
- * {@code docker} is the deck container — a test and simulation deployment — while a native bench run
- * activates {@code bench}, which <em>groups to</em> {@code docker} and so carries it in its active
- * set. Simulation is permitted for the first and refused for the second, and what separates them is
- * only the extra {@code bench} entry. That is subtle enough to deserve tests that would fail if
- * someone "tidied" {@code bench} onto the allowlist.
+ * <p>{@code docker} (the deck container) may simulate; a native bench run activates {@code bench},
+ * which groups to {@code docker}, and must not. Only the extra {@code bench} entry separates them, so
+ * {@code bench} must never join the allowlist.
  *
- * <p>No Spring context: the check is a {@code BeanFactoryPostProcessor}, so a bare bean factory with
- * an {@code Environment} in it is the whole fixture. With no provider beans registered, the branch
- * that fired is read off the message — naming the profiles means the profile gate refused, naming
- * the providers means it passed and the (deliberately empty) provider check refused next.
+ * <p>No provider beans are registered, so the branch that fired is read off the message: profiles
+ * named means the profile gate refused, providers named means it passed.
  */
 class HardwareModeCheckTest {
 
@@ -38,9 +32,8 @@ class HardwareModeCheckTest {
 
     @Test
     void theBenchMayNotSimulate() {
-        // script/run-bench.ps1 sets SPRING_PROFILES_ACTIVE=bench, and the profile group in
-        // application.properties makes that [bench, docker]. Allowing `docker` to simulate must not
-        // extend to the machine, and this is the assertion that holds that line.
+        // script/run-bench.ps1 sets SPRING_PROFILES_ACTIVE=bench; the profile group makes that
+        // [bench, docker].
         assertThatThrownBy(() -> check("simulated", "bench", "docker"))
                 .hasMessageContaining("Simulation is permitted only under")
                 .hasMessageContaining("bench");
@@ -62,8 +55,7 @@ class HardwareModeCheckTest {
 
     @Test
     void realModeIsRefusedWithoutDriversUnderEveryProfile() {
-        // Never a fallback, in either direction: real without providers refuses everywhere, and the
-        // message names the jars rather than an interface.
+        // Never a fallback: real without providers refuses everywhere, naming the jars.
         for (String profile : new String[]{"dev", "docker", "bench", "prod"}) {
             assertThatThrownBy(() -> check("real", profile))
                     .as("profile %s", profile)
@@ -92,9 +84,8 @@ class HardwareModeCheckTest {
 
     @Test
     void anUnconfiguredBootIsJudgedOnItsDefaultProfiles() {
-        // Nothing active means the check reads the default set, which Spring reports as [default].
-        // Judging the empty active set instead would let any allowlist contain it, so the most
-        // likely configuration of all would be the one that slips through.
+        // Nothing active means the default set, [default]; an empty active set must not slip
+        // through the allowlist.
         assertThatThrownBy(() -> check("simulated", new String[0]))
                 .hasMessageContaining("Simulation is permitted only under")
                 .hasMessageContaining("[default]");
@@ -102,8 +93,7 @@ class HardwareModeCheckTest {
 
     @Test
     void aDefaultDevProfileMaySimulate() {
-        // spring.profiles.default=dev is as much a decision as activating it, so the profile gate
-        // passes and only the provider check is left to refuse.
+        // spring.profiles.default=dev counts like an active dev profile.
         assertThatThrownBy(() -> check("simulated", new String[0], "dev"))
                 .hasMessageContaining("SimulatedDriveProvider")
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain("Simulation is permitted only under"));
@@ -115,9 +105,7 @@ class HardwareModeCheckTest {
     }
 
     /**
-     * Same fixture with the default profiles set too. Each array is applied only when non-empty, so
-     * the environment keeps Spring's own defaults — no active profiles and {@code [default]} — for
-     * the unconfigured case.
+     * Same fixture with default profiles too. Empty arrays leave Spring's own defaults in place.
      */
     private static void check(String mode, String[] activeProfiles, String... defaultProfiles) {
         MockEnvironment environment = new MockEnvironment();

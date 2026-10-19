@@ -10,6 +10,15 @@ public class Setting<T> {
         TESTRUNNER_SUCK_DURATION("testrunner.suck.duration"),
         FILE_UPLOAD("file.upload.directory"),
         FILE_RESULT_DATA("file.result.data.directory"),
+        /** The load cell's rated capacity in kN; bounds every shut-off threshold. See {@code RigLimits}. */
+        RIG_RATED_CAPACITY("rig.loadcell.capacity.kn"),
+        /** The fastest crosshead speed in mm/min a test parameter may command. See {@code RigLimits}. */
+        RIG_MAX_SPEED("rig.crosshead.speed.max.mm-per-min"),
+        /**
+         * Newton above the lower shut-off a destructive run's peak must reach before its LOWER crossing
+         * counts as a break that starts the suction. See {@code RigLimits}.
+         */
+        RIG_SUCTION_LOAD_MARGIN("rig.suction.load-margin.n"),
         ;
 
         private final String key;
@@ -17,7 +26,7 @@ public class Setting<T> {
         public Type getType() {
             return switch (this) {
                 case TESTRUNNER_SUCK -> Boolean.class;
-                case TESTRUNNER_SUCK_DURATION -> Integer.class;
+                case TESTRUNNER_SUCK_DURATION, RIG_RATED_CAPACITY, RIG_MAX_SPEED, RIG_SUCTION_LOAD_MARGIN -> Integer.class;
                 case FILE_UPLOAD, FILE_RESULT_DATA -> String.class;
             };
         }
@@ -45,7 +54,6 @@ public class Setting<T> {
         return setting;
     }
 
-    // Getters and setters
     public String getKey() {
         return key;
     }

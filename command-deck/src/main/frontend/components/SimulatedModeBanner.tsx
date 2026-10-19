@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react';
 import { HardwareModeService } from 'Frontend/generated/endpoints.js';
 
 /**
- * Annunciates simulated hardware: the operator must never be
- * able to mistake a generated force trace for a measurement.
+ * Annunciates simulated hardware so a generated force trace is never mistaken for a measurement.
  *
- * Deliberately self-contained — it polls its own endpoint once and shares no state with
- * StatusService / useLiveStatus / InfoBoard, which are the suspects in the OQ-65 blank-page
- * regression. A safety annunciator must not be able to take the app shell down with it.
+ * Self-contained (one fetch, no shared state with StatusService / useLiveStatus / InfoBoard, see
+ * OQ-65) so a safety annunciator cannot take the app shell down with it.
  */
 export default function SimulatedModeBanner() {
   const [simulated, setSimulated] = useState(false);
@@ -21,9 +19,8 @@ export default function SimulatedModeBanner() {
         }
       })
       .catch(() => {
-        // Unreachable endpoint is not evidence of real hardware, but claiming "simulated" on a
-        // network blip would cry wolf on the bench. Stay quiet and let the server-side WARN and
-        // the per-run test-log line carry the annunciation.
+        // Stay quiet rather than claim "simulated" on a network blip; the server-side WARN and
+        // per-run test-log line still annunciate it.
       });
     return () => {
       cancelled = true;

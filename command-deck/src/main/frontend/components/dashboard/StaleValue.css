@@ -1,5 +1,3 @@
-/* StaleValue.css - shared treatment for values that may not be live. */
-
 .stale-value--unknown {
     color: #767676;
     font-variant-numeric: tabular-nums;

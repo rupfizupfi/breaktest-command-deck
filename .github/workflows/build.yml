@@ -1,7 +1,6 @@
 name: build
 
-# The application build plus the repo's own cross-language gate. The contract is built and
-# published by device-api.yml; nothing here publishes anything, hence no packages: write.
+# Application build and typecheck gate. The device-api contract is built by device-api.yml.
 on:
   pull_request:
   push:
@@ -10,19 +9,19 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR supersedes the run in flight; main runs are never cancelled.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # First, because it needs no build and takes milliseconds: fail before spending minutes
-      # on Gradle. This is the one doc gate a *code-only* change can break — a table marked
-      # `<!-- inventory: enum ... -->` is held to that enum's constants, so adding a member
-      # without documenting it fails here. The other three doc gates
-      # (_check-size / _verify-refs / _check-diagrams) only react to doc edits and are still
-      # run by hand via /deck-doc; this one guards a contract that code can violate on its own.
-      # ubuntu-latest ships python3, and the script imports nothing outside the stdlib.
+      # Holds `<!-- inventory: enum ... -->` doc tables to the enum's constants, so a code-only
+      # change can break it. Runs first because it needs no build. The other doc gates run via /deck-doc.
       - name: Doc inventories match the code
         run: python3 doc/_check-inventories.py
 
@@ -33,31 +32,23 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # pnpm before setup-node: the pnpm cache setup-node wires up needs the pnpm binary already
-      # on PATH. Neither package.json declares a packageManager field, so the major is pinned
-      # here - 10 is what wrote both lockfiles (lockfileVersion 9.0).
+      # Before setup-node, whose pnpm cache needs the binary on PATH. No packageManager field in
+      # either package.json, so the major that wrote the lockfiles is pinned here.
       - uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - uses: actions/setup-node@v4
         with:
-          # Matches the bench/dev machine. The gate itself only runs tsc, which is far less
-          # fussy, but a CI Node older than the one the lockfiles were resolved on is a class
-          # of surprise not worth inviting.
+          # Matches the bench/dev machine the lockfiles were resolved on.
           node-version: '26'
           cache: pnpm
           cache-dependency-path: |
             cms/pnpm-lock.yaml
             command-deck/pnpm-lock.yaml
 
-      # Both module frontends: the typecheck gate below resolves node_modules/.bin/tsc, falling
-      # back to `pnpm exec tsc`, and neither works against an empty node_modules.
-      #
-      # Order matters: --frozen-lockfile has to run before the build, which does drive the Vaadin
-      # frontend tasks now that it passes productionMode. Those tasks install dependencies
-      # themselves and can rewrite pnpm-lock.yaml, so installing afterwards could fail against a
-      # lockfile Gradle had already replaced.
+      # Before the Gradle build: its Vaadin frontend tasks can rewrite pnpm-lock.yaml, which would
+      # break --frozen-lockfile.
       - name: Install cms frontend dependencies
         working-directory: cms
         run: pnpm install --frozen-lockfile
@@ -66,9 +57,7 @@ jobs:
         working-directory: command-deck
         run: pnpm install --frozen-lockfile
 
-      # Runs before the Gradle build on purpose: vitest needs only node_modules, and the Vaadin
-      # frontend tasks inside `build` can rewrite pnpm-lock.yaml, which would poison anything
-      # lockfile-sensitive that ran after them. Node env only - no browser download.
+      # Before the Gradle build for the same lockfile reason. Node env only, no browser.
       - name: Frontend logic tests (Vitest, cms)
         working-directory: cms
         run: pnpm test
@@ -77,38 +66,14 @@ jobs:
         working-directory: command-deck
         run: pnpm test
 
-      # productionMode is what makes this a *complete* frontend build, and the typecheck below
-      # cannot pass without one. The Vaadin scaffolding its generated client imports -
-      # generated-flow-imports.js, app-shell-imports.js, vaadin-react.js - is untracked and is
-      # produced by vaadinBuildFrontend (or by a dev-mode boot). On a developer machine it is
-      # already lying there from an earlier run, which is why the gate passes locally and failed on
-      # the first two CI runs; a fresh clone has the same gap.
-      #
-      # typecheck.ps1 deliberately does not do this itself: the frontend tasks install dependencies
-      # and can rewrite pnpm-lock.yaml, far too destructive for a gate meant to run on every
-      # change. In CI the checkout is discarded, so the cost is nil - and this exercises the same
-      # production path the Docker images build.
-      #
-      # The unit suites run inside `build` (plain JUnit, no Spring context, no hardware).
-      # Runs with no credentials on purpose: the GitHub Packages repository is
-      # not consulted by anything any more — no task resolves a driver, so none is fetched
-      # or needed. A driver is a launch-time plugin, so its absence cannot fail a build.
+      # productionMode runs vaadinBuildFrontend, which produces the untracked Vaadin scaffolding
+      # (generated-flow-imports.js, app-shell-imports.js, vaadin-react.js) the typecheck needs.
+      # typecheck.ps1 does not do this itself because those tasks can rewrite pnpm-lock.yaml.
+      # Also runs the unit suites. Needs no credentials: drivers are launch-time plugins.
       - name: Build
         run: ./gradlew build -Pvaadin.productionMode=true --no-daemon
 
-      # The real gate, shelled out to rather than inlined. script/typecheck.ps1 carries knowledge
-      # that a YAML copy would drift away from: hillaGenerate silently *deletes* the generated
-      # client when its AOT endpoint scan comes back empty and still reports BUILD SUCCESSFUL, so
-      # the retry has to be driven by inspecting the output rather than the exit code; the two
-      # modules must be generated in separate invocations; and vaadinPrepareFrontend must never be
-      # added to it (hence the separate step above). Two copies of that, only one of them
-      # exercised locally, is how it rots. ubuntu-latest ships pwsh.
+      # Same script as local runs; see its header for the hillaGenerate quirks it handles.
       - name: Typecheck (regenerate Hilla client, then tsc --noEmit)
         shell: pwsh
         run: ./script/typecheck.ps1
-
-      # Note what is deliberately absent: no `git diff --exit-code` over the tracked
-      # */src/main/frontend/generated/ trees. hillaGenerate rewrites them and they do not come
-      # back byte-identical - generated-file-list.txt reorders nondeterministically and at least
-      # one service file regenerates differently from what is committed. A drift check there would
-      # fail on noise, and a gate that cries wolf gets ignored.

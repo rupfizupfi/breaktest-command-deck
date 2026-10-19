@@ -19,11 +19,9 @@ public abstract class AbstractEntity {
         this.id = id;
     }
 
-    // No caller, still load-bearing: Jackson binds the private `version` field only because this
-    // getter is visible (MapperFeature.INFER_PROPERTY_MUTATORS), and Hilla derives the generated
-    // TS from that same introspection. Delete it and `version` leaves both AbstractEntity.ts and
-    // the wire, so every save of an already-edited row fails its optimistic-lock check. Nothing
-    // in the build catches that — not tsc, not crud-smoke, which never performs an update.
+    // No caller, but required: this getter is what makes Jackson and Hilla expose `version`
+    // (MapperFeature.INFER_PROPERTY_MUTATORS). Without it every update fails its optimistic-lock
+    // check, and no build step catches that.
     public int getVersion() {
         return version;
     }
@@ -39,7 +37,7 @@ public abstract class AbstractEntity {
     @Override
     public boolean equals(Object obj) {
         if (!(obj instanceof AbstractEntity that)) {
-            return false; // null or not an AbstractEntity class
+            return false;
         }
         if (getId() != null) {
             return getId().equals(that.getId());

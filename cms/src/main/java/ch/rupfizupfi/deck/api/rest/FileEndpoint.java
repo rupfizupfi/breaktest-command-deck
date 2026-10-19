@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.api.rest;
 
+import ch.rupfizupfi.deck.api.services.FileMetadataService;
 import ch.rupfizupfi.deck.data.FileMetadata;
 import ch.rupfizupfi.deck.service.FileService;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/files")
@@ -24,13 +24,8 @@ public class FileEndpoint {
     @Autowired
     private FileService fileService;
 
-    @PostMapping("/uploads")
-    public ResponseEntity<List<FileMetadata>> uploadFiles(@RequestParam("files") MultipartFile[] files) throws IOException {
-        logger.info("Received request to upload multiple files");
-        List<FileMetadata> fileMetadataList = fileService.saveFiles(files);
-        logger.info("Successfully uploaded {} files", fileMetadataList.size());
-        return ResponseEntity.ok(fileMetadataList);
-    }
+    @Autowired
+    private FileMetadataService fileMetadataService;
 
     @PostMapping("/upload")
     public ResponseEntity<FileMetadata> uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
@@ -40,9 +35,24 @@ public class FileEndpoint {
         return ResponseEntity.ok(fileMetadata);
     }
 
+    /**
+     * Serves stored bytes only through a {@link FileMetadata} row the caller may read
+     * ({@link FileMetadataService#findReadable}). No row, a row of another owner and a row whose
+     * bytes are gone all answer 404, so a guessed {@code <id>.<ext>} name discloses nothing.
+     */
     @GetMapping("/image/{fileName}")
     public ResponseEntity<Resource> downloadFile(@PathVariable String fileName) {
-        Resource file = fileService.loadFileAsResource(fileName);
+        if (fileMetadataService.findReadable(fileName).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Resource file;
+        try {
+            file = fileService.loadFileAsResource(fileName);
+        } catch (RuntimeException missing) {
+            logger.warn("File metadata names {} but its bytes could not be read", fileName, missing);
+            return ResponseEntity.notFound().build();
+        }
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFilename() + "\"")

@@ -1,27 +1,21 @@
 import TestResult from "Frontend/generated/ch/rupfizupfi/deck/data/TestResult";
+import TestType from "Frontend/generated/ch/rupfizupfi/deck/data/TestType";
 import React, {useEffect, useState} from "react";
 import Plot from 'react-plotly.js';
 import {TestResultService} from "Frontend/generated/endpoints";
 import {HorizontalLayout, Select, VerticalLayout} from "@vaadin/react-components";
-import {parseForceCsv} from "cms/components/dashboard/forceCsv";
+import {ForceTrace, parseForceCsv, toForceTrace} from "cms/components/dashboard/forceCsv";
+import {RUN_FAULT_COLOUR, RUN_WARNING_COLOUR, RunStatusText} from "cms/model/runStatus";
 
 interface ResultViewerProps {
     testResult: TestResult;
 }
 
 /**
- * The three states TestState#isIncident covers, as strings. Deliberately duplicated rather than
- * imported: the module dependency runs command-deck → cms and never back, and interruptionLog is a
- * plain column, so the parse has to be local. Keep in sync with TestState.
+ * The states TestState#isIncident covers. Duplicated because cms cannot depend on command-deck;
+ * keep in sync with TestState.
  */
 const INCIDENT_STATES = ['SENSOR_LOST', 'SAFE_HOLD', 'RESUMING'];
-
-const RUN_STATUS_COLOUR: Partial<Record<string, string>> = {
-    COMPLETED_WITH_GAPS: '#a35b00',
-    INTERRUPTED: '#a35b00',
-    ABORTED: '#8a1f14',
-    FAULT: '#8a1f14',
-};
 
 interface Gap {
     startMillis: number | null;
@@ -37,16 +31,12 @@ type InterruptionLog =
     | { kind: 'ok', gaps: Gap[], gapCount: number | null };
 
 /**
- * Reads the incident record off the result row.
+ * Derives gaps from TestResultStatusPersister's transition document: an incident opens on entering
+ * SENSOR_LOST and closes on the first transition out of the incident states, whose target is the
+ * outcome. Per-gap drift lives in the `_gaps.json` sidecar, not this column, so it shows only if the
+ * document carries a `gaps` array.
  *
- * The column holds the transition document written by TestResultStatusPersister, so the gaps are
- * derived from it: an incident opens on the transition into SENSOR_LOST and closes on the first
- * transition back out of the incident states, whose target is the outcome. The per-gap force drift is
- * NOT in this column — it lives in the run's `_gaps.json` sidecar beside the force CSV, which is not
- * reachable from here — so it is rendered only if a document ever carries a `gaps` array itself.
- *
- * The parse is guarded because a run that died mid-write leaves the column truncated, and a missing
- * incident record is itself a finding: it must read as "unreadable", never blank the view.
+ * A run that died mid-write leaves truncated JSON; that must read as "unreadable", not blank the view.
  */
 function parseInterruptionLog(raw?: string): InterruptionLog {
     if (!raw || raw.trim() === '') {
@@ -122,45 +112,75 @@ function formatInstant(millis: number | null): string {
 export default function ResultViewer({testResult}: ResultViewerProps): React.JSX.Element {
     const [dataFiles, setDataFiles] = useState<string[]>([]);
     const [selectedFile, setSelectedFile] = useState<string | undefined>();
-    const [dataPoints, setDataPoints] = useState<[number[], number[]]>([[], []]);
+    /** undefined while nothing is loaded, null for a file without a single sample. */
+    const [trace, setTrace] = useState<ForceTrace | null | undefined>();
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const testResultId = testResult.id!;
 
     useEffect(() => {
-        TestResultService.listCSVResults(testResult.id!).then(setDataFiles);
-    }, []);
+        let cancelled = false;
+        setDataFiles([]);
+        setSelectedFile(undefined);
+        TestResultService.listCSVResults(testResultId).then((files) => {
+            if (!cancelled) {
+                setDataFiles((files ?? []).filter((file): file is string => file !== undefined));
+            }
+        }).catch(() => {
+            if (!cancelled) {
+                setLoadError('the list of data files could not be loaded');
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [testResultId]);
 
     useEffect(() => {
-        if (selectedFile) {
-            TestResultService.readCSVData(testResult.id!, selectedFile).then((text) => {
-                const newPoints = parseForceCsv(text);
-
-                const time = newPoints[0][0];
-                newPoints[0] = newPoints[0].map(v=>v-time);
-                setDataPoints(newPoints);
-            });
+        setTrace(undefined);
+        setLoadError(null);
+        if (!selectedFile) {
+            return;
         }
-    }, [selectedFile]);
+
+        // A slow response for a file the user already left must not overwrite the newer one.
+        let cancelled = false;
+        TestResultService.readCSVData(testResultId, selectedFile).then((text) => {
+            if (!cancelled) {
+                setTrace(toForceTrace(parseForceCsv(text ?? '')));
+            }
+        }).catch(() => {
+            if (!cancelled) {
+                setLoadError(`${selectedFile} could not be loaded`);
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [testResultId, selectedFile]);
 
     let chart, info = null;
-    if (dataPoints[0].length > 0) {
-        const maxForce = Math.round(Math.max(...dataPoints[1])) / 1000;
-        const minForce = Math.round(Math.min(...dataPoints[1])) / 1000;
-        const duration = (dataPoints[0][dataPoints[0].length - 1] - dataPoints[0][0]) / 1000;
+    if (loadError !== null) {
+        info = <p style={{color: 'var(--lumo-error-text-color)'}}>Error: {loadError}</p>;
+    } else if (trace === null) {
+        info = <p>{selectedFile} holds no samples.</p>;
+    } else if (trace !== undefined) {
         info = (
             <HorizontalLayout theme="padding spacing-l stretch evenly">
-                <h3 style={{width: '9em'}}>Duration: {duration} s</h3>
-                <h3 style={{width: '9em'}}>Max Force: {maxForce} kN</h3>
-                <h3 style={{width: '9em'}}>Min Force: {minForce} kN</h3>
+                <h3 style={{width: '9em'}}>Duration: {trace.durationMillis / 1000} s</h3>
+                <h3 style={{width: '9em'}}>Max Force: {Math.round(trace.maxForce) / 1000} kN</h3>
+                <h3 style={{width: '9em'}}>Min Force: {Math.round(trace.minForce) / 1000} kN</h3>
             </HorizontalLayout>
         )
 
+        // WebGL, lines only: SVG markers for every sample of a long run freeze the page.
         chart = (<Plot
             data={[
                 {
-                    x: dataPoints[0],
-                    y: dataPoints[1],
-                    type: 'scatter',
-                    mode: 'lines+markers',
-                    marker: {color: 'blue'},
+                    x: trace.elapsedMillis,
+                    y: trace.forces,
+                    type: 'scattergl',
+                    mode: 'lines',
+                    line: {color: 'blue'},
                 },
             ]}
             layout={{
@@ -190,7 +210,7 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
     items.unshift({label: 'Select file', value: "", disabled: true});
 
     let testparamInfo;
-    if (testResult.testParameter.type === 'cyclic') {
+    if (testResult.testParameter.type === TestType.CYCLIC) {
         testparamInfo = (
             <ul>
                 <li>Upper turn force: {testResult.testParameter.upperTurnForce}</li>
@@ -211,12 +231,12 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
 
     let incidents = null;
     if (interruptionLog.kind === 'unreadable') {
-        incidents = <p style={{color: '#8a1f14'}}>Incident log unreadable &mdash; the run may not have
+        incidents = <p style={{color: RUN_FAULT_COLOUR}}>Incident log unreadable &mdash; the run may not have
             shut down cleanly. The gaps sidecar beside the force CSV is the fallback record.</p>;
     } else if (interruptionLog.kind === 'ok' && interruptionLog.gaps.length > 0) {
         incidents = (
             <>
-                <p style={{color: '#a35b00', fontWeight: 600}}>
+                <p style={{color: RUN_WARNING_COLOUR, fontWeight: 600}}>
                     This run lost its load cell {interruptionLog.gaps.length === 1 ? 'once' : `${interruptionLog.gaps.length} times`}.
                     Nothing was measured during the intervals below, so the trace has a hole at each of them.
                 </p>
@@ -241,12 +261,7 @@ export default function ResultViewer({testResult}: ResultViewerProps): React.JSX
                 <dfn>Description</dfn>
                 <dd>{testResult.description}</dd>
                 <dfn>Run status</dfn>
-                <dd style={{color: runStatus ? RUN_STATUS_COLOUR[runStatus] : undefined,
-                    fontWeight: runStatus && RUN_STATUS_COLOUR[runStatus] ? 600 : undefined}}>
-                    {/* Verbatim: this is the stored audit vocabulary, and COMPLETED_WITH_GAPS must not be
-                        softened into something a reader can take for a clean run. */}
-                    {runStatus ?? 'not recorded'}
-                </dd>
+                <dd><RunStatusText status={runStatus} missing="not recorded"/></dd>
                 <dfn>Test parameters</dfn>
                 <dd> {testparamInfo} </dd>
             </dl>

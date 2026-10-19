@@ -1,0 +1,7 @@
+-- Reference data only, no accounts: DevUserSeeder seeds dev's, InitialAdminBootstrap a deployment's first ADMIN.
+-- Each insert fills only an empty table, so a baselined database that already has these rows is untouched.
+-- Ids are left to the identity column; an explicit id would collide with the application's next insert.
+insert into gear_type (version, name) select v.version, v.name from (values (1, 'shackle'), (1, 'softshackle'), (1, 'leash'), (1, 'Leashrope'), (1, 'rope'), (1, 'cable'), (1, 'Leashring'), (1, 'Carabiner'), (1, 'industrial sling'), (1, 'climbing sling'), (1, 'seewn')) as v(version, name) where not exists (select 1 from gear_type);
+insert into gear_standard (version, name) select v.version, v.name from (values (1, 'EN362:2004'), (1, 'ISA:52:2022'), (1, 'UIAA121')) as v(version, name) where not exists (select 1 from gear_standard);
+insert into material (version, name) select v.version, v.name from (values (1, 'multi'), (1, 'Polyamid'), (1, 'Polyester'), (1, 'Steel'), (1, 'Aluminium'), (1, 'Dyneema (UHMW-PE)'), (1, 'Kevlar'), (1, 'Hemp')) as v(version, name) where not exists (select 1 from material);
+insert into customer (version, organization, firstname, lastname, email, street, code, location, country) select 1, 'Climbing Club', 'John', 'Doe', 'john.doe@swiss-slackline.ch', 'Bahnhofstrasse 1', '8000', 'Zürich', 'Switzerland' where not exists (select 1 from customer);

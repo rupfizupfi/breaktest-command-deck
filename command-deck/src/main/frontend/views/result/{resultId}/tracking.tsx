@@ -4,9 +4,7 @@ import DistanceMeasureCam from "Frontend/components/webcam/DistanceMeasureCam";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg', exclude: true}, title: 'Cam object tracking', loginRequired: true};
 
-/**
- * It is possible that there are multiple devices using this page which track the movement of the objects.
- */
+/** Several devices may use this page at once to track the objects' movement. */
 export default function TrackingView() {
     return (
         <VerticalLayout theme="spacing-l stretch evenly h-full min-h-full">

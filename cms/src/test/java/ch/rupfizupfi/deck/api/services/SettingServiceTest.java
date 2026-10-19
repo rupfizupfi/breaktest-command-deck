@@ -3,24 +3,35 @@ package ch.rupfizupfi.deck.api.services;
 import ch.rupfizupfi.deck.data.Setting;
 import ch.rupfizupfi.deck.data.SettingRepository;
 import com.vaadin.hilla.crud.filter.OrFilter;
+import com.vaadin.hilla.exception.EndpointException;
 import com.vaadin.hilla.crud.filter.PropertyStringFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** The grid's filter, sort and page reach the file-backed store, and a failed settings write reaches the browser as an error rather than as a successful save. */
+/**
+ * The grid's filter, sort and page reach the file-backed store, and a failed settings write reaches the browser as an error rather than as a successful save.
+ * A save names a known key with a value of its type, and a directory setting stays out of the application's own directories.
+ */
 class SettingServiceTest {
 
     private static final String SUCK = Setting.Key.TESTRUNNER_SUCK.getKey();
@@ -146,5 +157,158 @@ class SettingServiceTest {
         Setting<Integer> setting = Setting.create(Setting.Key.TESTRUNNER_SUCK_DURATION, 20);
 
         assertThat(service.save(setting)).isSameAs(setting);
+    }
+
+    @Test
+    void anUnknownKeyIsRefusedBeforeTheStoreIsTouched() throws IOException {
+        Setting<String> setting = Setting.create("spring.datasource.url", "jdbc:h2:mem:x");
+
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aValueOfTheWrongTypeIsRefused() throws IOException {
+        Setting<String> setting = Setting.create(Setting.Key.TESTRUNNER_SUCK_DURATION.getKey(), "ten");
+
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aRelativeDirectoryIsRefused() throws IOException {
+        Setting<String> setting = Setting.create(Setting.Key.FILE_UPLOAD, "uploads");
+
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aDirectoryWithParentSegmentsIsRefused(@TempDir Path elsewhere) throws IOException {
+        Setting<String> setting = Setting.create(Setting.Key.FILE_UPLOAD, elsewhere + "/../uploads");
+
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aDirectoryInsideTheWorkingDirectoryIsRefused() throws IOException {
+        String insideApp = Paths.get(System.getProperty("user.dir"), "drivers").toAbsolutePath().toString();
+        Setting<String> setting = Setting.create(Setting.Key.FILE_RESULT_DATA, insideApp);
+
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aDirectoryInsideTheLoaderPathIsRefused(@TempDir Path drivers) throws IOException {
+        String previous = System.getProperty("loader.path");
+        System.setProperty("loader.path", drivers.toString());
+        try {
+            Setting<String> setting = Setting.create(Setting.Key.FILE_UPLOAD, drivers.resolve("uploads").toString());
+
+            assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+            verify(repository, never()).saveSetting(any());
+        } finally {
+            if (previous == null) {
+                System.clearProperty("loader.path");
+            } else {
+                System.setProperty("loader.path", previous);
+            }
+        }
+    }
+
+    @Test
+    void anAbsoluteDirectoryOutsideTheApplicationIsSaved(@TempDir Path elsewhere) throws IOException {
+        Setting<String> setting = Setting.create(Setting.Key.FILE_UPLOAD, elsewhere.resolve("uploads").toString());
+
+        assertThat(service.save(setting)).isSameAs(setting);
+        verify(repository).saveSetting(setting);
+    }
+
+    @Test
+    void rigLimitsOutOfRangeAreRefusedNamingTheKey() throws IOException {
+        for (Setting<Integer> setting : List.of(
+                Setting.create(Setting.Key.RIG_RATED_CAPACITY, 0),
+                Setting.create(Setting.Key.RIG_RATED_CAPACITY, 1_001),
+                Setting.create(Setting.Key.RIG_MAX_SPEED, -5),
+                Setting.create(Setting.Key.RIG_MAX_SPEED, 1_001))) {
+            assertThatExceptionOfType(EndpointException.class)
+                    .isThrownBy(() -> service.save(setting))
+                    .withMessageContaining(setting.getKey());
+        }
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aRigLimitThatIsNoIntegerIsRefused() throws IOException {
+        Setting<Double> setting = Setting.create(Setting.Key.RIG_RATED_CAPACITY, 150.5);
+
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(setting));
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aSuctionLoadMarginFromZeroUpToTheStoredCapacityIsSaved() throws IOException {
+        storedSetting(Setting.Key.RIG_RATED_CAPACITY, 10);
+        Setting<Integer> zero = Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 0);
+        Setting<Integer> atCapacity = Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 10_000);
+
+        assertThat(service.save(zero)).isSameAs(zero);
+        assertThat(service.save(atCapacity)).isSameAs(atCapacity);
+        verify(repository).saveSetting(zero);
+        verify(repository).saveSetting(atCapacity);
+    }
+
+    @Test
+    void aSuctionLoadMarginNegativeOrAboveTheStoredCapacityIsRefusedNamingTheKey() throws IOException {
+        storedSetting(Setting.Key.RIG_RATED_CAPACITY, 10);
+        for (Setting<Integer> setting : List.of(
+                Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, -1),
+                Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 10_001))) {
+            assertThatExceptionOfType(EndpointException.class)
+                    .isThrownBy(() -> service.save(setting))
+                    .withMessageContaining(setting.getKey())
+                    .withMessageContaining("suction load margin");
+        }
+        verify(repository, never()).saveSetting(any());
+    }
+
+    @Test
+    void aSuctionLoadMarginWithNoUsableStoredCapacityIsHeldToTheCapacitySanityCeiling() throws IOException {
+        storedSetting(Setting.Key.RIG_RATED_CAPACITY, "lots");
+        Setting<Integer> margin = Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 500);
+        Setting<Integer> beyond = Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 1_000_001);
+
+        assertThat(service.save(margin)).isSameAs(margin);
+        assertThatExceptionOfType(EndpointException.class).isThrownBy(() -> service.save(beyond));
+        verify(repository, never()).saveSetting(beyond);
+    }
+
+    @Test
+    void aCapacityBelowTheStoredSuctionLoadMarginIsRefused() throws IOException {
+        storedSetting(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 20_000);
+        Setting<Integer> capacity = Setting.create(Setting.Key.RIG_RATED_CAPACITY, 10);
+
+        assertThatExceptionOfType(EndpointException.class)
+                .isThrownBy(() -> service.save(capacity))
+                .withMessageContaining(capacity.getKey())
+                .withMessageContaining("suction load margin");
+        verify(repository, never()).saveSetting(any());
+    }
+
+    private void storedSetting(Setting.Key key, Object value) {
+        doReturn(Setting.create(key, value)).when(repository).getSetting(key.getKey());
+    }
+
+    @Test
+    void rigLimitsInRangeAreSaved() throws IOException {
+        Setting<Integer> capacity = Setting.create(Setting.Key.RIG_RATED_CAPACITY, 150);
+        Setting<Integer> speed = Setting.create(Setting.Key.RIG_MAX_SPEED, 500);
+
+        assertThat(service.save(capacity)).isSameAs(capacity);
+        assertThat(service.save(speed)).isSameAs(speed);
+        verify(repository).saveSetting(capacity);
+        verify(repository).saveSetting(speed);
     }
 }

@@ -4,6 +4,7 @@ import {buildAutoCrud} from "cms/components/autocrud/test";
 import {constraintServiceToFilter} from "cms/util/service";
 import Matcher from "Frontend/generated/com/vaadin/hilla/crud/filter/PropertyStringFilter/Matcher";
 import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestParameterModel";
+import TestType from "Frontend/generated/ch/rupfizupfi/deck/data/TestType";
 
 export const config: ViewConfig = {menu: {order: 1, icon: 'line-awesome/svg/test-tube.svg', exclude: true}, title: 'Destructive Test', loginRequired: true};
 
@@ -11,7 +12,7 @@ class DestructionTestParameterModel extends TestParameterModel {
     static override createEmptyValue() {
         return {
             ...TestParameterModel.createEmptyValue(),
-            type: 'destructive',
+            type: TestType.DESTRUCTIVE,
         };
     }
 }
@@ -19,7 +20,7 @@ class DestructionTestParameterModel extends TestParameterModel {
 export default function DestructiveTestView() {
     const localTestParameterService = constraintServiceToFilter(TestParameterService, {
         propertyId: 'type',
-        filterValue: 'destructive',
+        filterValue: TestType.DESTRUCTIVE,
         matcher: Matcher.EQUALS,
         '@type': 'propertyString',
     });

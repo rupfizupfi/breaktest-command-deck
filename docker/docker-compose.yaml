@@ -16,14 +16,22 @@ services:
       - ./keystore:/home/appuser/keystore
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
+      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD:-}
       - DB_PASSWORD_FILE=/run/secrets/db-password
-      # Both images create appuser with --home /nonexistent, so user.home cannot be the storage
-      # root: `~/breaktester` would resolve away from the bind mount below.
-      - DECK_STORAGE_ROOT=/home/appuser
+      # Creates the first ADMIN when none exists (InitialAdminBootstrap); /run/secrets/admin-password also works.
+      - DECK_ADMIN_PASSWORD=${DECK_ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # The images carry no curl/wget and the app has no actuator, so this proves only that the HTTPS
+      # listener accepts connections (bash is present: startup.sh uses it). Not a login or DB probe.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/443"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # Flyway plus the Vaadin/Spring boot take well over a minute on a small host.
+      start_period: 120s
     profiles:
       - cms
 
@@ -42,35 +50,40 @@ services:
       - ./keystore:/home/appuser/keystore
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      # This container is the deck's test and simulation deployment. It never drives the machine:
-      # both drivers are Windows-only and refuse to register on Linux, so real mode here could only
-      # refuse to start. The bench runs natively instead (script/run-bench.ps1, which declares
-      # real). HardwareModeCheck permits simulation under `docker` but not under `bench`, so this
-      # value cannot leak onto the machine by copying the profile.
+      # Test/simulation deployment only: the drivers are Windows-only, and the bench runs natively
+      # (script/run-bench.ps1). HardwareModeCheck refuses simulation under the `bench` profile.
       - DECK_HARDWARE_MODE=simulated
-      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD}
+      - KEY_STORE_PASSWORD=${KEY_STORE_PASSWORD:-}
       - DB_PASSWORD_FILE=/run/secrets/db-password
-      # The image creates appuser with --home /nonexistent, so user.home cannot be the storage
-      # root: `~/breaktester` would resolve away from the bind mount below.
-      - DECK_STORAGE_ROOT=/home/appuser
-      # The Compose-local db by default, which is the right target for simulated runs - their
-      # results must not land in the authoritative dataset. Only the native bench points at the
-      # cloud Postgres (OQ-61), and it does so through run-bench.ps1, not through this file.
+      # Creates the first ADMIN when none exists (InitialAdminBootstrap); /run/secrets/admin-password also works.
+      - DECK_ADMIN_PASSWORD=${DECK_ADMIN_PASSWORD:-}
+      # Compose-local db by default so simulated results stay out of the cloud dataset (OQ-61).
       - DB_URL=${DECK_DB_URL:-jdbc:postgresql://db:5432/rupfizupfi}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # The images carry no curl/wget and the app has no actuator, so this proves only that the HTTPS
+      # listener accepts connections (bash is present: startup.sh uses it). Not a login or DB probe.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/443"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # Flyway plus the Vaadin/Spring boot take well over a minute on a small host.
+      start_period: 120s
     profiles:
       - deck
 
   db:
-    image: postgres
+    # Pinned to what production runs (18.6, Debian trixie); minor bumps via Dependabot, a major bump needs
+    # pg_upgrade or dump/restore. Since 18 the data lives under /var/lib/postgresql/18/docker, so mount the parent.
+    image: postgres:18.6-trixie
     restart: always
     user: postgres
     secrets:
       - db-password
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     environment:
       - POSTGRES_DB=rupfizupfi
       - POSTGRES_USER=rupfizupfi
@@ -78,17 +91,15 @@ services:
     expose:
       - 5432
     healthcheck:
-      test: ["CMD", "pg_isready"]
+      test: ["CMD", "pg_isready", "-U", "rupfizupfi", "-d", "rupfizupfi"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
 volumes:
   db-data:
 
-# One secret, and it is a real one: the database password. The build needs none - nothing it
-# resolves is private - so there is no build-time secret, no placeholder file and no token path to
-# configure.
 secrets:
   db-password:
     file: ../.secrets/db-password.txt

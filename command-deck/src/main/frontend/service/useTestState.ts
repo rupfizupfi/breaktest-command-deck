@@ -4,14 +4,11 @@ import {ConnectionState, getService, TestStateFrame} from "Frontend/service/Stat
 import {useLiveStatus} from "Frontend/service/useLiveStatus";
 
 /**
- * Subscribes a component to the run's state, and keeps StatusService seeded from the server.
+ * Subscribes a component to the run's state, and seeds StatusService from the server (kept here so
+ * the service stays free of React and endpoint calls).
  *
- * Kept out of StatusService for the same two reasons useLiveStatus is: the service stays free of
- * React, and it stays free of endpoint calls. The seed lives here.
- *
- * The seed is what lets a browser that joins mid-incident rebuild its banner immediately instead of
- * waiting up to 2 s for the next broadcast — and, on a reconnect, what lets a browser that missed the
- * transition entirely find out it happened.
+ * The seed lets a browser that joins mid-incident, or reconnects after missing a transition, show
+ * the right banner without waiting up to 2 s for the next broadcast.
  */
 export function useTestState(): TestStateFrame | null {
     const service = getService();
@@ -25,9 +22,8 @@ export function useTestState(): TestStateFrame | null {
     }, [service]);
 
     useEffect(() => {
-        // Mount, and every socket re-open. Deliberately not on the way down: that call would go to
-        // the same server the socket just lost, and rpcErrorPolicy would toast the failure on every
-        // reconnect cycle — noise stacked on a connection loss the banner already annunciates.
+        // On mount and every socket re-open, not on the way down: the call would fail against the
+        // lost server and rpcErrorPolicy would toast it on every reconnect cycle.
         if (!connected && seeded.current) {
             return;
         }
@@ -41,16 +37,14 @@ export function useTestState(): TestStateFrame | null {
                     return;
                 }
 
-                // No run means no incident, and this read is authoritative — it is the one thing
-                // allowed to clear a banner.
+                // Authoritative: no run means no incident.
                 if (!status || !status.isRunning) {
                     service.applyTestState(null);
                     return;
                 }
 
-                // Hilla types every endpoint result and every nested field as possibly absent. A
-                // frame without an id or a state cannot be ordered against later frames, so it is
-                // treated as no run at all rather than as an incident nothing can supersede.
+                // A frame without id or state cannot be ordered against later frames, so it counts
+                // as no run rather than an incident nothing can supersede.
                 const id = status.testResult?.id;
                 const state = status.state;
                 if (id === undefined || state === undefined) {
@@ -71,8 +65,8 @@ export function useTestState(): TestStateFrame | null {
                 });
             })
             .catch(() => {
-                // An unreachable endpoint is not evidence that the run ended, so the last known
-                // state stands. Silent on purpose: the connection itself is already annunciated.
+                // Unreachable is not evidence the run ended; the last known state stands. The
+                // connection loss is already shown.
             });
 
         return () => {

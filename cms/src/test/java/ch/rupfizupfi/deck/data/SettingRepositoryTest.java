@@ -1,5 +1,6 @@
 package ch.rupfizupfi.deck.data;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,20 +18,27 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 class SettingRepositoryTest {
 
     @TempDir
-    Path storageRoot;
+    Path home;
 
+    private String originalHome;
     private SettingRepository repository;
 
     @BeforeEach
     void createRepository() {
+        originalHome = System.getProperty("user.home");
+        System.setProperty("user.home", home.toString());
         repository = new SettingRepository(new JsonMapper());
-        // Any profile but dev puts the file under the storage root instead of the working directory.
+        // Any profile but dev puts the file under user.home instead of the working directory.
         ReflectionTestUtils.setField(repository, "activeProfile", "test");
-        ReflectionTestUtils.setField(repository, "storageRoot", storageRoot.toString());
+    }
+
+    @AfterEach
+    void restoreHome() {
+        System.setProperty("user.home", originalHome);
     }
 
     private Path settingsFile() {
-        return storageRoot.resolve("breaktester").resolve("settings.json");
+        return home.resolve("breaktester").resolve("settings.json");
     }
 
     private void writeSettingsFile(String content) throws IOException {
@@ -44,8 +52,25 @@ class SettingRepositoryTest {
                 Setting.Key.TESTRUNNER_SUCK.getKey(),
                 Setting.Key.TESTRUNNER_SUCK_DURATION.getKey(),
                 Setting.Key.FILE_RESULT_DATA.getKey(),
-                Setting.Key.FILE_UPLOAD.getKey());
+                Setting.Key.FILE_UPLOAD.getKey(),
+                Setting.Key.RIG_RATED_CAPACITY.getKey(),
+                Setting.Key.RIG_MAX_SPEED.getKey(),
+                Setting.Key.RIG_SUCTION_LOAD_MARGIN.getKey());
         assertThat(settingsFile()).exists();
+    }
+
+    @Test
+    void aKeyAddedAfterTheFileWasWrittenIsListedWithItsDefault() throws IOException {
+        // A settings file from before the rig limits existed: the admin must still see them to edit them.
+        writeSettingsFile("[{\"key\":\"testrunner.suck\",\"value\":false}]");
+
+        assertThat(repository.getAllSettings()).extracting(Setting::getKey)
+                .contains(Setting.Key.RIG_RATED_CAPACITY.getKey(), Setting.Key.RIG_MAX_SPEED.getKey(),
+                        Setting.Key.RIG_SUCTION_LOAD_MARGIN.getKey());
+        assertThat(repository.getSetting(Setting.Key.TESTRUNNER_SUCK.getKey()).getValue()).isEqualTo(false);
+        assertThat((Integer) repository.getSettingValue(Setting.Key.RIG_RATED_CAPACITY)).isEqualTo(150);
+        assertThat((Integer) repository.getSettingValue(Setting.Key.RIG_MAX_SPEED)).isEqualTo(500);
+        assertThat((Integer) repository.getSettingValue(Setting.Key.RIG_SUCTION_LOAD_MARGIN)).isEqualTo(500);
     }
 
     @Test

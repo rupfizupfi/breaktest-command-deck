@@ -1,36 +1,34 @@
 bootJar {
-    // Specific configuration for CMS application JAR
     archiveBaseName = 'cms-application'
     enabled = true
 }
 
 jar {
-    // Library JAR configuration
     archiveBaseName = 'cms-library'
     enabled = true
 }
 
 tasks.named('bootRun') {
-    // Both modules must resolve the dev H2 file to the same path. Handing it over as an absolute
-    // path via env var (read by spring.datasource.url's ${DECK_H2_DIR:...} placeholder) instead of
-    // forcing the process's working directory to rootProject.projectDir: Vaadin's DevModeInitializer
-    // resolves the @Theme frontend folder relative to that same working directory at runtime, so
-    // overriding it here broke theme discovery for this module.
+    // Both modules must share one dev H2 file. Passed as an absolute path rather than by setting
+    // workingDir: Vaadin's DevModeInitializer resolves the @Theme folder against the working directory.
     environment 'DECK_H2_DIR', "${rootProject.projectDir}/.data"
-    // Vaadin's DevModeInitializer shells out to pnpm for frontend installs from inside this
-    // process. Without a TTY (IDE run configs, CI), pnpm refuses to purge/relink node_modules
-    // and aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY instead of prompting - CI=true
-    // is pnpm's own documented way to say "non-interactive, don't ask".
+    // Dev mode runs pnpm without a TTY; CI=true stops it aborting with
+    // ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
     environment 'CI', 'true'
 }
 
 dependencies {
-    // Persistence tests run against real PostgreSQL (Testcontainers), not H2 — the dev/prod
-    // split is H2/Postgres and H2 semantics are not what production sees. Versions come from
-    // the Boot 4.1 BOM (Testcontainers 2.0.5); the 2.0 modules are the RENAMED coordinates —
-    // the old org.testcontainers:postgresql no longer exists.
-    // Boot 4 split the test slices out of spring-boot-test-autoconfigure: @DataJpaTest and
-    // @AutoConfigureTestDatabase now come from the data-jpa test starter.
+    // cms owns the schema: its migrations ship in this jar, so command-deck migrates the same way.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    // The .xlsx result export (DownloadResults). command-deck gets it at runtime through
+    // project(':cms'), which is all it needs: it compiles against no POI type.
+    implementation 'org.apache.poi:poi:5.5.1'
+    implementation 'org.apache.poi:poi-ooxml:5.5.1'
+
+    // Persistence tests run against PostgreSQL (Testcontainers), the production database, not H2.
+    // Versions come from the Boot BOM; Testcontainers 2.x uses the testcontainers-* coordinates.
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'

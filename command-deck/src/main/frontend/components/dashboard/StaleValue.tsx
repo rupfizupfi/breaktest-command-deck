@@ -2,7 +2,7 @@ import React from "react";
 import {FeedStatus} from "Frontend/service/StatusService";
 import './StaleValue.css';
 
-/** "8 s ago" reads unambiguously; a dimmed number on its own still invites being read as current. */
+/** Formats an age for "8 s ago"-style labels; a dimmed number alone still reads as current. */
 export function formatAge(seconds: number | null): string {
     if (seconds === null) {
         return '';
@@ -25,10 +25,8 @@ export interface StaleValueProps {
 }
 
 /**
- * Renders a live value, or makes it unmistakable that the number is not live.
- *
- * A steady force and a dead load cell both render as an unchanging number, so the only honest
- * display is one that states the age. Never shows a stale reading as though it were current.
+ * Renders a live value, or marks it with its age: a steady force and a dead load cell otherwise
+ * look the same.
  */
 export default function StaleValue({status, hasValue = true, children}: StaleValueProps): React.JSX.Element {
     if (!hasValue || !status.everReceived) {

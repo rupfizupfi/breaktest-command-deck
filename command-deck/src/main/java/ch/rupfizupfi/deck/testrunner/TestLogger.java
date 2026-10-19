@@ -11,9 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-/**
- * Specialized class for logging messages to the frontend and file
- */
+/** Writes a run's log messages to {@code /topic/logs} and to the run's log file. */
 public class TestLogger {
     private static final Logger logger = org.slf4j.LoggerFactory.getLogger(TestLogger.class);
     private final TestResult testResult;
@@ -59,8 +57,7 @@ public class TestLogger {
      * A concurrent {@link #log} either writes or is a no-op.
      */
     public void end() {
-        // One read of the field, claimed before the close: concurrent ends then close the same
-        // descriptor at most twice, which BufferedWriter ignores.
+        // Concurrent ends close the same writer at most twice, which BufferedWriter ignores.
         BufferedWriter w = writer;
         writer = null;
         if (w == null) {

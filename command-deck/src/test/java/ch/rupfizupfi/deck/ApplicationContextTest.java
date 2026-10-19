@@ -1,14 +1,22 @@
 package ch.rupfizupfi.deck;
 
 import ch.rupfizupfi.deck.api.services.TestRunnerService;
+import ch.rupfizupfi.deck.data.TestParameter;
+import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.data.TestType;
 import ch.rupfizupfi.deck.device.HardwareModeInfo;
 import ch.rupfizupfi.deck.device.api.DriveProvider;
 import ch.rupfizupfi.deck.device.api.LoadCellStreamProvider;
 import ch.rupfizupfi.deck.device.simulated.SimulatedDriveProvider;
 import ch.rupfizupfi.deck.device.simulated.SimulatedLoadCellStreamProvider;
+import ch.rupfizupfi.deck.rig.RigLimits;
 import ch.rupfizupfi.deck.testrunner.StartupRecoveryRunner;
 import ch.rupfizupfi.deck.testrunner.TestRunnerFactory;
+import ch.rupfizupfi.deck.testrunner.program.TestProgramFactory;
+import ch.rupfizupfi.deck.testrunner.program.TestProgramRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
@@ -26,31 +34,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Boots the full command-deck context as {@code bootRun} does and asserts the beans a run depends
- * on. An empty {@code contextLoads()} proves only that nothing threw,
- * so every method names what it pins.
+ * on.
  *
- * <p>Profile {@code dev} is not a convenience here, it is the only legal choice:
- * {@code HardwareModeCheck} permits {@code deck.hardware.mode=simulated} only when every active
- * profile is in its {@code SIMULATION_PROFILES} allowlist ({@code dev}), and a {@code test} profile
- * would be refused at boot — deliberately. The datasource override below is what makes {@code dev}
- * safe: without it the test would open the developer's file-backed H2 at {@code ./.data/deck}
- * (racing a running app for the lock), and {@code StartupRecoveryRunner} — which fires on
- * {@code ApplicationReadyEvent}, published by {@code @SpringBootTest}'s SpringApplication boot —
- * would sweep real non-terminal {@code TestResult} rows. Against the throwaway in-memory H2 the
- * sweep sees only {@code data.sql} seed data.
+ * <p>Profile {@code dev} because {@code HardwareModeCheck} permits simulation only under its
+ * allowlist; a {@code test} profile would be refused. The in-memory datasource keeps the test off
+ * the developer's H2 file at {@code ./.data/deck}, and keeps {@code StartupRecoveryRunner}'s sweep
+ * away from real {@code TestResult} rows.
  *
- * <p>{@code classes} is explicit because both modules declare a main class with the same FQCN,
- * {@code ch.rupfizupfi.deck.Application} — this module's own class output precedes the cms jar on
- * the test compile classpath, so the reference below resolves to command-deck's Application, and
- * stating it keeps the choice out of configuration detection's hands.
- *
- * <p>No Vaadin suppression is needed: the default MOCK web environment never starts a servlet
- * container, so the servlet-driven dev-mode frontend tooling never runs, and {@code vaadin-dev} is
- * {@code developmentOnly} — off the test classpath entirely. {@code vaadin.launch-browser=false}
- * is defence in depth.
+ * <p>{@code classes} is explicit because both modules declare {@code ch.rupfizupfi.deck.Application}.
  */
 @SpringBootTest(classes = Application.class, properties = {
-        "spring.datasource.url=jdbc:h2:mem:deck-context-test;DB_CLOSE_DELAY=-1",
+        "spring.datasource.url=jdbc:h2:mem:deck-context-test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DEFAULT_NULL_ORDERING=HIGH",
         "vaadin.launch-browser=false"
 })
 @ActiveProfiles("dev")
@@ -73,16 +67,13 @@ class ApplicationContextTest {
 
     @Test
     void hardwareModeResolvesToSimulated() {
-        // dev's application-dev.properties promises simulated hardware; HardwareModeCheck already
-        // refused the boot if that promise could not be served, so this pins the announced mode.
+        // application-dev.properties sets simulated; this pins the announced mode.
         assertThat(context.getBean(HardwareModeInfo.class).isSimulated()).isTrue();
     }
 
     @Test
     void simulatedHardwareProvidersBackTheDeviceContract() {
-        // The @ConditionalOnProperty(deck.hardware.mode=simulated) pair dev mode promises. Asserted
-        // through the device-api contract types: these are the beans HardwareModeCheck requires and
-        // DeviceService consumes.
+        // The @ConditionalOnProperty(deck.hardware.mode=simulated) pair, via the device-api types.
         assertThat(context.getBean(DriveProvider.class))
                 .isInstanceOf(SimulatedDriveProvider.class);
         assertThat(context.getBean(LoadCellStreamProvider.class))
@@ -92,6 +83,28 @@ class ApplicationContextTest {
     @Test
     void testRunnerFactoryIsRegistered() {
         assertThat(context.getBean(TestRunnerFactory.class)).isNotNull();
+    }
+
+    /**
+     * OQ-64 step 7: the registry's constructor refuses a context in which a TestType has no program
+     * factory, so this context starting is the proof every type has one; each resolves to its own.
+     */
+    @ParameterizedTest
+    @EnumSource(TestType.class)
+    void everyTestTypeResolvesToAProgram(TestType type) {
+        TestParameter parameter = new TestParameter();
+        parameter.type = type;
+        parameter.speed = 100;
+        parameter.upperShutOffThreshold = 3.0;
+        parameter.lowerShutOffThreshold = 1.0;
+        parameter.upperTurnForce = 2.2;
+        parameter.lowerTurnForce = 2.0;
+        parameter.cycleCount = 2;
+        TestResult result = new TestResult();
+        result.testParameter = parameter;
+
+        assertThat(context.getBean(TestProgramRegistry.class).create(result, RigLimits.DEFAULTS)).isNotNull();
+        assertThat(context.getBeansOfType(TestProgramFactory.class)).hasSize(TestType.values().length);
     }
 
     @Test
@@ -109,16 +122,14 @@ class ApplicationContextTest {
 
     @Test
     void startupRecoveryRunnerIsABeanNotJustAClass() {
-        // The unit tests construct it with `new`; only the context can pin the @Component
-        // wiring that gives every boot its orphan sweep and de-energize.
+        // The unit tests construct it with `new`; only the context pins the @Component wiring.
         assertThat(context.getBean(StartupRecoveryRunner.class)).isNotNull();
     }
 
     @Test
     void contextObjectMapperWritesNestedObjectsCompactly() {
-        // GapRecorder's one-line sidecar invariant (see GapRecorder#write) holds only if the
-        // context-injected mapper writes compactly; the unit tests use their own mapper, so
-        // the injected one is pinned here.
+        // GapRecorder#write's one-line sidecar needs the injected mapper to write compactly; the
+        // unit tests use their own mapper.
         ObjectMapper mapper = context.getBean(ObjectMapper.class);
         String json = mapper.writeValueAsString(Map.of("outer", Map.of("inner", List.of(1, 2))));
         assertThat(json).doesNotContain("\n").doesNotContain("\r");

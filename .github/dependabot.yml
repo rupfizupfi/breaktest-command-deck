@@ -1,0 +1,54 @@
+# Weekly, one grouped PR per ecosystem (minor + patch); majors arrive as their own PRs.
+version: 2
+updates:
+  # Root build: the cms and command-deck subprojects.
+  - package-ecosystem: gradle
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      gradle-minor-patch:
+        update-types: [minor, patch]
+
+  # device-api/ is an included build with its own settings.gradle, so the root scan does not see it.
+  - package-ecosystem: gradle
+    directory: /device-api
+    schedule: { interval: weekly }
+    groups:
+      device-api-minor-patch:
+        update-types: [minor, patch]
+
+  # pnpm lockfiles in both modules (Dependabot's npm ecosystem reads pnpm-lock.yaml). The Vaadin/Hilla
+  # packages are pinned to the platform version in gradle.properties and bumped together with it, so a
+  # lone bump here would only fight the Vaadin build.
+  - package-ecosystem: npm
+    directories: [/cms, /command-deck]
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: "@vaadin/*"
+      - dependency-name: "@hilla/*"
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # FROM lines in docker/Dockerfile ...
+  - package-ecosystem: docker
+    directory: /docker
+    schedule: { interval: weekly }
+    groups:
+      docker-images:
+        patterns: ["*"]
+
+  # ... and the postgres tag in docker/docker-compose.yaml.
+  - package-ecosystem: docker-compose
+    directory: /docker
+    schedule: { interval: weekly }
+    groups:
+      compose-images:
+        patterns: ["*"]

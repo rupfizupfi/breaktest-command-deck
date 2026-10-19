@@ -2,6 +2,7 @@ package ch.rupfizupfi.deck.api;
 
 import ch.rupfizupfi.deck.data.User;
 import ch.rupfizupfi.deck.data.UserRepository;
+import ch.rupfizupfi.deck.hilla.crud.PageCap;
 import ch.rupfizupfi.deck.security.AuthenticatedUser;
 import ch.rupfizupfi.deck.security.UserUtils;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
@@ -39,7 +40,7 @@ public class UserEndpoint {
     public @NotNull List<User> list(Pageable pageable, @Nullable Filter filter) {
         if (UserUtils.isAdmin()) {
             Specification<User> spec = JpaFilterConverter.toSpec(filter, User.class);
-            return userRepository.findAll(spec, pageable).getContent();
+            return userRepository.findAll(spec, PageCap.clamp(pageable)).getContent();
         }
 
         User user = authenticatedUser.get().orElse(null);

@@ -7,8 +7,7 @@ import com.vaadin.hilla.BrowserCallable;
 /**
  * Tells the browser whether it is looking at real hardware.
  * <p>
- * Anonymous on purpose: the simulated banner is an annunciation, and one that only appears after a
- * successful login would be silenceable by not logging in.
+ * Anonymous, so the simulated banner shows before login too.
  */
 @BrowserCallable
 @AnonymousAllowed

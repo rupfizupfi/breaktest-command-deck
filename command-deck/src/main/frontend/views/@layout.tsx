@@ -5,6 +5,7 @@ import { Button } from '@vaadin/react-components/Button.js';
 import { useAuth } from 'cms/util/auth.js';
 import { Suspense, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
+import ErrorBoundary from 'cms/components/ErrorBoundary';
 import InfoBoard from "Frontend/components/dashboard/InfoBoard";
 import SimulatedModeBanner from "Frontend/components/SimulatedModeBanner";
 
@@ -40,7 +41,9 @@ export default function MainLayout() {
               </SideNavItem>
             ))}
           </SideNav>
-            <InfoBoard />
+            <ErrorBoundary region="The info panel">
+              <InfoBoard />
+            </ErrorBoundary>
         </header>
         <footer className="flex flex-col gap-s">
           {state.user ? (
@@ -70,9 +73,12 @@ export default function MainLayout() {
 
       <SimulatedModeBanner />
 
-      <Suspense>
-        <Outlet />
-      </Suspense>
+      {/* Inside the shell, so a crashing view leaves the drawer and InfoBoard up. */}
+      <ErrorBoundary region="This page" resetKey={location.pathname}>
+        <Suspense>
+          <Outlet />
+        </Suspense>
+      </ErrorBoundary>
     </AppLayout>
   );
 }

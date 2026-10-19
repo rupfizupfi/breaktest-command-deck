@@ -38,9 +38,10 @@ flowchart LR
 
     LCD -->|MeasurementObserver| FB --> T1
     CFD -->|InfoObserver| DIB --> T2
-    LCD --> LCT["LoadCellThread<br/>(testrunner)"]
-    LCT -.->|signals| TC[TestContext]
-    LCT -.->|writes CSV| FS[(filesystem)]
+    LCD --> LCT["MeasurementLoop<br/>(testrunner.measure)"]
+    LCT -.->|reads limits| TC[ForceLimits]
+    LCT -.->|offers batches| TW["TraceWriter<br/>(own thread)"]
+    TW -.->|writes CSV| FS[(filesystem)]
 
     classDef topic fill:#fff3cd,stroke:#664d03
     class T1,T2 topic

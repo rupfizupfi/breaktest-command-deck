@@ -1,7 +1,6 @@
 package ch.rupfizupfi.deck.api.services;
 
 import ch.rupfizupfi.deck.data.TestResult;
-import ch.rupfizupfi.deck.data.TestResultRepository;
 import ch.rupfizupfi.deck.data.User;
 import ch.rupfizupfi.deck.security.AuthenticatedUser;
 import ch.rupfizupfi.deck.testrunner.TestRunnerFactory;
@@ -15,33 +14,42 @@ import jakarta.annotation.security.PermitAll;
 /**
  * The browser's run controls: start, stop, the incident snapshot, and the two recovery commands.
  * <p>
- * {@code @PermitAll} covers Resume and Abort for the same reason it covers Stop: <b>Abort must never
- * be harder to reach than Stop.</b> Both end a run on a bench somebody is standing at, and a control
- * that answers "forbidden" while the motor is energized is worse than no control. Whether any of the
- * four should be narrowed is one decision for all of them, not something to settle here by giving the
- * newest command a different rule.
+ * {@code @PermitAll} covers Resume and Abort as it covers Stop: Abort must never be harder to reach
+ * than Stop. Narrowing any of them is one decision for all four.
  */
 @BrowserCallable
 @PermitAll
 public class TestRunnerService {
     private final TestRunnerThread testRunnerThread;
-    private final TestResultRepository testResultRepository;
+    private final TestResultService testResultService;
     private final AuthenticatedUser authenticatedUser;
 
-    public TestRunnerService(TestResultRepository testResultRepository, TestRunnerFactory testRunnerFactory,
+    public TestRunnerService(TestResultService testResultService, TestRunnerFactory testRunnerFactory,
                              AuthenticatedUser authenticatedUser) {
-        this.testResultRepository = testResultRepository;
+        this.testResultService = testResultService;
         this.authenticatedUser = authenticatedUser;
         this.testRunnerThread = testRunnerFactory.createTestRunnerThread();
     }
 
+    /**
+     * Starts a run of a result the caller owns. A result that has run before is refused: starting it
+     * again would overwrite its force trace, and a late call from a view that only meant to watch a
+     * run must never re-energize the motor for a specimen that is already broken.
+     */
     public void start(Long testId) {
-        testRunnerThread.startThread(testResultRepository.findById(testId).orElseThrow(() -> new RuntimeException("Test not found")));
+        // Owner-scoped: an unscoped findById let any user run the rig against another tenant's result.
+        TestResult testResult = testResultService.get(testId)
+                .orElseThrow(() -> new IllegalArgumentException("Test result " + testId + " not found"));
+        if (testResult.runStatus != null && !testRunnerThread.isActiveRun(testId)) {
+            throw new IllegalStateException("Test result " + testId + " has already run (" + testResult.runStatus
+                    + "); copy it to run the parameters again");
+        }
+        testRunnerThread.startThread(testResult);
     }
 
     /**
-     * Carries the whole {@code /topic/test-state} snapshot, so a browser that opens mid-incident can
-     * rebuild its banner from one HTTP read instead of waiting up to 2 s for the next broadcast.
+     * Carries the whole {@code /topic/test-state} snapshot, so a browser opened mid-incident need not
+     * wait for the next broadcast.
      */
     public StatusResponse status() {
         TestStateMessage snapshot = testRunnerThread.snapshot();
@@ -51,8 +59,23 @@ public class TestRunnerService {
         return new StatusResponse(testRunnerThread.getTestResult(), snapshot);
     }
 
+    /** The safety Stop: ends whatever runs on the bench, whichever view it was pressed in. */
     public void stop() {
         testRunnerThread.stopThread();
+    }
+
+    /**
+     * Stops the run only if it is this result's, so closing a stale view can never end a newer run
+     * someone else started since.
+     *
+     * @return whether that run was active and got the stop
+     */
+    public boolean stopRun(long testResultId) {
+        if (!testRunnerThread.isActiveRun(testResultId)) {
+            return false;
+        }
+        testRunnerThread.stopThread();
+        return true;
     }
 
     /** Re-arms the watchdog and re-energizes the drive after a sensor loss; refusals carry a reason. */
@@ -65,8 +88,8 @@ public class TestRunnerService {
     }
 
     /**
-     * Who pressed the button, for the run's audit record. Falls back to a placeholder rather than
-     * throwing: a resume or an abort must not be refused because the session could not be resolved.
+     * Who pressed the button, for the audit record. Falls back to a placeholder so an unresolved
+     * session never refuses a resume or abort.
      */
     private String actor() {
         return authenticatedUser.get().map(User::getUsername).orElse("unknown operator");
@@ -77,8 +100,7 @@ public class TestRunnerService {
         public @Nullable TestResult testResult;
 
         /**
-         * The enum, not its name: Hilla turns it into a TS union, which is what lets the banner
-         * switch exhaustively and fail the typecheck when a state is added.
+         * The enum, not its name: Hilla generates a TS union, so the banner's switch is exhaustive.
          */
         public TestState state;
         public @Nullable String reason;
@@ -88,16 +110,14 @@ public class TestRunnerService {
         public int reconnectAttempt;
 
         /**
-         * Boxed and nullable throughout. Primitives would generate a non-nullable {@code number} and
-         * report "no reading yet" as a measured 0 N, and "not holding" as a deadline in 1970.
+         * Boxed and nullable, so "no reading" and "not holding" are not reported as 0.
          */
         public @Nullable Float lastKnownForce;
         public @Nullable Long safeHoldDeadlineMillis;
 
         /**
-         * Transition ordering, the same counter the broadcast frames carry. The client needs it to
-         * tell this read from a frame it has already applied - without it, a status() answer that
-         * left the server before the loss would silently clear an incident banner.
+         * Transition ordering, as in the broadcast frames, so the client can discard a status() answer
+         * older than a frame it has already applied.
          */
         public long sequence;
 
@@ -119,7 +139,7 @@ public class TestRunnerService {
             this.state = TestState.IDLE;
         }
 
-        /** IDLE and not the last run's terminal state: a finished run is not something to annunciate. */
+        /** IDLE rather than the last run's terminal state. */
         static StatusResponse idle() {
             return new StatusResponse();
         }

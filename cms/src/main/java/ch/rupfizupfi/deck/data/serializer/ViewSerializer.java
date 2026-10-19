@@ -7,10 +7,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 public abstract class ViewSerializer<M, V> extends ValueSerializer<M> {
 
-    /**
-     * Jackson 3 dropped {@code JsonGenerator.getCodec()}, so the projection can no longer
-     * borrow the enclosing mapper. A dedicated mapper renders the view instead.
-     */
+    /** Jackson 3 has no {@code JsonGenerator.getCodec()}, so the view needs its own mapper. */
     private static final JsonMapper VIEW_MAPPER = JsonMapper.builder().findAndAddModules().build();
 
     abstract Class<V> getView();

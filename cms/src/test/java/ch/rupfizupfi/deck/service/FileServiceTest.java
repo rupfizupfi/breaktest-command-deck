@@ -29,8 +29,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * A row and its bytes arrive together or not at all. File names reach {@code FileService} straight
- * from the anonymous {@code /api/files/**} surface, so a name resolving outside the upload
- * directory is refused rather than served or deleted.
+ * from the {@code /api/files/**} surface, so a name resolving outside the upload directory is
+ * refused rather than served or deleted, and an upload is stored under its id, never its own name.
  */
 class FileServiceTest {
 
@@ -67,10 +67,41 @@ class FileServiceTest {
         FileMetadata saved = service.saveFile(upload("report.pdf"));
 
         // The stored name carries the id, so the row is saved once to mint it and once to record it.
-        assertThat(filePathAtEachSave).containsExactly(null, "42-report.pdf");
-        assertThat(saved.getFilePath()).isEqualTo("42-report.pdf");
-        assertThat(uploadRoot.resolve("42-report.pdf")).hasContent("content");
+        assertThat(filePathAtEachSave).containsExactly(null, "42.pdf");
+        assertThat(saved.getFilePath()).isEqualTo("42.pdf");
+        assertThat(saved.getFileName()).isEqualTo("report.pdf");
+        assertThat(uploadRoot.resolve("42.pdf")).hasContent("content");
         verify(repository, never()).delete(any(FileMetadata.class));
+    }
+
+    @Test
+    void aTraversingUploadNameStaysInTheUploadRootUnderItsId() throws IOException {
+        for (String hostile : List.of("..\\..\\x.jar", "../../x.jar")) {
+            when(repository.save(any(FileMetadata.class))).thenAnswer(invocation -> {
+                FileMetadata row = invocation.getArgument(0);
+                row.setId(7L);
+                return row;
+            });
+
+            FileMetadata saved = service.saveFile(upload(hostile));
+
+            assertThat(saved.getFilePath()).isEqualTo("7.jar");
+            assertThat(saved.getFileName()).isEqualTo(hostile);
+            assertThat(uploadRoot.resolve("7.jar")).hasContent("content");
+            assertThat(tempRoot.resolve("x.jar")).doesNotExist();
+            Files.delete(uploadRoot.resolve("7.jar"));
+        }
+    }
+
+    @Test
+    void anUnsafeExtensionIsDropped() throws IOException {
+        when(repository.save(any(FileMetadata.class))).thenAnswer(invocation -> {
+            FileMetadata row = invocation.getArgument(0);
+            row.setId(8L);
+            return row;
+        });
+
+        assertThat(service.saveFile(upload("report.p d:f")).getFilePath()).isEqualTo("8");
     }
 
     @Test

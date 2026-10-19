@@ -1,5 +1,8 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import jakarta.validation.constraints.AssertTrue;
 import org.junit.jupiter.api.Test;
 
@@ -31,6 +34,9 @@ class RecoveryPropertiesTest {
         properties.setMaxLossesPerRun(7);
         properties.setMinEnvelopeNewton(1_234.5);
         properties.setResumeEnabled(false);
+        properties.setMaxSampleIntervalMillis(77);
+        properties.setPlausibilityGateMinSamples(13);
+        properties.setMaxFrozenMillis(888);
 
         RecoveryGates gates = properties.snapshot();
 
@@ -43,6 +49,69 @@ class RecoveryPropertiesTest {
         assertThat(gates.maxLossesPerRun()).isEqualTo(7);
         assertThat(gates.minEnvelopeNewton()).isEqualTo(1_234.5);
         assertThat(gates.resumeEnabled()).isFalse();
+        assertThat(gates.maxSampleIntervalMillis()).isEqualTo(77);
+        assertThat(gates.plausibilityGateMinSamples()).isEqualTo(13);
+        assertThat(gates.maxFrozenMillis()).isEqualTo(888);
+    }
+
+    @Test
+    void theSampleIntervalBoundDefaultsTo100MillisAndIsValid() {
+        // Uncalibrated: about 11 x the bench's ~8.7 ms per sample, 20 x the simulator's 5 ms.
+        assertThat(properties.getMaxSampleIntervalMillis()).isEqualTo(100);
+        assertThat(properties.isSampleIntervalBelowNoDataTimeout()).isTrue();
+    }
+
+    @Test
+    void aSampleIntervalBoundAtOrPastTheNoDataTimeoutIsInvalid() {
+        // At 250 ms the bound could never vote before the no-data timeout had already tripped.
+        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            Validator validator = factory.getValidator();
+
+            properties.setMaxSampleIntervalMillis(RecoveryGates.NO_DATA_TIMEOUT_MS);
+            assertThat(validator.validate(properties))
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactly("sampleIntervalBelowNoDataTimeout");
+
+            properties.setMaxSampleIntervalMillis(RecoveryGates.NO_DATA_TIMEOUT_MS - 1);
+            assertThat(validator.validate(properties)).isEmpty();
+
+            properties.setMaxSampleIntervalMillis(0);
+            assertThat(validator.validate(properties))
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactly("maxSampleIntervalMillis");
+        }
+    }
+
+    @Test
+    void theGateNeedsTenSamplesByDefaultAndAtLeastTwo() {
+        // A run of one sample has no length, so it could never satisfy the window either.
+        assertThat(properties.getPlausibilityGateMinSamples()).isEqualTo(10);
+        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            Validator validator = factory.getValidator();
+            assertThat(validator.validate(properties)).isEmpty();
+
+            properties.setPlausibilityGateMinSamples(1);
+            assertThat(validator.validate(properties))
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactly("plausibilityGateMinSamples");
+        }
+    }
+
+    @Test
+    void theFrozenTimeBoundDefaultsToOneSecondAndNeverUndercutsTheNoDataTimeout() {
+        // Uncalibrated: the 100-sample count already trips at ~870 ms on the bench.
+        assertThat(properties.getMaxFrozenMillis()).isEqualTo(1000);
+        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            Validator validator = factory.getValidator();
+
+            properties.setMaxFrozenMillis(RecoveryGates.NO_DATA_TIMEOUT_MS);
+            assertThat(validator.validate(properties)).isEmpty();
+
+            properties.setMaxFrozenMillis(RecoveryGates.NO_DATA_TIMEOUT_MS - 1);
+            assertThat(validator.validate(properties))
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactly("maxFrozenMillis");
+        }
     }
 
     @Test
@@ -101,7 +170,7 @@ class RecoveryPropertiesTest {
 
     @Test
     void emptyOrNullBackoffListPassesTheWindowCheck() {
-        // Deliberate: an empty list is @NotEmpty's finding, and the operator gets one message, not two.
+        // An empty list is @NotEmpty's finding; the operator gets one message, not two.
         properties.setBackoffMillis(List.of());
         assertThat(properties.isBackoffInsideWindow()).isTrue();
 
@@ -110,8 +179,8 @@ class RecoveryPropertiesTest {
     }
 
     /**
-     * snapshot() completeness guard: a RecoveryProperties field without a RecoveryGates component
-     * cannot be snapshotted, so the audit record would silently claim gates the run never used.
+     * snapshot() completeness guard: a field without a RecoveryGates component would be missing
+     * from the audit record.
      */
     @Test
     void everyPropertyGetterHasAMatchingGatesRecordComponent() {

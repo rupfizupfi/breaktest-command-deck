@@ -3,7 +3,12 @@ package ch.rupfizupfi.deck.device.loadcell;
 import ch.rupfizupfi.deck.device.api.LoadCellStream;
 import ch.rupfizupfi.deck.device.api.Measurement;
 import ch.rupfizupfi.deck.device.api.StreamFailure;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import org.junit.jupiter.api.AfterEach;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -14,8 +19,10 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -34,7 +41,7 @@ class LoadCellDeviceTest {
     private static final long DELIVERY_TIMEOUT_MS = 5000;
 
     private final ScriptedStream stream = new ScriptedStream();
-    private final LoadCellDevice device = new LoadCellDevice(() -> stream);
+    private final LoadCellDevice device = new LoadCellDevice(reconnect -> stream);
 
     @AfterEach
     void releaseTheDevice() {
@@ -125,6 +132,43 @@ class LoadCellDeviceTest {
 
     @Test
     @Timeout(20)
+    void aPersistentReadFailureIsWarnedOncePerOutageAndItsEndIsAnnounced() throws InterruptedException {
+        Logger deviceLog = (Logger) LoggerFactory.getLogger(LoadCellDevice.class);
+        var events = new CopyOnWriteArrayList<ILoggingEvent>();
+        var appender = new AppenderBase<ILoggingEvent>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                events.add(event);
+            }
+        };
+        appender.start();
+        deviceLog.addAppender(appender);
+        try {
+            var delivered = new Measurement(4f, 400L);
+            var observer = new RecordingObserver(1);
+            device.registerObserver(observer);
+            stream.failOnNextDrains(new IOException("usb frame"), 6);
+            device.connect();
+            stream.enqueue(delivered);
+
+            // Every failing drain precedes the delivering one, and the recovery line is logged
+            // before the fan-out, so the delivery orders all six failures and the recovery before it.
+            assertThat(observer.awaitMeasurements(DELIVERY_TIMEOUT_MS)).isTrue();
+
+            assertThat(events).filteredOn(e -> e.getLevel() == Level.WARN)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .filteredOn(m -> m.startsWith("Error while reading load cell values"))
+                    .hasSize(1);
+            assertThat(events).filteredOn(e -> e.getLevel() == Level.INFO)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .contains("Load cell stream answers again after 6 failed read(s)");
+        } finally {
+            deviceLog.detachAppender(appender);
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void aCheckedExceptionFromTheDrainLeavesTheReaderRunning() throws InterruptedException {
         // The driver's checked failure crosses LoadCellStream undeclared; a hand-written fake is
         // required because Mockito refuses to throw it here.
@@ -160,7 +204,7 @@ class LoadCellDeviceTest {
         var startFailure = new IllegalStateException("stream is already in progress");
         var failing = new ScriptedStream();
         failing.failOnStart(startFailure);
-        var failingDevice = new LoadCellDevice(() -> failing);
+        var failingDevice = new LoadCellDevice(reconnect -> failing);
 
         assertThatThrownBy(failingDevice::connect).isSameAs(startFailure);
 
@@ -176,7 +220,7 @@ class LoadCellDeviceTest {
         failing.failOnStart(new IllegalStateException("stream is already in progress"));
         var healthy = new ScriptedStream();
         var handOut = new ArrayDeque<>(List.of(failing, healthy));
-        var retryingDevice = new LoadCellDevice(handOut::poll);
+        var retryingDevice = new LoadCellDevice(reconnect -> handOut.poll());
 
         assertThatThrownBy(retryingDevice::connect).isInstanceOf(IllegalStateException.class);
         try {
@@ -195,7 +239,7 @@ class LoadCellDeviceTest {
         var refusing = new ScriptedStream();
         refusing.failOnStop(new IllegalStateException("stream is already in progress"));
         var observer = new RecordingObserver(1);
-        var refusingDevice = new LoadCellDevice(() -> refusing);
+        var refusingDevice = new LoadCellDevice(reconnect -> refusing);
         refusingDevice.registerObserver(observer);
         refusingDevice.connect();
         refusing.enqueue(new Measurement(5f, 500L));
@@ -215,7 +259,7 @@ class LoadCellDeviceTest {
         refusing.failOnStop(new IllegalStateException("stream is already in progress"));
         var healthy = new ScriptedStream();
         var handOut = new ArrayDeque<>(List.of(refusing, healthy));
-        var reopeningDevice = new LoadCellDevice(handOut::poll);
+        var reopeningDevice = new LoadCellDevice(reconnect -> handOut.poll());
         reopeningDevice.connect();
         reopeningDevice.disconnect();
 
@@ -227,6 +271,168 @@ class LoadCellDeviceTest {
             assertThat(reopeningDevice.getStreamFailure()).isNull();
         } finally {
             reopeningDevice.disconnect();
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void theProviderIsToldAReconnectFromAFirstOpen() {
+        // No type test any more (A-13): every provider is session-aware, so the flag always reaches it.
+        List<Boolean> opens = new CopyOnWriteArrayList<>();
+        var flagged = new LoadCellDevice(reconnect -> {
+            opens.add(reconnect);
+            return new ScriptedStream();
+        });
+        flagged.connect();
+        try {
+            flagged.reset();
+        } finally {
+            flagged.disconnect();
+        }
+
+        assertThat(opens).containsExactly(false, true);
+    }
+
+    @Test
+    @Timeout(20)
+    void aThrowingObserverIsLoggedOnceThenSummarisedAndItsRecoveryAnnounced() throws InterruptedException {
+        var clock = new AtomicLong(1_000L);
+        var throttled = new LoadCellDevice(reconnect -> stream, clock::get);
+        var throwing = new ThrowingObserver();
+        // Registered after the throwing one, so its delivery orders the failure handling before it.
+        var pacer = new PacingObserver();
+        throttled.registerObserver(throwing);
+        throttled.registerObserver(pacer);
+        try (var logs = new CapturedLog()) {
+            throttled.connect();
+
+            for (int batch = 0; batch < 4; batch++) {
+                pacer.deliver(stream);
+            }
+            assertThat(logs.warnings("Measurement observer")).hasSize(1);
+            assertThat(logs.warningEvents("Measurement observer").getFirst().getThrowableProxy()).isNotNull();
+
+            clock.addAndGet(LoadCellDevice.REPEAT_LOG_INTERVAL_NANOS);
+            pacer.deliver(stream);
+            assertThat(logs.warnings("Measurement observer")).hasSize(2);
+            assertThat(logs.warnings("Measurement observer").get(1))
+                    .contains("still throwing: 4 more failed batch(es), 5 in total");
+
+            throwing.healed = true;
+            pacer.deliver(stream);
+            assertThat(logs.infos()).anyMatch(m -> m.contains("accepts batches again after 5 failed batch(es)"));
+            assertThat(logs.warnings("Measurement observer")).hasSize(2);
+        } finally {
+            throttled.disconnect();
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void droppedReadingsAreLoggedAtOnceThenAtMostOncePerIntervalWithTheDelta() throws InterruptedException {
+        var clock = new AtomicLong(1_000L);
+        var throttled = new LoadCellDevice(reconnect -> stream, clock::get);
+        var pacer = new PacingObserver();
+        throttled.registerObserver(pacer);
+        try (var logs = new CapturedLog()) {
+            throttled.connect();
+
+            stream.setDroppedSampleCount(3);
+            pacer.awaitFullReaderPass(stream);
+            assertThat(logs.warnings("Load cell driver has discarded")).containsExactly(
+                    "Load cell driver has discarded 3 reading(s) this session (3 since the last report); "
+                            + "the stream is still reading");
+
+            // A rise inside the interval stays quiet.
+            stream.setDroppedSampleCount(5);
+            pacer.awaitFullReaderPass(stream);
+            stream.setDroppedSampleCount(8);
+            pacer.awaitFullReaderPass(stream);
+            assertThat(logs.warnings("Load cell driver has discarded")).hasSize(1);
+
+            clock.addAndGet(LoadCellDevice.REPEAT_LOG_INTERVAL_NANOS);
+            pacer.awaitFullReaderPass(stream);
+            assertThat(logs.warnings("Load cell driver has discarded")).containsExactly(
+                    "Load cell driver has discarded 3 reading(s) this session (3 since the last report); "
+                            + "the stream is still reading",
+                    "Load cell driver has discarded 8 reading(s) this session (5 since the last report); "
+                            + "the stream is still reading");
+        } finally {
+            throttled.disconnect();
+        }
+    }
+
+    /** Throws on every batch until healed. */
+    private static final class ThrowingObserver implements MeasurementObserver {
+        volatile boolean healed = false;
+
+        @Override
+        public void update(List<Measurement> measurements) {
+            if (!healed) {
+                throw new IllegalStateException("observer broken");
+            }
+        }
+    }
+
+    /** Lets a test step the reader one delivered batch at a time. */
+    private static final class PacingObserver implements MeasurementObserver {
+        private final Semaphore batches = new Semaphore(0);
+
+        @Override
+        public void update(List<Measurement> measurements) {
+            batches.release();
+        }
+
+        /** Enqueues one measurement and returns once this observer has received it. */
+        void deliver(ScriptedStream target) throws InterruptedException {
+            target.enqueue(new Measurement(1f, System.currentTimeMillis()));
+            assertThat(batches.tryAcquire(DELIVERY_TIMEOUT_MS, TimeUnit.MILLISECONDS)).isTrue();
+        }
+
+        /**
+         * Two deliveries: the second one's loop iteration starts after the first one's fan-out, so
+         * a whole iteration - including the dropped-sample check - ran after this call began.
+         */
+        void awaitFullReaderPass(ScriptedStream target) throws InterruptedException {
+            deliver(target);
+            deliver(target);
+        }
+    }
+
+    /** Captures {@link LoadCellDevice}'s log events for the duration of a try block. */
+    private static final class CapturedLog implements AutoCloseable {
+        private final Logger deviceLog = (Logger) LoggerFactory.getLogger(LoadCellDevice.class);
+        private final List<ILoggingEvent> events = new CopyOnWriteArrayList<>();
+        private final AppenderBase<ILoggingEvent> appender = new AppenderBase<>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                events.add(event);
+            }
+        };
+
+        CapturedLog() {
+            appender.start();
+            deviceLog.addAppender(appender);
+        }
+
+        List<ILoggingEvent> warningEvents(String prefix) {
+            return events.stream()
+                    .filter(e -> e.getLevel() == Level.WARN && e.getFormattedMessage().startsWith(prefix))
+                    .toList();
+        }
+
+        List<String> warnings(String prefix) {
+            return warningEvents(prefix).stream().map(ILoggingEvent::getFormattedMessage).toList();
+        }
+
+        List<String> infos() {
+            return events.stream().filter(e -> e.getLevel() == Level.INFO)
+                    .map(ILoggingEvent::getFormattedMessage).toList();
+        }
+
+        @Override
+        public void close() {
+            deviceLog.detachAppender(appender);
         }
     }
 

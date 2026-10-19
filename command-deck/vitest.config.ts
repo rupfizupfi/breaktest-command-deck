@@ -1,14 +1,10 @@
 /**
- * Pure-logic unit tests only (node environment, no browser, no DOM). Tests live in
- * src/test/frontend/ — outside tsconfig.json's include — so the typecheck gate
- * (script/typecheck.ps1 → `tsc --noEmit -p tsconfig.json`) never sees vitest's types;
- * src/test/frontend/tsconfig.json typechecks them separately.
+ * Pure-logic unit tests only (node environment, no DOM). Tests live in src/test/frontend/, outside
+ * tsconfig.json's include, and are typechecked by src/test/frontend/tsconfig.json.
  *
- * Deliberately standalone: it must NOT import vite.config.ts / vite.generated.ts —
- * Vaadin's config wires Flow plugins that need generated/ scaffolding and a dev-mode
- * folder layout, and command-deck's also merges cms's file routes. Component tests against
- * @vaadin web components need Vitest browser mode (jsdom cannot do shadow DOM) and are a
- * later rung, not yet built.
+ * Must not import vite.config.ts / vite.generated.ts: Vaadin's config needs generated/ scaffolding
+ * and merges cms's file routes. Component tests against @vaadin web components would need Vitest
+ * browser mode (jsdom has no shadow DOM).
  */
 import { defineConfig } from 'vitest/config';
 

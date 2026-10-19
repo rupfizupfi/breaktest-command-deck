@@ -7,7 +7,7 @@ import {SimulatedFaultService} from 'Frontend/generated/endpoints';
 import type FaultState from 'Frontend/generated/ch/rupfizupfi/deck/api/services/SimulatedFaultService/FaultState';
 
 // rolesAllowed matches the Role enum names, not the Spring authority — see views/admin/user.tsx (cms).
-// Excluded from the menu: this is a bench-test tool, and it only exists at all in simulated mode.
+// Excluded from the menu: a bench-test tool that only works in simulated mode.
 export const config: ViewConfig = {
     menu: {exclude: true},
     title: 'Simulated faults',
@@ -16,23 +16,18 @@ export const config: ViewConfig = {
 };
 
 /**
- * Arms and clears the simulated bench faults, which is what makes the load-cell recovery path
- * exercisable without breaking a real machine: arm LOAD_CELL_STREAM_DEATH, watch the run stop and
- * hold, clear it, press Resume.
+ * Arms and clears simulated bench faults to exercise the load-cell recovery path: arm
+ * LOAD_CELL_STREAM_DEATH, watch the run stop and hold, clear it, press Resume.
  *
- * The generated client is unconditional but the bean is not — SimulatedFaultService only exists when
- * `deck.hardware.mode=simulated`, because generation runs under `dev` where it does. On a real bench
- * every call here 404s, and that is the expected answer rather than an error to report: this view
- * says so and stops, instead of failing at whatever the first call happened to be.
+ * SimulatedFaultService only exists under `deck.hardware.mode=simulated`, though the client is always
+ * generated. On a real bench every call 404s, and the view reports it as unavailable.
  */
 export default function SimulatedFaultsView() {
     const [faults, setFaults] = useState<FaultState[]>([]);
     const [unavailable, setUnavailable] = useState(false);
     const [loaded, setLoaded] = useState(false);
 
-    // Takes the endpoint's own type rather than a tidier one: Hilla marks both the result and every
-    // element as possibly absent, so the list is normalized once here instead of every render having
-    // to defend against a hole in it.
+    // Hilla marks the result and every element as possibly absent; normalize once here.
     function apply(call: Promise<ReadonlyArray<FaultState | undefined> | undefined>) {
         call
             .then((next) => {
@@ -75,12 +70,13 @@ export default function SimulatedFaultsView() {
                 {faults.map((fault) => (
                     <li key={fault.fault} style={{padding: 'var(--lumo-space-xs) 0'}}>
                         <Checkbox
+                            label={fault.fault}
                             checked={fault.armed}
                             onChange={(event) => apply(event.target.checked
                                 ? SimulatedFaultService.arm(fault.fault)
                                 : SimulatedFaultService.clear(fault.fault))}
+                            style={{fontWeight: 600}}
                         />
-                        <strong style={{marginLeft: 'var(--lumo-space-s)'}}>{fault.fault}</strong>
                         <div style={{marginLeft: '2.2em', color: 'var(--lumo-secondary-text-color)'}}>
                             {fault.description}
                         </div>

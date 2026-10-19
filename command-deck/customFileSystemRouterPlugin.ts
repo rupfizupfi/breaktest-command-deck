@@ -1,111 +1,56 @@
 import {fileURLToPath, pathToFileURL} from "node:url";
 import * as fs from 'fs';
+import * as path from 'path';
 import {type Plugin, ResolvedConfig} from "vite";
+import vitePluginFileSystemRouter from '@vaadin/hilla-file-router/vite-plugin.js';
+import {mergeRoutes} from "./routeMerge";
 
 let runtimeUrls;
+let cmsRoutesPath: string;
 let isUpdateInProgress = false;
 
-// Check if routes are already merged
-function isRoutesAlreadyMerged(mainRoutes, cmsRoutes) {
-    // Build a map of all main routes by path
-    const mainRouteMap = new Map();
+/**
+ * Regenerates cms's file-routes.{json,ts} from cms's own views, exactly as cms's build would. The
+ * deck otherwise reads whatever cms's last build left behind, and a stale copy drops metadata such
+ * as `rolesAllowed` from the deck's menu, server-side route check and runtime protect() alike.
+ * isDevMode keeps the JSON in cms's generated/ in every mode, where mergeFileRoutes reads it.
+ */
+const cmsRouter = vitePluginFileSystemRouter({isDevMode: true}) as any;
 
-    function addRouteToMap(routes, basePath = '') {
-        for (const route of routes) {
-            const fullPath = `${basePath}/${route.route}`;
-            mainRouteMap.set(fullPath, route);
-
-            if (route.children && route.children.length > 0) {
-                addRouteToMap(route.children, fullPath);
-            }
-        }
-    }
-
-    addRouteToMap(mainRoutes);
-
-    // Check if all CMS routes exist in main routes
-    function checkRoutesExist(routes, basePath = '') {
-        for (const route of routes) {
-            const fullPath = `${basePath}/${route.route}`;
-            if (!mainRouteMap.has(fullPath)) {
-                return false;
-            }
-
-            if (route.children && route.children.length > 0) {
-                if (!checkRoutesExist(route.children, fullPath)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    return checkRoutesExist(cmsRoutes);
-}
-
-// Merge route arrays
-function mergeRoutesArrays(mainRoutes, cmsRoutes) {
-    const result = JSON.parse(JSON.stringify(mainRoutes));
-
-    for (const cmsRoute of cmsRoutes) {
-        const matchingRoute = result.find(r => r.route === cmsRoute.route);
-
-        if (matchingRoute) {
-            // If route exists, merge children
-            if (cmsRoute.children && cmsRoute.children.length > 0) {
-                if (!matchingRoute.children) {
-                    matchingRoute.children = [];
-                }
-                matchingRoute.children = mergeRoutesArrays(
-                    matchingRoute.children,
-                    cmsRoute.children
-                );
-            }
-        } else {
-            // Add new route
-            result.push(JSON.parse(JSON.stringify(cmsRoute)));
-        }
-    }
-
-    return result;
-}
-
-function mergeFileRoutes() {
+function mergeFileRoutes(logger: ResolvedConfig['logger']) {
     const mainRoutesPath = fileURLToPath(runtimeUrls.json);
-    const cmsRoutesPath = fileURLToPath(runtimeUrls.json)
-        .replace('/command-deck/', '/cms/')
-        .replace('\\command-deck\\', '\\cms\\');
 
-    console.log('Merging routes from:', mainRoutesPath, 'and', cmsRoutesPath);
-
-    // Check if files exist
     if (!fs.existsSync(mainRoutesPath)) {
-        console.warn('Main routes file not found: ' + mainRoutesPath);
+        logger.warn('Main routes file not found: ' + mainRoutesPath);
         return;
     }
 
     if (!fs.existsSync(cmsRoutesPath)) {
-        console.warn('CMS routes file not found: ' + cmsRoutesPath);
+        logger.warn('CMS routes file not found: ' + cmsRoutesPath);
         return;
     }
 
-    // Read route files
     const mainRoutes = JSON.parse(fs.readFileSync(mainRoutesPath, 'utf-8'));
     const cmsRoutes = JSON.parse(fs.readFileSync(cmsRoutesPath, 'utf-8'));
 
-    // Merge routes
-    const mergedRoutes = mergeRoutesArrays(mainRoutes, cmsRoutes);
+    const {routes, conflicts} = mergeRoutes(mainRoutes, cmsRoutes);
+    for (const conflict of conflicts) {
+        logger.warn(`route ${conflict.path}: deck and cms disagree on ${conflict.field} `
+            + `(deck ${JSON.stringify(conflict.deck)}, cms ${JSON.stringify(conflict.cms)}); the deck's value is used`);
+    }
 
-    // Write back to main routes file
-    fs.writeFileSync(mainRoutesPath, JSON.stringify(mergedRoutes, null, 2));
-    console.log('Routes merged successfully');
+    fs.writeFileSync(mainRoutesPath, JSON.stringify(routes, null, 2));
 }
 
 export default function customFileSystemRouterPlugin(isDevMode = false): Plugin {
+    let logger: ResolvedConfig['logger'];
+    let cmsViewsDir: string;
+
     return {
         name: 'vite-plugin-custom-file-router',
         enforce: 'pre' as const,
         configResolved: function (config: ResolvedConfig) {
+            logger = config.logger;
             const _root = pathToFileURL(config.root);
             const _generatedDir = new URL('frontend/generated/', _root);
             const _outDir = pathToFileURL(config.build.outDir);
@@ -114,13 +59,19 @@ export default function customFileSystemRouterPlugin(isDevMode = false): Plugin 
                 json: new URL('file-routes.json', isDevMode ? _generatedDir : _outDir),
             };
 
+            // root is <deck>/src/main/frontend.
+            const cmsRoot = path.resolve(config.root, '../../../../cms/src/main/frontend');
+            cmsRoutesPath = path.join(cmsRoot, 'generated', 'file-routes.json');
+            cmsViewsDir = path.join(cmsRoot, 'views').replaceAll('\\', '/');
+            cmsRouter.configResolved({logger: config.logger, root: cmsRoot, build: {outDir: config.build.outDir}});
+
             config.plugins.some((plugin) => {
                 if (plugin.name === 'vite-plugin-file-router') {
-                    const buildStart = plugin.buildStart;
+                    const buildStart = plugin.buildStart as Function;
                     plugin.buildStart = async function () {
-                        await buildStart.call(this).then(() => {
-                            mergeFileRoutes();
-                        });
+                        await buildStart.call(this);
+                        await cmsRouter.buildStart.call(this);
+                        mergeFileRoutes(logger);
                     };
 
                     return true;
@@ -129,14 +80,23 @@ export default function customFileSystemRouterPlugin(isDevMode = false): Plugin 
             });
         },
 
+        async hotUpdate(context) {
+            if (!context.file.replaceAll('\\', '/').startsWith(cmsViewsDir)) {
+                return undefined;
+            }
+            const modules = await cmsRouter.hotUpdate.call(this, context);
+            mergeFileRoutes(logger);
+            return modules;
+        },
+
         configureServer: function (server) {
             server.hot.on('fs-route-update', () => {
                 if (isUpdateInProgress) {
-                    console.warn('File route update already in progress, skipping');
+                    logger.warn('File route update already in progress, skipping');
                     return;
                 }
                 isUpdateInProgress = true;
-                mergeFileRoutes();
+                mergeFileRoutes(logger);
                 isUpdateInProgress = false;
             });
         }

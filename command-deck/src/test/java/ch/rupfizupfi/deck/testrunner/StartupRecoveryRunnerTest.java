@@ -3,12 +3,24 @@ package ch.rupfizupfi.deck.testrunner;
 import ch.rupfizupfi.deck.data.RunStatus;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.data.TestResultRepository;
+import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.HardwareModeInfo;
+import ch.rupfizupfi.deck.device.api.ControlSource;
 import ch.rupfizupfi.deck.device.api.Drive;
+import ch.rupfizupfi.deck.device.api.DriveDeadlineException;
+import ch.rupfizupfi.deck.device.api.DriveGating;
+import ch.rupfizupfi.deck.device.api.DriveLane;
 import ch.rupfizupfi.deck.device.api.DriveProvider;
+import ch.rupfizupfi.deck.device.frequencyinverter.FrequencyInverterDevice;
+import ch.rupfizupfi.deck.device.simulated.SimulatedBench;
+import ch.rupfizupfi.deck.device.simulated.SimulatedBenchProperties;
+import ch.rupfizupfi.deck.device.simulated.SimulatedDriveProvider;
+import ch.rupfizupfi.deck.device.simulated.SimulatedFaultSwitches;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.ObjectProvider;
 import tools.jackson.core.type.TypeReference;
@@ -24,21 +36,27 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * The synchronous sweep, plus the de-energize that follows it. The de-energize runs on a detached
- * daemon thread ("startup-drive-deenergize") because a drive open can wedge forever, so the tests
- * that cross into it synchronize on the stubbed drive's {@code close()} — the thread's last drive
- * call — with a bounded await, never a sleep.
+ * The synchronous sweep, plus the boot de-energize. The de-energize runs on a detached daemon thread
+ * ("startup-drive-deenergize") because a drive open can wedge forever, so the tests that cross into
+ * it synchronize on {@link BootDeEnergizeGate}, which that thread opens last, with a bounded await.
+ * The device is a real {@link FrequencyInverterDevice}, so its reference count and monitor are
+ * the production ones.
  */
 class StartupRecoveryRunnerTest {
 
@@ -46,13 +64,34 @@ class StartupRecoveryRunnerTest {
     };
 
     private final TestResultRepository repository = mock(TestResultRepository.class);
-    @SuppressWarnings("unchecked")
-    private final ObjectProvider<DriveProvider> driveProviders = mock(ObjectProvider.class);
+    private final DriveProvider driveProvider = mock(DriveProvider.class);
+    private final Drive drive = mock(Drive.class);
+    private final FrequencyInverterDevice device = new FrequencyInverterDevice(driveProvider);
     private final ObjectMapper mapper = new ObjectMapper();
 
+    StartupRecoveryRunnerTest() {
+        when(driveProvider.open()).thenReturn(drive);
+    }
+
+    @AfterEach
+    void leaveTheGateOpen() {
+        // Process-wide: a test that left it closed would hold back the starts of TestRunnerThreadTest.
+        BootDeEnergizeGate.resetForTests();
+    }
+
     private StartupRecoveryRunner runner(String hardwareMode) {
+        return runner(hardwareMode, ControlSource.UNKNOWN);
+    }
+
+    private StartupRecoveryRunner runner(String hardwareMode, ControlSource place) {
         return new StartupRecoveryRunner(repository, mapper, new HardwareModeInfo(hardwareMode),
-                driveProviders);
+                () -> device, true, d -> place);
+    }
+
+    private static void awaitDeEnergize() throws InterruptedException {
+        assertThat(BootDeEnergizeGate.awaitReady(5000))
+                .as("the startup-drive-deenergize thread finished")
+                .isTrue();
     }
 
     private static TestResult orphan(long id, RunStatus status, String interruptionLog) {
@@ -142,9 +181,8 @@ class StartupRecoveryRunnerTest {
 
     @Test
     void markerLeavesARealPersisterDocumentIntactAndLandsInEvents() {
-        // A real crashed run's document: TestResultStatusPersister's LogDocument. The marker
-        // goes into `events`, deliberately a separate key from the persister's `transitions`:
-        // the sweep never injects synthetic entries into the state machine's own record.
+        // A crashed run's TestResultStatusPersister LogDocument. The marker goes into `events`,
+        // never into the state machine's own `transitions`.
         String existing = "{\"schema\":1,"
                 + "\"gates\":{\"reconnectWindowMillis\":10000,\"backoffMillis\":[1000],"
                 + "\"safeHoldTimeoutMillis\":60000,\"maxHoldForResumeMillis\":30000,"
@@ -178,9 +216,8 @@ class StartupRecoveryRunnerTest {
 
     @Test
     void aSecondSweepAppendsToTheEventsArrayInsteadOfReplacingIt() {
-        // The one real producer of an `events` array today is this sweep itself, so the merge
-        // into an existing array is exercised by sweeping the same row twice - a row whose
-        // result was re-run after a swept boot and then orphaned again.
+        // The sweep is the only producer of `events`, so merging into an existing array is
+        // exercised by sweeping the same row twice.
         TestResult row = orphan(1L, RunStatus.IN_PROGRESS, null);
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of(row));
         runner("simulated").onApplicationReady(null);
@@ -214,111 +251,315 @@ class StartupRecoveryRunnerTest {
     }
 
     @Test
-    void zeroOrphansNeverConsultTheDriveProvider() {
+    void zeroOrphansStillDeEnergizeARealBench() throws Exception {
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
 
         runner("real").onApplicationReady(null);
+        awaitDeEnergize();
 
         verify(repository, never()).save(any());
-        verifyNoInteractions(driveProviders);
+        verify(drive).stop();
     }
 
     @Test
-    void simulatedModeShortCircuitsBeforeAnyDriveAccess() {
+    void simulatedModeNeverTouchesTheDrive() {
         when(repository.findByRunStatusIn(anyCollection()))
                 .thenReturn(List.of(orphan(1L, RunStatus.IN_PROGRESS, null)));
 
         runner("simulated").onApplicationReady(null);
 
-        verifyNoInteractions(driveProviders);
+        assertThat(BootDeEnergizeGate.isPending()).isFalse();
+        verifyNoInteractions(driveProvider);
     }
 
     @Test
-    void missingDriveProviderBeanWarnsInsteadOfThrowing() {
-        // A driver jar absent at launch means no provider bean at all; boot recovery must
-        // not turn that into a failure. With a null provider the de-energize thread is
-        // never started, so this test stays synchronous.
+    void theDisablingPropertyKeepsARealBootOffTheHardware() {
+        // What DriverPluginBootTest relies on to boot real mode without touching a drive.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        var runner = new StartupRecoveryRunner(repository, mapper, new HardwareModeInfo("real"),
+                () -> device, false, d -> ControlSource.REMOTE);
+
+        assertThat(BootDeEnergizeGate.isPending()).isFalse();
+        runner.onApplicationReady(null);
+
+        assertThat(BootDeEnergizeGate.isPending()).isFalse();
+        verifyNoInteractions(driveProvider);
+    }
+
+    @Test
+    void missingDeviceWarnsAndOpensTheGateInsteadOfThrowing() {
         TestResult row = orphan(1L, RunStatus.IN_PROGRESS, null);
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of(row));
-        when(driveProviders.getIfAvailable()).thenReturn(null);
+        var runner = new StartupRecoveryRunner(repository, mapper, new HardwareModeInfo("real"),
+                () -> null, true, d -> ControlSource.REMOTE);
 
-        assertThatCode(() -> runner("real").onApplicationReady(null))
-                .doesNotThrowAnyException();
+        assertThatCode(() -> runner.onApplicationReady(null)).doesNotThrowAnyException();
 
-        verify(driveProviders).getIfAvailable();
         // The sweep is the part that must always happen, and it already has.
         assertThat(row.runStatus).isEqualTo(RunStatus.ABORTED);
+        assertThat(BootDeEnergizeGate.isPending()).isFalse();
     }
 
     @Test
-    void failingQuerySkipsRecoveryWithoutThrowing() {
+    void failingQueryStillDeEnergizes() throws Exception {
         when(repository.findByRunStatusIn(anyCollection()))
                 .thenThrow(new RuntimeException("database not reachable"));
 
         assertThatCode(() -> runner("real").onApplicationReady(null))
                 .doesNotThrowAnyException();
+        awaitDeEnergize();
 
         verify(repository, never()).save(any());
-        verifyNoInteractions(driveProviders);
+        verify(drive).stop();
     }
 
     @Test
-    void deEnergizeDropsGeneralEnableFirstThenSpeedThenStartThenCloses() throws Exception {
+    void deEnergizeIsOneStopCallThenReleasesTheHandle() throws Exception {
         when(repository.findByRunStatusIn(anyCollection()))
                 .thenReturn(List.of(orphan(1L, RunStatus.IN_PROGRESS, null)));
-        Drive drive = mock(Drive.class);
-        CountDownLatch closed = new CountDownLatch(1);
-        doAnswer(invocation -> {
-            closed.countDown();
-            return null;
-        }).when(drive).close();
-        armRealDrive(drive);
 
-        runner("real").onApplicationReady(null);
+        runner("real", ControlSource.REMOTE).onApplicationReady(null);
+        awaitDeEnergize();
 
-        assertThat(closed.await(5, TimeUnit.SECONDS))
-                .as("the startup-drive-deenergize thread reached close()")
-                .isTrue();
-        // General enable FIRST: dropping it de-energizes the output stage and lets the motor
-        // coast (the coast-never-reverse rule) before any reference or start bit changes.
+        // Drive#stop(), as the safe stop sends it: start and general enable cleared and the speed
+        // reference zero in one telegram on a gated driver, so the motor coasts and never reverses.
         InOrder order = inOrder(drive);
-        order.verify(drive).setGeneralEnable(false);
+        order.verify(drive).stop();
+        order.verify(drive).close();
+        verify(drive, never()).setGeneralEnable(anyBoolean());
+        verify(drive, never()).setSpeedReferenceValueAsRpm(anyInt());
+        verify(drive, never()).setStart(anyBoolean());
+        assertThat(device.isDriveHandleOpen()).isFalse();
+    }
+
+    /**
+     * BL-121: a plugin built before device-api 1.5.0 answers CALLER_SERIALIZES and has no stop() of
+     * its own. The deck refuses to energize through it, but the boot still de-energizes it with the
+     * contract's two-call fallback stop.
+     */
+    @Test
+    void anUngatedPluginIsStillDeEnergizedAtBoot() throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        when(drive.gating()).thenCallRealMethod();
+        doCallRealMethod().when(drive).stop();
+        assertThat(drive.gating()).isEqualTo(DriveGating.CALLER_SERIALIZES);
+
+        runner("real", ControlSource.REMOTE).onApplicationReady(null);
+        awaitDeEnergize();
+
+        InOrder order = inOrder(drive);
+        order.verify(drive).setControlParameters(false, false, null, null, null);
         order.verify(drive).setSpeedReferenceValueAsRpm(0);
-        order.verify(drive).setStart(false);
         order.verify(drive).close();
     }
 
     @Test
-    void everyDriveCallThrowingStillReachesEveryRemainingCallAndClose() throws Exception {
-        // Best-effort de-energize: a switched-off bench errors every register write, and every
-        // remaining write plus close() still runs.
-        when(repository.findByRunStatusIn(anyCollection()))
-                .thenReturn(List.of(orphan(1L, RunStatus.IN_PROGRESS, null)));
-        Drive drive = mock(Drive.class);
-        doThrow(new RuntimeException("no comms")).when(drive).setGeneralEnable(false);
-        doThrow(new RuntimeException("no comms")).when(drive).setSpeedReferenceValueAsRpm(0);
-        doThrow(new RuntimeException("no comms")).when(drive).setStart(false);
-        CountDownLatch closed = new CountDownLatch(1);
-        doAnswer(invocation -> {
-            closed.countDown();
-            throw new RuntimeException("close failed too");
-        }).when(drive).close();
-        armRealDrive(drive);
+    void aDriveUnderLocalControlIsLeftAlone() throws Exception {
+        // An operator may be jogging at the keypad: not one write may reach the drive.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+
+        runner("real", ControlSource.LOCAL).onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(drive, never()).stop();
+        verify(drive, never()).setGeneralEnable(anyBoolean());
+        verify(drive, never()).setSpeedReferenceValueAsRpm(anyInt());
+        verify(drive, never()).setStart(anyBoolean());
+        verify(drive, never()).setControlParameters(any(), any(), any(), any(), any());
+        assertThat(device.isDriveHandleOpen()).isFalse();
+    }
+
+    /** The Spring constructor, so the probe is the production one: {@link Drive#readControlSource}. */
+    private StartupRecoveryRunner wiredRunner(FrequencyInverterDevice wiredDevice) {
+        DeviceService deviceService = mock(DeviceService.class);
+        when(deviceService.getFrequencyInverter()).thenReturn(wiredDevice);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<DeviceService> deviceServices = mock(ObjectProvider.class);
+        when(deviceServices.getIfAvailable()).thenReturn(deviceService);
+        return new StartupRecoveryRunner(repository, mapper, new HardwareModeInfo("real"), deviceServices, true);
+    }
+
+    @Test
+    void theWiredProbeAsksTheDriveAndSkipsWhenItReportsLocal() throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        when(drive.readControlSource()).thenReturn(ControlSource.LOCAL);
+
+        wiredRunner(device).onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(drive).readControlSource();
+        verify(drive, never()).stop();
+        verify(drive, never()).setGeneralEnable(anyBoolean());
+        verify(drive, never()).setSpeedReferenceValueAsRpm(anyInt());
+        verify(drive, never()).setStart(anyBoolean());
+        verify(drive).close();
+    }
+
+    @Test
+    void aPluginOlderThanTheControlSourceQueryStillDeEnergizes() throws Exception {
+        // Built against device-api < 1.3.0: the contract's default answers UNKNOWN.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        when(drive.readControlSource()).thenCallRealMethod();
+
+        wiredRunner(device).onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(drive).stop();
+    }
+
+    @Test
+    void aFailedControlSourceReadStillDeEnergizes() throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        when(drive.readControlSource()).thenThrow(new RuntimeException("Timeout"));
+
+        wiredRunner(device).onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(drive).stop();
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @EnumSource(value = ControlSource.class, names = {"REMOTE", "UNKNOWN"})
+    void everyAnswerButLocalDeEnergizes(ControlSource source) throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+
+        runner("real", source).onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(drive).stop();
+    }
+
+    /** End to end over the simulated drive, whose control source the bench holds. */
+    @ParameterizedTest
+    @EnumSource(ControlSource.class)
+    void theSimulatedDriveIsDeEnergizedUnlessItReportsLocal(ControlSource source) throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        // Never started, so no plant tick thread runs and nothing needs stopping.
+        SimulatedFaultSwitches faults = new SimulatedFaultSwitches();
+        SimulatedBench bench = new SimulatedBench(new SimulatedBenchProperties(), faults);
+        SimulatedDriveProvider provider = new SimulatedDriveProvider(bench, faults);
+        Drive operator = provider.open();
+        operator.setGeneralEnable(true);
+        operator.setStart(true);
+        bench.setControlSource(source);
+
+        wiredRunner(new FrequencyInverterDevice(provider)).onApplicationReady(null);
+        awaitDeEnergize();
+
+        Map<String, Boolean> control = provider.open().getControlParameters();
+        boolean leftAlone = source == ControlSource.LOCAL;
+        assertThat(control.get("generalEnable")).isEqualTo(leftAlone);
+        assertThat(control.get("start")).isEqualTo(leftAlone);
+    }
+
+    @Test
+    void aThrowingStopStillReachesTheRelease() throws Exception {
+        // Best-effort de-energize: a switched-off bench errors the stop, and the handle release
+        // still runs.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        doThrow(new RuntimeException("no comms")).when(drive).stop();
+        doThrow(new RuntimeException("close failed too")).when(drive).close();
+
+        runner("real").onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(drive).stop();
+        verify(drive).close();
+        assertThat(device.isDriveHandleOpen()).isFalse();
+    }
+
+    @Test
+    void aStopThatMissesItsDeadlineIsLoggedAndTheHandleReleased() throws Exception {
+        // A gated driver still sends a STOP that missed its deadline once the transaction ahead ends.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        doThrow(new DriveDeadlineException(DriveLane.STOP, "stop not answered within 1500 ms"))
+                .when(drive).stop();
+
+        assertThatCode(() -> runner("real").onApplicationReady(null)).doesNotThrowAnyException();
+        awaitDeEnergize();
+
+        verify(drive).stop();
+        verify(drive).close();
+        assertThat(BootDeEnergizeGate.isPending()).isFalse();
+    }
+
+    @Test
+    void aFailingOpenOpensTheGateWithoutThrowing() throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        when(driveProvider.open()).thenThrow(new IllegalStateException("bench switched off"));
+
+        runner("real").onApplicationReady(null);
+        awaitDeEnergize();
+
+        verifyNoInteractions(drive);
+    }
+
+    @Test
+    void anAlreadyOpenHandleIsSharedNeverASecondSession() throws Exception {
+        // H-13: a private handle put a second USB session on the drive. A holder that opened the
+        // device first must see its handle reused and left open.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        device.connect();
+
+        runner("real").onApplicationReady(null);
+        awaitDeEnergize();
+
+        verify(driveProvider, times(1)).open();
+        verify(drive).stop();
+        verify(drive, never()).close();
+        assertThat(device.isDriveHandleOpen()).isTrue();
+        device.disconnect();
+    }
+
+    @Test
+    void theDeEnergizeWaitsForATierTwoSessionToEnd() throws Exception {
+        // Its connect() takes the device's monitor, which a safe stop's tier 2 holds across its fresh
+        // session, so the boot never opens or shares a handle beside that session (OQ-50).
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = Thread.ofPlatform().start(() -> device.runExclusive(() -> {
+            holding.countDown();
+            try {
+                release.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        assertThat(holding.await(5, TimeUnit.SECONDS)).isTrue();
 
         runner("real").onApplicationReady(null);
 
-        assertThat(closed.await(5, TimeUnit.SECONDS))
-                .as("close() is reached even when every drive call throws")
-                .isTrue();
-        verify(drive).setGeneralEnable(false);
-        verify(drive).setSpeedReferenceValueAsRpm(0);
-        verify(drive).setStart(false);
+        verify(drive, after(300).never()).stop();
+        verifyNoInteractions(driveProvider);
+        release.countDown();
+        holder.join(5000);
+        awaitDeEnergize();
+        verify(drive).stop();
     }
 
-    /** Wires the mocked ObjectProvider to hand out a provider whose open() returns this drive. */
-    private void armRealDrive(Drive drive) {
-        DriveProvider provider = mock(DriveProvider.class);
-        when(provider.open()).thenReturn(drive);
-        when(driveProviders.getIfAvailable()).thenReturn(provider);
+    @Test
+    void theGateHoldsStartsFromConstructionUntilTheDeEnergizeIsDone() throws Exception {
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        CountDownLatch inDeEnergize = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            inDeEnergize.countDown();
+            release.await(5, TimeUnit.SECONDS);
+            return null;
+        }).when(drive).stop();
+
+        StartupRecoveryRunner runner = runner("real");
+        // Before ApplicationReadyEvent: the web server is already taking requests by then.
+        assertThat(BootDeEnergizeGate.isPending()).isTrue();
+
+        runner.onApplicationReady(null);
+        assertThat(inDeEnergize.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(BootDeEnergizeGate.isPending()).isTrue();
+
+        release.countDown();
+        awaitDeEnergize();
+        assertThat(BootDeEnergizeGate.isPending()).isFalse();
     }
 }

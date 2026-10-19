@@ -16,34 +16,26 @@ import java.util.Set;
 /**
  * Refuses to start when the selected {@link HardwareMode} cannot be served.
  * <p>
- * A {@code BeanFactoryPostProcessor} rather than an ordinary bean, and that is the whole point: it
- * runs after the bean definitions are known but before any singleton is instantiated, so it reports
- * the missing drivers itself instead of letting {@code DeviceService}'s constructor surface them as
- * a {@code NoSuchBeanDefinitionException} that names an interface and not a jar.
+ * A {@code BeanFactoryPostProcessor} so it runs before any singleton is instantiated and can name
+ * the missing jar, instead of a {@code NoSuchBeanDefinitionException} naming an interface.
  * <p>
- * Never falls back. Absent hardware selecting a simulator is the failure mode this exists to make
- * impossible.
+ * Never falls back to a simulator.
+ * <p>
+ * It sees bean definitions only, so it cannot tell whether a provider's plugin checked itself
+ * against the contract; {@link PluginContractCheck} does that once the provider exists.
  */
 @Component
 public class HardwareModeCheck implements BeanFactoryPostProcessor {
 
     /**
-     * The only profiles a simulator may run under — an allowlist, not a blocklist.
+     * The only profiles a simulator may run under; an allowlist, so an unknown profile fails safe.
      * <p>
-     * Blocklisting the deployment profile was the earlier shape and it had the failure mode
-     * backwards: any profile nobody remembered to add was permitted to simulate. An allowlist fails
-     * safe for profiles that do not exist yet, and enabling one becomes a reviewed edit here.
-     * <p>
-     * {@code docker} is on it because the deck container is a <b>simulation and test deployment</b>,
-     * not a bench: it runs a Linux image, where both drivers refuse to register on principle, so it
-     * could not reach hardware even with a jar. What keeps that from also permitting a simulator on
-     * the real bench is {@code containsAll} below plus the {@code bench} profile: a native bench run
-     * activates {@code bench}, which groups to {@code docker}, so its active set is
-     * {@code [bench, docker]} — and {@code bench} is deliberately <b>not</b> on this list, so
-     * simulation there is refused. That makes {@code bench} the marker for "this JVM may reach the
-     * machine", and {@code script/run-bench.ps1} always sets it. Starting a bench natively with
-     * {@code SPRING_PROFILES_ACTIVE=docker} instead would bypass that, which is why the script is
-     * the documented way in ({@code doc/05-ops/bench-deployment.md}).
+     * {@code docker} is on it because the deck container is the simulation and test deployment: a
+     * Linux image, where both drivers refuse to register. A native bench run activates {@code bench}
+     * (grouped to {@code docker}), and {@code bench} is not on this list, so {@code containsAll}
+     * refuses simulation there. {@code script/run-bench.ps1} always sets it; starting a bench with
+     * only {@code SPRING_PROFILES_ACTIVE=docker} would bypass the check
+     * ({@code doc/ops/bench-deployment.md}).
      */
     private static final Set<String> SIMULATION_PROFILES = Set.of("dev", "docker");
 
@@ -75,7 +67,7 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
                             + "script/run-bench.ps1 (which sets LOADER_PATH for you) or bootRun "
                             + "with --deck.hardware.mode=real. Check the jars themselves with "
                             + "`gradlew :command-deck:driverPluginTest`; provenance and build "
-                            + "requirements are in doc/03-backend/driver-jars.md. If this is a "
+                            + "requirements are in doc/dev/backend/driver-jars.md. If this is a "
                             + "container: it cannot drive the bench at all - both drivers are "
                             + "Windows-only - so it is meant to run "
                             + "deck.hardware.mode=simulated, and real mode here is a "
@@ -95,11 +87,8 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
     }
 
     /**
-     * Simulated hardware must never reach the machine. Every active profile must be one that
-     * permits simulation, so adding <em>any</em> other profile refuses — including alongside
-     * {@code dev}, which a blocklist on the deployment profile got wrong in the other direction.
-     * <p>
-     * Runs before the datasource, so the refusal never depends on a reachable database.
+     * Simulated hardware must never reach the machine: every active profile must permit simulation,
+     * so any other profile refuses, even alongside {@code dev}. Runs before the datasource.
      */
     private void requireSimulationProfile(Environment environment) {
         Set<String> active = effectiveProfiles(environment);
@@ -120,10 +109,8 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
     }
 
     /**
-     * {@code getActiveProfiles()} returns empty rather than the defaults when nothing is set, so the
-     * fallback has to be explicit — without it an unconfigured boot would present an empty set,
-     * which any allowlist trivially contains, and the guard would pass on exactly the configuration
-     * it is most likely to meet.
+     * {@code getActiveProfiles()} returns empty rather than the defaults when nothing is set, and any
+     * allowlist contains an empty set, so the fallback must be explicit.
      */
     private static Set<String> effectiveProfiles(Environment environment) {
         String[] active = environment.getActiveProfiles();
@@ -133,14 +120,10 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
 
     /**
      * True inside a context booted by the build rather than by an operator. {@code hillaGenerate}
-     * starts a Spring AOT context purely to discover {@code @BrowserCallable} classes, and that
-     * context is not going to drive anything.
-     * <p>
-     * Load-bearing for every build, not just a driverless one: drivers now arrive at launch over
-     * loader.path, so a build context never has a provider bean and the default mode is real.
-     * Without this exemption the frontend client could not be generated without the vendor jars.
+     * starts a Spring AOT context to discover {@code @BrowserCallable} classes. Drivers arrive at
+     * launch over loader.path, so without this exemption no build could generate the frontend client.
      */
-    private static boolean isBuildTimeContext() {
+    static boolean isBuildTimeContext() {
         return org.springframework.aot.AotDetector.useGeneratedArtifacts()
                 || Boolean.getBoolean("spring.aot.processing");
     }
@@ -168,7 +151,8 @@ public class HardwareModeCheck implements BeanFactoryPostProcessor {
         }
     }
 
-    private static String message(String problem, String action) {
+    /** The startup-refusal format, shared with {@link PluginContractCheck}. */
+    static String message(String problem, String action) {
         return System.lineSeparator()
                 + System.lineSeparator() + "*** COMMAND DECK CANNOT START ***"
                 + System.lineSeparator()

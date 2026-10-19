@@ -10,6 +10,7 @@ import {createAutoComboBoxService} from "cms/components/combobox/service";
 import OwnerSelector from "cms/components/owner/OwnerSelector";
 import {OwnerGridView} from "cms/components/owner/OwnerGridView";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
+import CurrentUserGate from "cms/components/owner/CurrentUserGate";
 import {Link} from "react-router";
 
 export const config: ViewConfig = {menu: {order: 2, icon: 'line-awesome/svg/file.svg'}, title: 'Projects', loginRequired: true};
@@ -20,61 +21,63 @@ export default function ProjectView() {
     const service = createAutoComboBoxService(CustomerService, ["organization", "firstname", "lastname"]);
 
     return (
-        <AutoCrud
-            model={ProjectModel}
-            service={ProjectService}
-            gridProps={{
-                columnOptions: {
-                    owner: {
-                        renderer: OwnerGridView
+        <CurrentUserGate>
+            <AutoCrud
+                model={ProjectModel}
+                service={ProjectService}
+                gridProps={{
+                    columnOptions: {
+                        owner: {
+                            renderer: OwnerGridView
+                        },
+                        customer: {
+                            renderer: ({item}: { item: Project }) => <span>{item.customer?.label}</span>,
+                            headerFilterRenderer: ({setFilter}) => (
+                                <TextField
+                                    placeholder='Filter...'
+                                    onValueChanged={({detail}) =>
+                                        setFilter({
+                                            "@type": "or",
+                                            "children": [
+                                                {
+                                                    propertyId: 'customer.organization',
+                                                    filterValue: detail.value,
+                                                    matcher: Matcher.CONTAINS,
+                                                    '@type': 'propertyString',
+                                                },
+                                                {
+                                                    propertyId: 'customer.firstname',
+                                                    filterValue: detail.value,
+                                                    matcher: Matcher.CONTAINS,
+                                                    '@type': 'propertyString',
+                                                },
+                                                {
+                                                    propertyId: 'customer.lastname',
+                                                    filterValue: detail.value,
+                                                    matcher: Matcher.CONTAINS,
+                                                    '@type': 'propertyString',
+                                                }]
+                                        })
+                                    }
+                                />
+                            )
+                        }
                     },
-                    customer: {
-                        renderer: ({item}: { item: Project }) => <span>{item.customer?.label}</span>,
-                        headerFilterRenderer: ({setFilter}) => (
-                            <TextField
-                                placeholder='Filter...'
-                                onValueChanged={({detail}) =>
-                                    setFilter({
-                                        "@type": "or",
-                                        "children": [
-                                            {
-                                                propertyId: 'customer.organization',
-                                                filterValue: detail.value,
-                                                matcher: Matcher.CONTAINS,
-                                                '@type': 'propertyString',
-                                            },
-                                            {
-                                                propertyId: 'customer.firstname',
-                                                filterValue: detail.value,
-                                                matcher: Matcher.CONTAINS,
-                                                '@type': 'propertyString',
-                                            },
-                                            {
-                                                propertyId: 'customer.lastname',
-                                                filterValue: detail.value,
-                                                matcher: Matcher.CONTAINS,
-                                                '@type': 'propertyString',
-                                            }]
-                                    })
-                                }
-                            />
-                        )
+                    customColumns: [
+                        <GridColumn key="results" renderer={({item}: { item: Project }) => <Link target="_blank" to={`/api/DownloadEndpoint/project/${item.id}`}>Export</Link>} header="Results" autoWidth/>
+                    ]
+                }}
+                formProps={{
+                    fieldOptions: {
+                        owner: {
+                            renderer: ({field}) => <OwnerSelector {...field} />,
+                        },
+                        customer: {
+                            renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="label" itemLabelPath="label" service={service}/>,
+                        }
                     }
-                },
-                customColumns: [
-                    <GridColumn key="results" renderer={({item}: { item: Project }) => <Link target="_blank" to={`/api/DownloadEndpoint/project/${item.id}`}>Export</Link>} header="Results" autoWidth/>
-                ]
-            }}
-            formProps={{
-                fieldOptions: {
-                    owner: {
-                        renderer: ({field}) => <OwnerSelector {...field} />,
-                    },
-                    customer: {
-                        renderer: ({field}) => <AutoComboBox {...field} itemIdPath="id" itemValuePath="label" itemLabelPath="label" service={service}/>,
-                    }
-                }
-            }}
-        />
+                }}
+            />
+        </CurrentUserGate>
     );
 }

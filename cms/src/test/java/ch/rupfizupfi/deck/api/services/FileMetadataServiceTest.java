@@ -9,6 +9,7 @@ import ch.rupfizupfi.deck.service.FileService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -189,6 +190,81 @@ class FileMetadataServiceTest {
         payload.setTestResult(foreignResult);
         assertThat(service.save(payload)).isSameAs(payload);
         verify(repository).save(payload);
+    }
+
+    @Test
+    void anUpdateKeepsTheStoredPathNameAndResult() {
+        ownRow.setFilePath("1.png");
+        FileMetadata payload = new FileMetadata("renamed.png");
+        payload.setId(OWN_ROW_ID);
+        payload.setFilePath("../../drivers/usbmodbus.jar");
+
+        FileMetadata saved = service.save(payload);
+
+        assertThat(saved.getFilePath()).isEqualTo("1.png");
+        assertThat(saved.getFileName()).isEqualTo("own.png");
+        assertThat(saved.getTestResult()).isSameAs(ownRow.getTestResult());
+    }
+
+    @Test
+    void aNewRowGetsNoClientChosenPath() {
+        FileMetadata payload = new FileMetadata("upload.png");
+        payload.setFilePath("../../drivers/usbmodbus.jar");
+
+        assertThat(service.save(payload).getFilePath()).isNull();
+    }
+
+    @Test
+    void existsIsFalseForARowOfAnotherOwner() {
+        assertThat(service.exists(FOREIGN_ROW_ID)).isFalse();
+        assertThat(service.exists(OWN_ROW_ID)).isTrue();
+    }
+
+    @Test
+    void findReadableResolvesAnOwnRowByItsStoredName() {
+        when(repository.findByFilePath("1.png")).thenReturn(Optional.of(ownRow));
+
+        assertThat(service.findReadable("1.png")).contains(ownRow);
+    }
+
+    @Test
+    void findReadableHidesARowOfAnotherOwner() {
+        when(repository.findByFilePath("2.png")).thenReturn(Optional.of(foreignRow));
+
+        assertThat(service.findReadable("2.png")).isEmpty();
+    }
+
+    @Test
+    void findReadableIsEmptyForANameNoRowStores() {
+        when(repository.findByFilePath(any())).thenReturn(Optional.empty());
+
+        assertThat(service.findReadable("999.png")).isEmpty();
+    }
+
+    @Test
+    void findReadableResolvesAnUnattachedUploadForAnyone() {
+        FileMetadata unattached = new FileMetadata("loose.png");
+        unattached.setId(4L);
+        when(repository.findByFilePath("4.png")).thenReturn(Optional.of(unattached));
+
+        assertThat(service.findReadable("4.png")).contains(unattached);
+    }
+
+    @Test
+    void findReadableResolvesAnotherOwnersRowForAnAdmin() {
+        authenticateAs("ROLE_ADMIN");
+        when(repository.findByFilePath("2.png")).thenReturn(Optional.of(foreignRow));
+
+        assertThat(service.findReadable("2.png")).contains(foreignRow);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void countGoesThroughTheReadRule() {
+        when(repository.count(any(Specification.class))).thenReturn(1L);
+
+        assertThat(service.count(null)).isEqualTo(1L);
+        verify(repository, never()).count();
     }
 
     private void authenticateAs(String role) {

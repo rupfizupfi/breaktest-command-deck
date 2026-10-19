@@ -28,7 +28,7 @@ flowchart LR
     DECK -- "implementation project(':cms')<br/>shared package ch.rupfizupfi.deck" --> CMS
     DECK -- "JDBC" --> H2
     DECK -- "JDBC" --> PG
-    CMS -- "JDBC + data.sql seed" --> H2
+    CMS -- "JDBC" --> H2
     CMS -- "JDBC" --> PG
 
     DECK -- "USB" --> LC

@@ -1,9 +1,6 @@
 /**
- * Pure-logic tests for the `/topic/load-cell` batch parser (node environment — no browser, no DOM).
- *
- * Two invariants the subscribers cannot state: a batch that is not an array stays an empty batch
- * rather than a throw inside a STOMP callback, and an empty batch yields no force at all, so a
- * readout keeps its last value instead of falling to zero.
+ * A non-array or non-JSON body becomes an empty batch rather than a throw inside a STOMP callback, and an empty
+ * batch yields no force, so a readout keeps its last value instead of falling to zero.
  */
 import { describe, expect, it } from 'vitest';
 import { latestForce, parseBatch, peakForce } from '../../main/frontend/service/loadCellBatch.js';
@@ -15,6 +12,11 @@ describe('parseBatch', () => {
 
   it('returns an empty batch for a body that is not an array', () => {
     expect(parseBatch('{}')).toEqual([]);
+  });
+
+  it('returns an empty batch for a body that is not JSON at all', () => {
+    expect(parseBatch('[{"timestamp":1000,')).toEqual([]);
+    expect(parseBatch('')).toEqual([]);
   });
 });
 

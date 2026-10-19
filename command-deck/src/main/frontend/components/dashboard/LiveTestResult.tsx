@@ -19,8 +19,11 @@ import {
     Tooltip
 } from 'chart.js';
 import {Button} from "@vaadin/react-components/Button.js";
+import {ConfirmDialog} from '@vaadin/react-components/ConfirmDialog.js';
 import {HorizontalLayout, VerticalLayout} from "@vaadin/react-components";
 import LogComponent from "cms/components/dashboard/LogComponent";
+import {appendLog, EMPTY_LOG, LogBuffer} from "cms/components/dashboard/logBuffer";
+import ErrorBoundary from "cms/components/ErrorBoundary";
 import {useLiveStatus} from "Frontend/service/useLiveStatus";
 import {useConnectionState} from "Frontend/service/useTestState";
 import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
@@ -47,16 +50,13 @@ export default function LiveTestResult({testResult, reset}: TestResultBoardProps
     const [runningTestResult, setRunningTestResult] = useState<TestResult | null>(null);
     useEffect(() => {
         if (!testResult) {
-            // Optional-chained because Hilla types an endpoint result as possibly undefined: the
-            // call resolves to nothing if the endpoint is unavailable. Dev mode's own typecheck
-            // flags a bare property access here even when the committed client happens not to.
+            // Hilla types the result as possibly undefined.
             TestRunnerService.status().then((statusResponse) => {
                 if (statusResponse?.isRunning && statusResponse.testResult) {
                     setRunningTestResult(statusResponse.testResult);
                 }
             }).catch(() => {
-                // A status probe that fails must not blank the live view; the banner and the
-                // staleness indicator already annunciate a server that is not answering.
+                // A failed probe must not blank the view; the banner already shows the lost server.
             });
         } else {
             setRunningTestResult(null);
@@ -73,12 +73,16 @@ export default function LiveTestResult({testResult, reset}: TestResultBoardProps
         return <div>No test running</div>;
     }
 
-    return <TestResultGraph testResult={activeTestResult} reset={reset}/>;
+    // Only an explicit Run hands a testResult in; a run found through status() is watched, never
+    // started: a late start() would re-energize the motor for a run that just ended.
+    return <TestResultGraph testResult={activeTestResult} reset={reset} startOnMount={testResult !== undefined}/>;
 }
 
 export interface TestResultGraphProps {
     testResult: TestResult;
     reset: () => void;
+    /** True only for the view that issued Run; a watching view must never call start(). */
+    startOnMount: boolean;
 }
 
 /** Readouts only have to look live to a human; the chart carries the detail. */
@@ -92,7 +96,7 @@ interface Readout {
 
 const NO_READING: Readout = {current: 0, max: 0, hasValue: false};
 
-export function TestResultGraph({testResult, reset}: TestResultGraphProps): React.JSX.Element {
+export function TestResultGraph({testResult, reset, startOnMount}: TestResultGraphProps): React.JSX.Element {
     const service = getService();
     // Allocated once and never replaced: the arrays inside are handed to Chart.js at mount.
     const bufferRef = useRef<TraceBuffer | null>(null);
@@ -100,26 +104,28 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
     const buffer = bufferRef.current;
     const chartRef = useRef<ChartJS<'line', Point[]> | null>(null);
     const [readout, setReadout] = useState<Readout>(NO_READING);
-    const [logs, setLogs] = useState<string[]>([]);
+    const [log, setLog] = useState<LogBuffer>(EMPTY_LOG);
     const [stopped, setStopped] = useState<boolean>(false);
+    const [stopPending, setStopPending] = useState<boolean>(false);
+    const [confirmingClose, setConfirmingClose] = useState<boolean>(false);
     const {loadCell} = useLiveStatus();
     const connection = useConnectionState();
 
     useEffect(() => {
         resetBuffer(buffer);
         setReadout(NO_READING);
+        setLog(EMPTY_LOG);
 
         const subscription = service.loadCellObservable.subscribe({
             next: (value: IMessage) => {
                 ingest(buffer, parseBatch(value.body));
-                // 'none': the default mode animates over 1 s, and the next batch lands ~60 ms later,
-                // so every frame would restart an interpolation that never finishes.
+                // 'none': the default 1 s animation would restart on every ~60 ms batch.
                 chartRef.current?.update('none');
             }
         });
 
         const logSubscription = service.logObservable.subscribe((value: IMessage) => {
-            setLogs(prevLogs => [...prevLogs, value.body]);
+            setLog(previous => appendLog(previous, value.body));
         });
 
         // Returning `previous` unchanged skips the render, so a steady force costs nothing.
@@ -134,8 +140,10 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
             });
         }, READOUT_INTERVAL_MS);
 
-        // The rpc middleware toasts the failure; a run that never started has nothing to stop.
-        TestRunnerService.start(testResult.id!).catch(() => setStopped(true));
+        if (startOnMount) {
+            // The rpc middleware toasts the failure; a run that never started has nothing to stop.
+            TestRunnerService.start(testResult.id!).catch(() => setStopped(true));
+        }
         service.connectComponent(TestResultGraph);
 
         return () => {
@@ -144,7 +152,7 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
             logSubscription.unsubscribe();
             clearInterval(readoutTimer);
         };
-    }, [testResult.id]);
+    }, [testResult.id, startOnMount]);
 
     const data = useMemo<ChartData<'line', Point[]>>(() => ({
         datasets: [{
@@ -154,19 +162,15 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
             backgroundColor: 'rgb(255, 99, 132)',
             borderColor: 'rgba(255, 99, 132, 0.2)',
             showLine: true,
-            // false, and it must stay false: the line is broken by the NaN separator ingest() puts
-            // in a hole longer than GAP_MS, and nothing is then drawn across an interval where
-            // nothing was measured.
+            // Must stay false so the NaN separators ingest() inserts break the line over holes.
             spanGaps: false
         }],
     }), []);
 
-    // Stable identity, and not only for render cost: react-chartjs-2 re-runs an animated
-    // chart.update() whenever this object or `data` changes identity.
+    // Stable identity: react-chartjs-2 re-runs an animated chart.update() when this or `data` changes.
     const options = useMemo<ChartOptions<'line'>>(() => ({
         animation: false,
-        // The datasets are already {x, y} TracePoints, and Chart.js returns from the decimation
-        // plugin before decimating whenever parsing is on.
+        // The points are already {x, y}, and decimation is skipped while parsing is on.
         parsing: false,
         scales: {
             x: {
@@ -183,19 +187,50 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
                     display: true,
                     text: 'Force'
                 },
-                min: 0,
-                max: 40000
+                // No fixed max: a fixed range hid peaks above it, and the 150 kN cell spans far more.
+                min: 0
             }
         },
         plugins: {
             // min-max, not lttb: the peak force is the measurement. Past 4x the canvas width each x
             // bucket keeps only its first, last, min and max, so a NaN separator survives only as a
-            // bucket end; the readouts come off the buffer - doc/04-frontend/state-and-realtime.md.
+            // bucket end; the readouts come off the buffer - doc/dev/frontend/state-and-realtime.md.
             decimation: {enabled: true, algorithm: 'min-max'}
         },
         responsive: true,
         maintainAspectRatio: false
     }), []);
+
+    // Reported only once the server took it; a failed Stop stays armed and says so, because the
+    // operator must not walk away believing the motor is off.
+    async function sendStop() {
+        setStopPending(true);
+        try {
+            await TestRunnerService.stop();
+            Notification.show('stop sent to the machine');
+            setStopped(true);
+        } catch {
+            Notification.show('STOP DID NOT REACH THE MACHINE - press Stop again or use the physical E-stop',
+                {theme: 'error', duration: 0, position: 'middle'});
+        } finally {
+            setStopPending(false);
+        }
+    }
+
+    async function stopThisRunAndClose() {
+        setStopPending(true);
+        try {
+            // Scoped to this run: a stale view must never stop a newer one.
+            await TestRunnerService.stopRun(testResult.id!);
+            setStopped(true);
+            reset();
+        } catch {
+            Notification.show('the stop did not reach the machine, the view stays open',
+                {theme: 'error', duration: 0, position: 'middle'});
+        } finally {
+            setStopPending(false);
+        }
+    }
 
     const maxForce = readout.hasValue ? Math.round(readout.max) / 1000 : 0;
     const currentValue = readout.hasValue ? Math.round(readout.current) / 1000 : 0;
@@ -203,25 +238,41 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
     return (
         <VerticalLayout className="w-full" theme="padding spacing-l stretch evenly" style={{alignItems: 'stretch'}}>
             <HorizontalLayout className="w-full" theme="padding spacing-l stretch evenly">
-                <Button theme="primary" onClick={() => {
-                    TestRunnerService.stop();
-                    Notification.show('stopped');
-                    setStopped(true);
-                }}>Stop</Button>
-                <Button theme="primary error" onClick={() => {
-                    if (!stopped) {
-                        TestRunnerService.stop();
-                        Notification.show('stopped');
+                <Button theme="primary" disabled={stopPending} onClick={() => void sendStop()}>
+                    {stopPending ? 'Stopping…' : 'Stop'}
+                </Button>
+                <Button theme="primary error" disabled={stopPending} onClick={() => {
+                    if (stopped) {
+                        reset();
+                    } else {
+                        setConfirmingClose(true);
                     }
-                    reset();
                 }}>Close</Button>
+                <ConfirmDialog
+                    opened={confirmingClose}
+                    header={`Stop run ${testResult.id} and close?`}
+                    confirmText="Stop and close"
+                    confirmTheme="primary error"
+                    cancelButtonVisible
+                    onConfirm={() => {
+                        setConfirmingClose(false);
+                        void stopThisRunAndClose();
+                    }}
+                    onCancel={() => setConfirmingClose(false)}
+                    onOpenedChanged={(event) => {
+                        if (!event.detail.value) {
+                            setConfirmingClose(false);
+                        }
+                    }}
+                >
+                    <p>This run is still active. Closing stops it; only this run is stopped.</p>
+                </ConfirmDialog>
                 <h3 style={{minWidth: '8em'}}>Force: <StaleValue status={loadCell} hasValue={readout.hasValue}>{currentValue} kN</StaleValue></h3>
                 <h3 style={{minWidth: '8em'}}>Max: {maxForce} kN</h3>
             </HorizontalLayout>
 
-            {/* One source, so the three warnings are mutually exclusive by construction: a sensor loss
-                is red and actionable, a browser-side connection problem stays amber. Both used to
-                render as staleness text, which read the machine's fault as the display's. */}
+            {/* One ConnectionState, so the warnings are mutually exclusive: a sensor loss is red and
+                actionable, a browser-side connection problem stays amber. */}
             <TestIncidentBanner/>
             {connection.kind === 'server-lost' && (
                 <p className="feed-warning">
@@ -235,10 +286,13 @@ export function TestResultGraph({testResult, reset}: TestResultGraphProps): Reac
                 </p>
             )}
 
-            <div className="w-full">
-                <Line ref={chartRef} data={data} options={options}/>
-            </div>
-            <LogComponent logs={logs}/>
+            {/* Its own boundary: a chart crash must leave Stop and the incident banner above it. */}
+            <ErrorBoundary region="The live chart" resetKey={testResult.id}>
+                <div className="w-full">
+                    <Line ref={chartRef} data={data} options={options}/>
+                </div>
+                <LogComponent log={log}/>
+            </ErrorBoundary>
         </VerticalLayout>
     );
 }

@@ -1,9 +1,8 @@
 package ch.rupfizupfi.deck.device.api;
 
 /**
- * Opens a drive handle. A factory and not a singleton because the safe-stop escalation's tier 2
- * ({@code MotorSafetyController#stopWithFreshHandle}) drops the live handle and enumerates the drive
- * again mid-stop.
+ * Opens a drive handle. A factory because safe-stop tier 2
+ * ({@code MotorSafetyController#stopWithFreshHandle}) opens a fresh handle mid-stop.
  */
 public interface DriveProvider {
 

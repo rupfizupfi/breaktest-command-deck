@@ -1,10 +1,9 @@
 /**
  * The run view's force trace: a chronological, capacity-capped point buffer fed by
- * `/topic/load-cell` batches. Imports nothing from React, Chart.js or the generated client, so it
- * loads in Vitest's node environment.
+ * `/topic/load-cell` batches. Framework-free so it loads in Vitest's node environment.
  */
 
-/** Structurally Chart.js's `Point`, declared locally to keep this module framework-free. */
+/** Structurally Chart.js's `Point`. */
 export interface TracePoint {
     x: number;
     y: number;
@@ -17,10 +16,9 @@ export interface ForceSample {
 }
 
 /**
- * Trace capacity, ~11 minutes at the DSCUSB's rated 200 samples/s. Raising it is paid twice: ~40
- * bytes per point held for the run, and a full min-max decimation rescan on each of the ~16 frames
- * a second the broadcaster sends. Eviction never moves the headline number — the running max is
- * kept separately and covers the whole run, not the visible window.
+ * Trace capacity, ~11 minutes at the DSCUSB's rated 200 samples/s. Raising it costs ~40 bytes per
+ * point and a longer decimation rescan on each of the ~16 frames/s. Eviction does not affect `max`,
+ * which covers the whole run.
  */
 export const MAX_SAMPLES = 131_072;
 
@@ -29,17 +27,12 @@ export const EVICT_BLOCK = 8_192;
 
 /**
  * How far behind a batch's newest sample a sample may sit and still belong to this run. The opening
- * batch can lead with the *previous* run's stranded tail, and anchoring the x axis on one of those
- * pushes the whole trace off screen. Sized between the ~60 ms an in-run batch spans and the gap to
- * a previous run, which is at least the operator's time to start it.
- * See doc/06-feature-work/testrunner-safety/staleness-and-lifecycle-findings.md.
+ * batch can lead with the previous run's tail, which would push the trace off screen if anchored on.
+ * Sized between the ~60 ms an in-run batch spans and the gap between runs.
  */
 export const STRANDED_TAIL_MS = 500;
 
-/**
- * Matches LoadCellThread's NO_DATA_TIMEOUT_MS, so every hole the chart breaks at is one the
- * backend's no-data watchdog also declares.
- */
+/** Matches MeasurementLoop's NO_DATA_TIMEOUT_MS, so the chart breaks where the watchdog fires. */
 export const GAP_MS = 250;
 
 export interface TraceBuffer {
@@ -105,7 +98,7 @@ export function append(buffer: TraceBuffer, x: number, y: number): void {
     buffer.hasValue = true;
 }
 
-/** A NaN y Chart.js breaks the line at. Nothing else on the buffer moves, so no readout sees it. */
+/** A NaN y Chart.js breaks the line at; readouts never see it. */
 function appendGap(buffer: TraceBuffer, x: number): void {
     pushPoint(buffer, x, NaN);
 }
@@ -135,8 +128,7 @@ export function ingest(buffer: TraceBuffer, batch: ForceSample[]): void {
         buffer.anchor = batch[from].timestamp;
     }
 
-    // Index loop, never spread: the batch is unbounded from this component's point of view, and
-    // `push(...batch)` throws RangeError once it is large enough to matter.
+    // Index loop, not spread: `push(...batch)` throws RangeError on a large enough batch.
     for (let i = from; i < batch.length; i++) {
         const x = batch[i].timestamp - buffer.anchor;
         if (buffer.lastX !== null && x - buffer.lastX > GAP_MS) {

@@ -27,10 +27,8 @@ public class CSVStoreService {
     }
 
     /**
-     * The two files one run writes: the force CSV and the sidecar that records the gaps in it.
-     * Both names carry the same millis prefix, taken once here, so they pair up by construction
-     * rather than by reconstructing one name from the other. {@code gapsSidecarPath} is where a
-     * sidecar would go - a run that never loses the sensor writes none.
+     * The force CSV of one run and its gaps sidecar, sharing one millis prefix. The sidecar is
+     * only written if the run loses the sensor.
      */
     public record TestRunFiles(String forceCsvPath, String gapsSidecarPath) {
     }
@@ -47,8 +45,7 @@ public class CSVStoreService {
     public String[] listCSVFilesForTestResult(long testResultId) {
         Path path = Paths.get(getBasePathForTestResult(testResultId));
         if (Files.isDirectory(path)) {
-            // The result directory also holds <millis>_test.log and <millis>_gaps.json, so the
-            // listing filters on the force suffix.
+            // The directory also holds <millis>_test.log and <millis>_gaps.json.
             String[] names = path.toFile().list((dir, name) -> name.endsWith(FORCE_CSV_SUFFIX));
             return names == null ? new String[0] : names;
         } else {
@@ -80,11 +77,8 @@ public class CSVStoreService {
     }
 
     /**
-     * Peak force of one CSV in kN, or null for a file too short to trust. A row whose two columns
-     * are not both numeric is skipped, so no malformed line reaches the caller as an exception.
-     *
-     * <p>Lines split on {@code \R}: the file is written by command-deck's {@code LoadCellThread}
-     * on the bench and may be read on a different OS, so both line endings must parse.
+     * Peak force of one CSV in kN, or null for a file too short to trust. Malformed rows are
+     * skipped. Splits on {@code \R} because the bench and the reader may differ in line endings.
      */
     protected String getPeakFromResultFile(long id, String path) {
         Path file = Paths.get(path);
@@ -98,14 +92,13 @@ public class CSVStoreService {
         var peakKiloNewton = lines.stream().map(line -> line.split(","))
                 .filter(cols -> cols.length == 2 && isTimestamp(cols[0]) && isNumber(cols[1]))
                 .map(cols -> Double.parseDouble(cols[1]) / 1000)
-                //remove values above 300, as the load cell can go maximal to 200kN (20 Tonnes)
+                // The load cell tops out at 200 kN; anything above 300 is noise.
                 .filter(value -> value < 300)
                 .max(Double::compareTo).orElse(0.0);
 
         return String.valueOf(peakKiloNewton);
     }
 
-    /** A row is force data only if its first column is epoch millis; the age of the run is irrelevant. */
     private static boolean isTimestamp(String millisecondsString) {
         try {
             Long.parseLong(millisecondsString);
@@ -115,7 +108,6 @@ public class CSVStoreService {
         }
     }
 
-    /** A row carries force only if its second column parses; a malformed one is skipped, not thrown. */
     private static boolean isNumber(String forceString) {
         try {
             Double.parseDouble(forceString);

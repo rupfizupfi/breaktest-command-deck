@@ -13,11 +13,8 @@ public class ForceBroadcaster implements MeasurementObserver {
     private final SimpMessagingTemplate template;
 
     /**
-     * Guarded by {@code this}. Two reader threads really can write here at once — a teardown may
-     * leave an abandoned reader running alongside its replacement. Unsynchronized this loses
-     * updates and can hit getFirst() on a list another thread just cleared, which surfaces only as
-     * the force chart quietly ceasing to update: {@code LoadCellDevice#notifyObservers} swallows
-     * what an observer throws.
+     * Guarded by {@code this}: a teardown may leave an abandoned reader running alongside its
+     * replacement, so two threads can write here at once.
      */
     private final List<Measurement> wsMeasurements = new ArrayList<>();
 
@@ -30,8 +27,7 @@ public class ForceBroadcaster implements MeasurementObserver {
         List<Measurement> batch;
         synchronized (this) {
             wsMeasurements.addAll(measurements);
-            // Not merely defensive: an empty batch leaves nothing to take a timestamp from, and the
-            // observer contract does not promise a non-empty one.
+            // The observer contract does not promise a non-empty batch.
             if (wsMeasurements.isEmpty()) {
                 return;
             }
@@ -44,8 +40,7 @@ public class ForceBroadcaster implements MeasurementObserver {
             wsMeasurements.clear();
         }
 
-        // Sent outside the lock, and as a copy: this reaches the broker's outbound channel, and a
-        // slow or wedged browser session must not hold up the thread that is collecting force.
+        // Outside the lock, so a slow browser session cannot hold up the reader thread.
         template.convertAndSend("/topic/load-cell", batch);
     }
 

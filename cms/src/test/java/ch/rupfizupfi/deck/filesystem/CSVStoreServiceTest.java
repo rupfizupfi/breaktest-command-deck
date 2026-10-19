@@ -36,12 +36,10 @@ class CSVStoreServiceTest {
         Files.writeString(directory.resolve("1_force.csv"), "1000,2000\n");
         Files.writeString(directory.resolve("1_test.log"), "test started\n");
         Files.writeString(directory.resolve("1_gaps.json"), "{\"schema\":1}");
-        // The .bak name CONTAINS the suffix without ending with it: the filter must be
-        // endsWith, and a contains-based rewrite would let this backup into the export.
+        // Contains the suffix without ending with it: pins endsWith over contains.
         Files.writeString(directory.resolve("1_force.csv.bak"), "1000,2000\n");
 
-        // The Excel export reads every listed file as force data, so a log or sidecar in the
-        // listing would contribute its lines to a run's peak.
+        // The Excel export reads every listed file as force data.
         assertThat(service.listCSVFilesForTestResult(RESULT_ID)).containsExactly("1_force.csv");
     }
 
@@ -54,7 +52,6 @@ class CSVStoreServiceTest {
     void listingForAResultPathThatIsAFileIsEmptyNotNull() throws IOException {
         Files.writeString(resultDataRoot.resolve(String.valueOf(RESULT_ID)), "1000,2000\n");
 
-        // The results grid and the project XLSX export both stream this array straight away.
         assertThat(service.listCSVFilesForTestResult(RESULT_ID)).isNotNull().isEmpty();
         assertThat(service.getPeaksFromResultFiles(RESULT_ID)).isEmpty();
     }
@@ -68,9 +65,8 @@ class CSVStoreServiceTest {
         assertThat(forceName).endsWith("_force.csv");
         assertThat(sidecarName).endsWith("_gaps.json");
 
-        // GapRecorder pairs the sidecar with the CSV whose gaps it explains purely by
-        // name, so the prefix must be the same millis value taken once - two separate
-        // currentTimeMillis() calls could straddle a tick.
+        // GapRecorder pairs sidecar and CSV by name; two currentTimeMillis() calls could
+        // straddle a tick.
         String forcePrefix = forceName.substring(0, forceName.length() - "_force.csv".length());
         String sidecarPrefix = sidecarName.substring(0, sidecarName.length() - "_gaps.json".length());
         assertThat(forcePrefix).isEqualTo(sidecarPrefix);
@@ -99,8 +95,7 @@ class CSVStoreServiceTest {
 
     @Test
     void peakScalesMilliNewtonsToKiloNewtonsAndCapsAt300() throws IOException {
-        // 350_000 mN scales to 350 kN — above the 300 cap (the load cell tops out at 200 kN),
-        // so it is discarded as garbage rather than reported as the peak.
+        // 350 kN is above the 300 kN cap and is discarded.
         writeForceCsv("\n", 120, 350_000, 250_000);
 
         assertThat(service.getPeaksFromResultFiles(RESULT_ID)).isEqualTo("250.0");
@@ -126,7 +121,6 @@ class CSVStoreServiceTest {
 
     @Test
     void fileWithFewerThan100LinesYieldsNoPeak() throws IOException {
-        // A short file is a run that barely started; its noise must not become an Excel peak.
         writeForceCsv("\n", 99, 250_000);
 
         assertThat(service.getPeakFromResultFile(RESULT_ID, "1_force.csv")).isNull();
@@ -154,8 +148,7 @@ class CSVStoreServiceTest {
         assertThat(service.readCSVDataForTestResult(RESULT_ID, "missing_force.csv")).isEmpty();
     }
 
-    // The file name is caller-supplied: TestResultService.readCSVData hands it through from any
-    // logged-in user, so containment is what keeps the read inside the result directory.
+    // TestResultService.readCSVData passes a caller-supplied file name through.
     @Test
     void readingATraversingNameIsRefused() {
         assertThatExceptionOfType(SecurityException.class)
@@ -199,9 +192,8 @@ class CSVStoreServiceTest {
     }
 
     /**
-     * Lines of {@code <epoch-millis>,<milli-newtons>} one millisecond apart from
-     * {@code firstMillis}. The first values come from {@code milliNewtonValues}, the rest are a
-     * quiet 1000 (1 kN).
+     * Lines of {@code <epoch-millis>,<milli-newtons>} 1 ms apart from {@code firstMillis}; values
+     * after {@code milliNewtonValues} are 1000 (1 kN).
      */
     private static String forceCsvContent(String lineEnding, long firstMillis, int lines, long... milliNewtonValues) {
         StringBuilder csv = new StringBuilder();

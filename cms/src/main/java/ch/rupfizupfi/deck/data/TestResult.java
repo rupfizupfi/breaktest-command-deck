@@ -33,15 +33,8 @@ public class TestResult extends AbstractEntity implements DataWithOwner {
     public String resultText;
 
     /**
-     * Lifecycle status of the run, {@code null} for every row written before the column existed.
-     * <p>
-     * Stored by name, not ordinal: an ordinal column would silently reinterpret every historical
-     * row the day somebody reorders {@link RunStatus}.
-     * <p>
-     * Nullable is forced and honest at the same time. The repo runs
-     * {@code spring.jpa.hibernate.ddl-auto=update} with no migration files, and {@code update}
-     * refuses to add a NOT NULL column to a table that already holds rows; those rows are
-     * historical runs whose status is genuinely unknown, so {@code null} is what they mean.
+     * Lifecycle status of the run; {@code null} for rows written before the column existed, whose
+     * status is unknown. Stored by name so reordering {@link RunStatus} cannot reinterpret old rows.
      */
     @Enumerated(EnumType.STRING)
     @Column(length = 32)

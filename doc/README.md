@@ -1,23 +1,14 @@
-> Branch: `dev-split` — captured 2026-04-25.
-
 # Breaktest Command Deck — Documentation
 
-This is the index. Start at the top, follow the suggested order, and you
-should be productive on the codebase in one focused day.
-
-> Over the 250-line split limit by design: an index earns its length from
-> the file tree and topic-ownership table, which lose their value the moment
-> they're split across files.
+The index. Follow the suggested order below.
 
 ## Contents
 
 - [Suggested reading order](#suggested-reading-order)
 - [File tree](#file-tree)
 - [Cross-reference: which doc owns which topic?](#cross-reference-which-doc-owns-which-topic)
-- [Open questions](#open-questions)
-- [Reference verification](#reference-verification)
-- [Doc standards (definition of done)](#doc-standards-definition-of-done)
-- [Contributing to these docs](#contributing-to-these-docs)
+- [Decisions, questions and work](#decisions-questions-and-work)
+- [Conventions and gates](#conventions-and-gates)
 
 ---
 
@@ -25,18 +16,19 @@ should be productive on the codebase in one focused day.
 
 | # | When you have... | Read | What it answers |
 |---|---|---|---|
-| 1 | 10 minutes | [`01-overview/product-context.md`](01-overview/product-context.md) | What does the machine do, and who uses it? |
-| 2 | 15 minutes | [`01-overview/system-architecture.md`](01-overview/system-architecture.md) | The C4 context + container diagrams; fresh-clone quickstart. |
-| 3 | as needed | [`01-overview/glossary.md`](01-overview/glossary.md) | Domain + tech vocabulary, alphabetical. |
-| 4 | 30 minutes | `02-modules/*` | Why two Spring Boot apps, what's shared, what happens at build time. |
-| 5 | 1 hour | `03-backend/*` | Persistence, security, Hilla services, hardware integration, test execution. |
-| 6 | 1 hour | `04-frontend/*` | Vite/Hilla build, generated TS layer, routing, real-time data flow, components. |
-| 7 | 30 minutes | `05-ops/*` | Docker profiles, database, runbook for common failures. |
+| 1 | 10 minutes | [`dev/overview/product-context.md`](dev/overview/product-context.md) | What does the machine do, and who uses it? |
+| 2 | 15 minutes | [`dev/overview/system-architecture.md`](dev/overview/system-architecture.md) | The C4 context + container diagrams; fresh-clone quickstart. |
+| 3 | as needed | [`dev/overview/glossary.md`](dev/overview/glossary.md) | Domain + tech vocabulary, alphabetical. |
+| 4 | 30 minutes | `dev/modules/*` | Why two Spring Boot apps, what's shared, what happens at build time. |
+| 5 | 1 hour | `dev/backend/*` | Persistence, security, Hilla services, hardware integration, test execution. |
+| 6 | 1 hour | `dev/frontend/*` | Vite/Hilla build, generated TS layer, routing, real-time data flow, components. |
+| 7 | 30 minutes | `ops/*` | Docker profiles, database, runbook for common failures. |
+| — | operating the bench | `user/*` | Signing in, the records, running a test, settings and administration — for operators and admins, not developers. |
 
-The frontend section explicitly answers *"how does a button click reach a Java
-method, and how does a sensor reading reach a chart?"* via
-[`hilla-generated-layer.md`](04-frontend/hilla-generated-layer.md) and
-[`state-and-realtime.md`](04-frontend/state-and-realtime.md).
+*"How does a button click reach a Java method, and a sensor reading reach a
+chart?"* is answered by
+[`hilla-generated-layer.md`](dev/frontend/hilla-generated-layer.md) and
+[`state-and-realtime.md`](dev/frontend/state-and-realtime.md).
 
 ---
 
@@ -45,60 +37,54 @@ method, and how does a sensor reading reach a chart?"* via
 ```
 doc/
 ├── README.md                           ← you are here
-├── OPEN-QUESTIONS.md                   the backlog, grouped by kind
+├── decisions.md                        decision record: rejected options, accepted costs
 ├── _verify-refs.mjs                    scan all docs for broken file refs
 ├── _check-size.py                      enforce the size / TOC / anchor standard
 ├── _check-diagrams.py                  hold inline mermaid fences to their .mmd source
 ├── _check-inventories.py               hold a doc table to the symbol set it enumerates
-├── 01-overview/
-│   ├── product-context.md              what the machine does, who uses it
-│   ├── system-architecture.md          C4 context + container; fresh-clone quickstart
-│   └── glossary.md                     terms, alphabetical, with cross-links
-├── 02-modules/
-│   ├── module-layout.md                :cms vs :command-deck, shared package root
-│   ├── gradle-build.md                 settings.gradle, build.gradle, Vaadin plugin
-│   ├── spring-boot-setup.md            profiles, configuration, startup sequence
-│   └── shared-code-strategy.md         what command-deck reuses from cms, beans/aspects/services
-├── 03-backend/
-│   ├── persistence-model.md            JPA entities + ER diagram
-│   ├── security-and-tenancy.md         Spring Security + @CheckUserCanOnlyAccessOwnData
-│   ├── hilla-services.md               @BrowserCallable catalogue, REST vs RPC
-│   ├── hardware-integration.md         loadcell, CFW11, relay, DSCUSB, broadcasters → STOMP
-│   ├── driver-jars.md                  the two local driver JARs: provenance, build, contracts
-│   ├── test-execution-engine.md        service → factory → thread → signal bus
-│   └── test-types.md                   AbstractTest, the 3 strategies, FinishTestException
-├── 04-frontend/
-│   ├── build-and-tooling.md            Vite/Hilla dev-server handshake, productionMode flag
-│   ├── hilla-generated-layer.md        what generated/ contains, RPC walk-through, never-edit rule
-│   ├── routing-and-layout.md           file-based routing, route tree, auth-gated paths
-│   ├── state-and-realtime.md           STOMP topics, run.tsx data flow, sequence diagram
-│   ├── component-inventory.md          components/ by domain; webcam mid-rewrite call-out
-│   └── frontend-module-split.md        cms vs command-deck frontend, alias 'cms', merge plugin
-├── 05-ops/
-│   ├── docker-and-profiles.md          topology (cloud cms / on-machine deck), compose, profiles, secrets
+├── dev/
+│   ├── conventions.md                  doc standards, reference forms, diagrams, inventory tables
+│   ├── overview/
+│   │   ├── product-context.md          what the machine does, who uses it
+│   │   ├── system-architecture.md      C4 context + container; fresh-clone quickstart
+│   │   └── glossary.md                 terms, alphabetical, with cross-links
+│   ├── modules/
+│   │   ├── module-layout.md            :cms vs :command-deck, shared package root
+│   │   ├── gradle-build.md             settings.gradle, build.gradle, Vaadin plugin
+│   │   ├── spring-boot-setup.md        profiles, configuration, startup sequence
+│   │   └── shared-code-strategy.md     what command-deck reuses from cms, beans/aspects/services
+│   ├── backend/
+│   │   ├── persistence-model.md        JPA entities + ER diagram
+│   │   ├── security-and-tenancy.md     Spring Security + @CheckUserCanOnlyAccessOwnData
+│   │   ├── hilla-services.md           @BrowserCallable catalogue, REST vs RPC
+│   │   ├── hardware-integration.md     loadcell, CFW11, relay, DSCUSB, broadcasters → STOMP
+│   │   ├── driver-jars.md              the two local driver JARs: provenance, build, contracts
+│   │   ├── device-api.md               deck-owned hardware API, drivers as runtime plugins
+│   │   ├── simulated-bench.md          simulated load cell / drive, dev-only (OQ-62)
+│   │   ├── fault-injection.md          the switches that trip the detectors and all three stop tiers
+│   │   ├── specimen-profiles.md        simulated specimen measured off real force traces
+│   │   ├── test-execution-engine.md    service → factory → thread → run loop
+│   │   ├── testrunner-architecture.md  packages, one run, ArchitectureTest, safety invariants
+│   │   ├── safety-and-recovery.md      load-cell loss detection, safe stop, reconnect-and-resume
+│   │   ├── recovery-gates.md           the configurable loss, reconnect and resume thresholds
+│   │   └── test-types.md               TestProgram, the 3 programs, verdicts
+│   └── frontend/
+│       ├── build-and-tooling.md        Vite/Hilla dev-server handshake, productionMode flag
+│       ├── hilla-generated-layer.md    what generated/ contains, RPC walk-through, never-edit rule
+│       ├── routing-and-layout.md       file-based routing, route tree, auth-gated paths
+│       ├── state-and-realtime.md       STOMP topics, run.tsx data flow, sequence diagram
+│       ├── component-inventory.md      components/ by domain; webcam mid-rewrite call-out
+│       └── frontend-module-split.md    cms vs command-deck frontend, alias 'cms', merge plugin
+├── user/
+│   ├── getting-started.md              the two apps, sign-in, roles, owned vs shared records, request → result
+│   ├── running-a-test.md               parameters, the three types, start/stop, sensor-loss hold, run status
+│   └── settings-and-admin.md           users, rig limits, server settings, shared records, simulated faults
+├── ops/
+│   ├── docker-and-profiles.md          topology (cloud cms, may run as production / simulated deck), compose, profiles, secrets
 │   ├── docker-images.md                two-stage image build + shared startup.sh entrypoint
 │   ├── bench-deployment.md             running the deck natively on the Windows bench (the only path to hardware)
 │   ├── db.md                           dev H2 + docker Postgres, backup/restore, seed
 │   └── runbook.md                      common failure modes, one-fix-per-entry
-├── 06-feature-work/
-│   ├── address-open-questions/
-│   │   ├── README.md                   index of the three files
-│   │   ├── TASKS.md                    how to do the open items: files, change, verify
-│   │   ├── TASKS-hardware.md           the same, for hardware + the two driver repos
-│   │   └── DECISIONS.md               decision record: rejected options, accepted costs
-│   ├── hardware-layer-redesign/
-│   │   ├── README.md                   structural refactor of drive/device/runner (OQ-64)
-│   │   └── target-design.md            the five types + the invariants they buy
-│   ├── testrunner-safety/
-│   │   ├── README.md                   scope of the safety audit + in-flight state
-│   │   ├── audit-findings.md           surviving C / H findings, verified against source
-│   │   ├── loadcell-recovery-design.md reconnect-and-resume, shipped
-│   │   └── staleness-and-lifecycle-findings.md
-│   │                                   second audit: stale values, leaks, phase-1 debts
-│   └── virtual-devices/
-│       ├── README.md                   simulated load cell / drive, dev-only (OQ-62)
-│       ├── driver-api-extraction.md    deck-owned hardware API, both jars optional (OQ-43)
-│       └── fault-injection.md          the switches that trip the detectors and all three stop tiers
 └── diagrams/
     └── src/                            Mermaid (.mmd) diagram sources
         ├── c4-context.mmd              system context
@@ -117,173 +103,71 @@ doc/
         └── deployment.mmd              docker compose deployment topology
 ```
 
-Every doc records its branch and the date it was last touched (three shapes
-are in use — see the [doc standards](#doc-standards-definition-of-done)), so
-readers can tell when they have drifted from the snapshot it was written
-against.
-
 ---
 
 ## Cross-reference: which doc owns which topic?
 
-For when the title isn't enough. Each row points to the *primary* doc; other
-docs may touch the topic but defer there.
+Each row points to the *primary* doc; others defer to it.
 
 | Topic | Primary doc |
 |---|---|
-| Why two Spring Boot apps | [`02-modules/module-layout.md`](02-modules/module-layout.md) |
-| Gradle build outputs (boot vs plain JAR) | [`02-modules/gradle-build.md`](02-modules/gradle-build.md) |
-| Spring component-scan / `@EntityScan` behaviour | [`02-modules/spring-boot-setup.md`](02-modules/spring-boot-setup.md) |
-| `command-deck` reusing cms beans | [`02-modules/shared-code-strategy.md`](02-modules/shared-code-strategy.md) |
-| ER diagram + JPA entities | [`03-backend/persistence-model.md`](03-backend/persistence-model.md) |
-| `DataWithOwner` + AOP ownership check | [`03-backend/security-and-tenancy.md`](03-backend/security-and-tenancy.md) |
-| `@BrowserCallable` catalogue | [`03-backend/hilla-services.md`](03-backend/hilla-services.md) |
-| Load cell, CFW11, relay drivers | [`03-backend/hardware-integration.md`](03-backend/hardware-integration.md) |
-| `drivers/*.jar` provenance, driver contracts, sibling-repo builds | [`03-backend/driver-jars.md`](03-backend/driver-jars.md) |
-| Running a test with no hardware (simulated devices) | [`06-feature-work/virtual-devices/README.md`](06-feature-work/virtual-devices/README.md) |
-| Building without the vendor jars, deck-owned device API | [`06-feature-work/virtual-devices/driver-api-extraction.md`](06-feature-work/virtual-devices/driver-api-extraction.md) |
-| Tripping the watchdogs and the safe-stop tiers on demand | [`06-feature-work/virtual-devices/fault-injection.md`](06-feature-work/virtual-devices/fault-injection.md) |
-| Test lifecycle, `TestRunnerThread` | [`03-backend/test-execution-engine.md`](03-backend/test-execution-engine.md) |
-| Proposed restructuring of the drive + runner layer | [`06-feature-work/hardware-layer-redesign/README.md`](06-feature-work/hardware-layer-redesign/README.md) |
-| `AbstractTest` subclasses, `FinishTestException`, `LoadCellThread` | [`03-backend/test-types.md`](03-backend/test-types.md) |
-| `vite.config.ts`, dev-server, productionMode | [`04-frontend/build-and-tooling.md`](04-frontend/build-and-tooling.md) |
-| Java→TypeScript RPC walkthrough | [`04-frontend/hilla-generated-layer.md`](04-frontend/hilla-generated-layer.md) |
-| File-based routing + route tree | [`04-frontend/routing-and-layout.md`](04-frontend/routing-and-layout.md) |
-| STOMP topics + sensor → chart | [`04-frontend/state-and-realtime.md`](04-frontend/state-and-realtime.md) |
-| Component reuse + webcam mid-rewrite | [`04-frontend/component-inventory.md`](04-frontend/component-inventory.md) |
-| `cms` vs `command-deck` frontend overlap | [`04-frontend/frontend-module-split.md`](04-frontend/frontend-module-split.md) |
-| Deployment topology (cloud cms vs on-machine deck) | [`05-ops/docker-and-profiles.md`](05-ops/docker-and-profiles.md) |
-| Docker compose, profiles, secrets | [`05-ops/docker-and-profiles.md`](05-ops/docker-and-profiles.md) |
-| Image build, Dockerfiles, entrypoint script | [`05-ops/docker-images.md`](05-ops/docker-images.md) |
-| Running on the bench natively (Windows-only drivers) | [`05-ops/bench-deployment.md`](05-ops/bench-deployment.md) |
-| Database (H2 + Postgres, seed, backup) | [`05-ops/db.md`](05-ops/db.md) |
-| "It broke" — common failures + fixes | [`05-ops/runbook.md`](05-ops/runbook.md) |
+| Why two Spring Boot apps | [`dev/modules/module-layout.md`](dev/modules/module-layout.md) |
+| Gradle build outputs (boot vs plain JAR) | [`dev/modules/gradle-build.md`](dev/modules/gradle-build.md) |
+| Spring component-scan / `@EntityScan` behaviour | [`dev/modules/spring-boot-setup.md`](dev/modules/spring-boot-setup.md) |
+| `command-deck` reusing cms beans | [`dev/modules/shared-code-strategy.md`](dev/modules/shared-code-strategy.md) |
+| ER diagram + JPA entities | [`dev/backend/persistence-model.md`](dev/backend/persistence-model.md) |
+| `DataWithOwner` + AOP ownership check | [`dev/backend/security-and-tenancy.md`](dev/backend/security-and-tenancy.md) |
+| `@BrowserCallable` catalogue | [`dev/backend/hilla-services.md`](dev/backend/hilla-services.md) |
+| Load cell, CFW11, relay drivers | [`dev/backend/hardware-integration.md`](dev/backend/hardware-integration.md) |
+| `drivers/*.jar` provenance, driver contracts, sibling-repo builds | [`dev/backend/driver-jars.md`](dev/backend/driver-jars.md) |
+| Running a test with no hardware (simulated devices) | [`dev/backend/simulated-bench.md`](dev/backend/simulated-bench.md) |
+| Building without the vendor jars, deck-owned device API | [`dev/backend/device-api.md`](dev/backend/device-api.md) |
+| Tripping the watchdogs and the safe-stop tiers on demand | [`dev/backend/fault-injection.md`](dev/backend/fault-injection.md) |
+| Simulated specimen profiles measured off real force traces | [`dev/backend/specimen-profiles.md`](dev/backend/specimen-profiles.md) |
+| Test lifecycle, `TestRunnerThread` | [`dev/backend/test-execution-engine.md`](dev/backend/test-execution-engine.md) |
+| Operating the bench: sign-in, running a test, settings | [`user/getting-started.md`](user/getting-started.md), [`user/running-a-test.md`](user/running-a-test.md), [`user/settings-and-admin.md`](user/settings-and-admin.md) |
+| Writing and verifying a doc: standards, reference forms, gates | [`dev/conventions.md`](dev/conventions.md) |
+| Test-runner packages, one run end to end, the structure lock, the safety invariants | [`dev/backend/testrunner-architecture.md`](dev/backend/testrunner-architecture.md) |
+| Load-cell loss: detection, safe-stop tiers, reconnect and resume | [`dev/backend/safety-and-recovery.md`](dev/backend/safety-and-recovery.md) |
+| Load-cell loss and resume thresholds (`RecoveryProperties`) | [`dev/backend/recovery-gates.md`](dev/backend/recovery-gates.md) |
+| `TestProgram` and the three programs, `Verdict`, `MeasurementLoop` | [`dev/backend/test-types.md`](dev/backend/test-types.md) |
+| `vite.config.ts`, dev-server, productionMode | [`dev/frontend/build-and-tooling.md`](dev/frontend/build-and-tooling.md) |
+| Java→TypeScript RPC walkthrough | [`dev/frontend/hilla-generated-layer.md`](dev/frontend/hilla-generated-layer.md) |
+| File-based routing + route tree | [`dev/frontend/routing-and-layout.md`](dev/frontend/routing-and-layout.md) |
+| STOMP topics + sensor → chart | [`dev/frontend/state-and-realtime.md`](dev/frontend/state-and-realtime.md) |
+| Component reuse + webcam mid-rewrite | [`dev/frontend/component-inventory.md`](dev/frontend/component-inventory.md) |
+| `cms` vs `command-deck` frontend overlap | [`dev/frontend/frontend-module-split.md`](dev/frontend/frontend-module-split.md) |
+| Deployment topology (cloud cms vs on-machine deck) | [`ops/docker-and-profiles.md`](ops/docker-and-profiles.md) |
+| Docker compose, profiles, secrets | [`ops/docker-and-profiles.md`](ops/docker-and-profiles.md) |
+| Image build, Dockerfiles, entrypoint script | [`ops/docker-images.md`](ops/docker-images.md) |
+| Running on the bench natively (Windows-only drivers) | [`ops/bench-deployment.md`](ops/bench-deployment.md) |
+| Database (H2 + Postgres, seed, backup) | [`ops/db.md`](ops/db.md) |
+| "It broke" — common failures + fixes | [`ops/runbook.md`](ops/runbook.md) |
 
 ---
 
-## Open questions
+## Decisions, questions and work
 
-[`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) is the backlog, grouped by kind (defects, security, investigations, decided-awaiting-work,
-mechanical cleanups, blocked). Every item links to the reference doc that
-owns its topic.
+[`decisions.md`](decisions.md) is the decision record: what was rejected and why,
+and which costs were knowingly accepted.
 
-Supporting files in
-[`06-feature-work/address-open-questions/`](06-feature-work/address-open-questions/README.md):
-
-- `TASKS.md` and `TASKS-hardware.md` — files to touch, the change, how to verify
-- `DECISIONS.md` — the decision record: what was rejected and why,
-  and which costs were knowingly accepted
+Open owner questions (`OQ-n`) and work items (`BL-nnn`) are tracked outside
+this repo, in the umbrella workspace that holds the deck and the driver repos
+(versioned there, never part of a deck commit), and worked by the backlog loop
+in `script/loop/`. Reference docs cite them by id only — never by path — and
+name a durable gap in a short "Known limits" section.
 
 ---
 
-## Reference verification
+## Conventions and gates
 
-Markdown is read **only from `doc/`**; the references found in it are resolved
-against the **whole repo**, from the repo root — never relative to `doc/`:
-
-```text
-doc/diagrams/src/hardware-layer.mmd   in convention, checked
-diagrams/src/hardware-layer.mmd       shorthand (advisory), though it resolves from inside doc/
-```
-
-Run from the repo root. Reports any `module/path/File.ext[:NN]`-style reference
-that doesn't resolve to a real file, **or** whose line number is past the end of
-that file:
+How to write and verify a doc — size and TOC rules, the reference forms the verifier checks,
+diagrams as code, inventory tables — is in [`dev/conventions.md`](dev/conventions.md). Run the
+four gates from the repo root after any change under `doc/`:
 
 ```bash
-node doc/_verify-refs.mjs            # fail on broken refs
-node doc/_verify-refs.mjs --strict   # also fail on unverifiable shorthand
-node doc/_verify-refs.mjs --quiet    # summary only
+python doc/_check-size.py
+node doc/_verify-refs.mjs
+python doc/_check-diagrams.py
+python doc/_check-inventories.py
 ```
-
-Results split into two buckets:
-
-- **Broken** — the reference is in convention (rooted at a real top-level
-  directory, no `...`) and still doesn't resolve. Exit code 1. **A reported
-  reference is a real defect — fix it rather than adding it to an exception
-  list.**
-- **Unverifiable shorthand** — advisory, exit code 0: the `command-deck/.../File.java`
-  elision, module specifiers (npm packages and imports through the Vite `'cms'`
-  alias), module-agnostic paths like `src/main/frontend/…`, and files a design
-  doc proposes but nobody has created yet. Structurally indistinguishable from
-  each other, so the script reports rather than judges them.
-
-Fenced code blocks are skipped wholesale, so Mermaid labels and import
-statements don't trigger it. Inline code spans are *not* skipped — that is where
-real references live, and missing that is what made the previous PowerShell
-version check 6 references out of 300+.
-
-Not checked: references with no `/` (root files such as `build.gradle:19`);
-relative (`../diagrams/src/x.mmd`) and absolute (`/home/appuser/…`) paths, which
-is why a rendered link should carry the repo-relative form in its *label*; and
-line *content* — a `:NN` is only range-checked, so it can still point at the
-wrong line of the right file.
-
----
-
-## Doc standards (definition of done)
-
-Apply to any doc you add or edit. The canonical rules are the ones below.
-
-**Size and navigability**
-
-| Size | Requirement |
-|---|---|
-| ≤ 120 lines | The target. Headings are the map; no TOC needed. |
-| > 120 lines | Needs a **TOC** under the purpose — a flat list of links to the `##` sections, because readers arrive mid-file from a cross-reference. |
-| > 250 lines | **Split it.** One concern per file. If it truly can't split, say why in one line at the top. |
-
-Prefer splitting over trimming: two focused docs each earn a `File tree`
-entry, and a reader after one stops paying for the other.
-
-**Content**
-
-- **Minimum words, zero lost facts.** Cut preamble, hedging ("it's worth
-  noting", "simply"), explanations of Java/Spring/React/Vaadin, and anything
-  the linked owning doc already says. Per sentence: *would a reader act
-  differently without it?* No → cut.
-- **Never compress away**: the *why* behind a decision and the cost accepted
-  with it; constraints, units, ordering, footguns; and any "unverified /
-  stale / owner-owed" marker. Compression must not launder uncertainty into
-  false confidence.
-- One home per fact — link, never restate.
-- No narrative or history; that's what git is for.
-- Branch + date-last-touched at the top. Three shapes are in use and all are
-  accepted: a `> Branch: …` blockquote (most docs), YAML frontmatter with
-  `phase`/`branch`/`date` (`02-modules/`), or the banner directly under the
-  H1 (`04-frontend/`). Match the file you're editing; don't convert one to
-  another.
-- "Where to look in the code", and an "Open questions" section that stays in
-  sync with [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md).
-- Run all four gates before calling it done: [`_check-size.py`](_check-size.py)
-  (sizes, TOC presence, in-page TOC links), [`_verify-refs.mjs`](_verify-refs.mjs)
-  (dangling file references), [`_check-diagrams.py`](_check-diagrams.py) (an
-  inline `mermaid` fence still matching its `diagrams/src/*.mmd` source — the one
-  region the other two cannot see, since `_verify-refs.mjs` skips fenced blocks),
-  and [`_check-inventories.py`](_check-inventories.py) (a table that enumerates a
-  code symbol set still matching that set — the only gate that catches a doc being
-  *incomplete* rather than wrong).
-
----
-
-## Contributing to these docs
-
-- Meet the [doc standards](#doc-standards-definition-of-done) above: size,
-  TOC over 120 lines, minimum words with zero lost facts.
-- Cross-link instead of duplicating.
-- Keep diagrams as code (`.mmd` under `diagrams/src/`) — never paste
-  rendered SVG into the markdown. The `.mmd` is **canonical**: an inline
-  ` ```mermaid ` fence may be a summary of it, but must never contradict it
-  or carry a fact the source lacks. [`_check-diagrams.py`](_check-diagrams.py)
-  enforces exactly that, and it is why editing only the fence is a defect.
-- File references use the form `module/path/File.ext:NN` so the verifier
-  catches drift. Avoid relative `./` or `../` in file references unless
-  the link is rendered (Markdown link, not inline citation).
-- A table that enumerates a set declared in code (an enum's constants, say)
-  carries `<!-- inventory: enum <repo-relative-path> -->` on the line above it,
-  so [`_check-inventories.py`](_check-inventories.py) fails when the set grows
-  and the table doesn't. Name the value's owner rather than copying the value:
-  a default written out in prose drifts the moment somebody tunes it, and no
-  gate compares prose against a literal.
-- When adding a new doc, also add it to the file-tree and reading-order
-  table above.

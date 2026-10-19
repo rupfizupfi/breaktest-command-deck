@@ -22,15 +22,15 @@ diagrams and a fresh-clone quickstart.
 
 Before you begin, ensure you have the following installed:
 
-- Java
-- Node & npm
+- Java 26
+- Node & pnpm
 
 ## Setup and Development
 
 1. Clone the repository to your local machine.
-2. Open the project in IntelliJ Community IDEA 2024.1.2 or your preferred IDE.
+2. Open the project in IntelliJ IDEA or your preferred IDE.
 3. Run the Gradle build using the command `./gradlew build`.
-4. Start the application using the command `./gradlew run`.
+4. Start a module with `./gradlew :cms:bootRun` or `./gradlew :command-deck:bootRun`.
 
 
 ## Project Structure
@@ -64,31 +64,21 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## Deploying using Docker
 
-To build the Dockerized version of the project, follow these steps:
+One compose file serves two deployments on two hosts, chosen by profile: `cms` on the cloud
+host, `deck` wherever tests and simulations run (the deck container always runs the simulated
+bench; driving the real bench is the native Windows deployment,
+[`doc/ops/bench-deployment.md`](doc/ops/bench-deployment.md)). Both bind host port 8043, so a
+host runs exactly one.
 
-1. Navigate to the `docker` directory:
+1. Copy `docker/.env.example` to `docker/.env` and set `DECK_ADMIN_PASSWORD` for the first
+   start (no account is seeded outside `dev`).
+2. Put the Postgres password in `.secrets/db-password.txt` at the repo root.
+3. Start the profile for this host:
     ```sh
-    cd docker
+    docker compose -f docker/docker-compose.yaml --profile cms up -d   # cloud host
+    docker compose -f docker/docker-compose.yaml --profile deck up -d  # tester / simulation host
     ```
+4. Stop with `docker compose -f docker/docker-compose.yaml --profile <profile> down`.
 
-2. Build the Docker images using `docker-compose`:
-    ```sh
-    docker-compose build
-    ```
-
-3. Start the services using `docker-compose`:
-    ```sh
-    docker-compose up
-    ```
-
-4. To run the services in the background, use the `-d` flag:
-    ```sh
-    docker-compose up -d
-    ```
-
-5. To stop the services, use:
-    ```sh
-    docker-compose down
-    ```
-
-The `docker-compose.yaml` file defines the services, including the CMS application and the PostgreSQL database. The CMS application is built from the `cms` module through `docker/Dockerfile`, which serves both modules and takes the module name as a `MODULE` build arg. The database service uses the official PostgreSQL image and is configured to use a secret for the database password.
+The full host preparation (keystore, secrets, volumes) is in
+[`doc/ops/docker-and-profiles.md`](doc/ops/docker-and-profiles.md#required-host-preparation).

@@ -6,13 +6,17 @@ import ch.rupfizupfi.deck.data.Customer;
 import ch.rupfizupfi.deck.data.CustomerRepository;
 import ch.rupfizupfi.deck.data.Material;
 import ch.rupfizupfi.deck.data.MaterialRepository;
+import ch.rupfizupfi.deck.data.Role;
 import ch.rupfizupfi.deck.data.UserRepository;
 import ch.rupfizupfi.deck.security.CheckUserCanOnlyAccessOwnDataAspect;
 import ch.rupfizupfi.deck.security.UserDetailsServiceImpl;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -23,26 +27,17 @@ import java.sql.SQLException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Boots the full cms context exactly as {@code bootRun} does — profile {@code dev}, the production
- * wiring, the {@code data.sql} seed path — and asserts the load-bearing beans exist. An empty
- * {@code contextLoads()} proves only that nothing threw, so
- * every method here names the bean it pins.
+ * Boots the full cms context as {@code bootRun} does (profile {@code dev}, Flyway migrations, Hibernate
+ * {@code validate}) and asserts the beans that matter exist. Booting at all proves {@code V1__baseline}
+ * matches the entities on H2's PostgreSQL mode.
  *
- * <p>The one deliberate divergence from a real dev boot is the datasource: profile {@code dev}
- * points at the developer's FILE-backed H2 ({@code ./.data/deck}), which a test must never open —
- * it would race a running app for the file lock and seed or sweep real data. The annotation
- * property below swaps in a throwaway in-memory H2; {@link #datasourceIsInMemoryH2NotTheDevFile()}
- * guards that the override held. The override lives here and not in the shared
- * {@code application-test.properties} because the Testcontainers persistence slice relies on that
- * file staying datasource-free.
- *
- * <p>No Vaadin suppression is needed: {@code @SpringBootTest}'s default MOCK web environment never
- * starts a servlet container, so Vaadin's dev-mode initializers (which are servlet-driven) never
- * run — and {@code vaadin-dev} is {@code developmentOnly}, absent from the test classpath anyway.
- * {@code vaadin.launch-browser=false} is defence in depth against a browser window popping open.
+ * <p>Except the datasource: the dev file H2 ({@code ./.data/deck}) must never be opened by a test,
+ * so an in-memory H2 replaces it, guarded by {@link #datasourceIsInMemoryH2NotTheDevFile()}. The
+ * override lives here because the Testcontainers slice needs {@code application-test.properties}
+ * to stay datasource-free.
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:cms-context-test;DB_CLOSE_DELAY=-1",
+        "spring.datasource.url=jdbc:h2:mem:cms-context-test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DEFAULT_NULL_ORDERING=HIGH",
         "vaadin.launch-browser=false"
 })
 @ActiveProfiles("dev")
@@ -50,6 +45,9 @@ class ApplicationContextTest {
 
     @Autowired
     ApplicationContext context;
+
+    @Autowired
+    Flyway flyway;
 
     @Autowired
     DataSource dataSource;
@@ -73,20 +71,35 @@ class ApplicationContextTest {
     }
 
     @Test
-    void conditionalDataSqlInitializerIsWiredAndActuallySeededTheEmptyDb() {
-        // Application#dataSourceScriptDatabaseInitializer runs data.sql only against an EMPTY
-        // database; this in-memory H2 started empty, so a positive user count proves the seed
-        // path ran. "Positive", not a literal: the seed's content belongs to data.sql, only
-        // the wiring belongs to this test.
-        assertThat(context.containsBean("dataSourceScriptDatabaseInitializer")).isTrue();
-        assertThat(userRepository.count()).isPositive();
+    void flywayMigratedTheEmptyDbFromV1WithoutBaselining() {
+        // An empty schema must run V1, not be baselined past it.
+        assertThat(flyway.info().applied())
+                .extracting(migration -> migration.getVersion().getVersion())
+                .startsWith("1", "2");
+        assertThat(materialRepository.count()).isEqualTo(8);
+    }
+
+    @Test
+    void theDevAccountsComeFromDevUserSeederWithTheirRoles() {
+        assertThat(userRepository.findByUsername("user").getRoles()).containsExactly(Role.USER);
+        assertThat(userRepository.findByUsername("admin").getRoles()).contains(Role.ADMIN);
+    }
+
+    @Test
+    void referenceDataMigrationLeavesAlreadySeededTablesAlone() {
+        // A database baselined at V1 already holds these rows when V2 first runs against it.
+        long materials = materialRepository.count();
+        long customers = customerRepository.count();
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V2__reference_data.sql")).execute(dataSource);
+
+        assertThat(materialRepository.count()).isEqualTo(materials);
+        assertThat(customerRepository.count()).isEqualTo(customers);
     }
 
     @Test
     void seededTablesAcceptAnApplicationInsert() {
-        // data.sql's trailing RESTART statements move each seeded table's identity past its
-        // seeded ids; without them save() collides on the primary key and throws
-        // DataIntegrityViolationException. Two of the five seeded tables stand for all.
+        // V2 leaves ids to the identity column; an explicit seeded id would collide with save().
         Customer customer = new Customer();
         customer.organization = "Post-seed insert";
 
@@ -99,7 +112,6 @@ class ApplicationContextTest {
 
     @Test
     void browserCallableCrudServicesAreRegistered() {
-        // Two representatives of the CrudRepositoryService pattern every entity screen rides on.
         assertThat(context.getBean(SampleService.class)).isNotNull();
         assertThat(context.getBean(TestResultService.class)).isNotNull();
     }
@@ -112,7 +124,6 @@ class ApplicationContextTest {
 
     @Test
     void ownershipAspectIsRegistered() {
-        // The AOP aspect behind @CheckUserCanOnlyAccessOwnData — multi-tenancy enforcement.
         assertThat(context.getBean(CheckUserCanOnlyAccessOwnDataAspect.class)).isNotNull();
     }
 }

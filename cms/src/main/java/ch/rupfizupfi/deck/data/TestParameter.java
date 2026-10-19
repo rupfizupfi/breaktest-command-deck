@@ -20,8 +20,10 @@ public class TestParameter extends AbstractEntity implements DataWithOwner {
         return owner;
     }
 
+    /** Null is storable and refused at run start; the column holds {@link TestType#wireName()}. */
     @JsonView(Views.Simple.class)
-    public String type;
+    @Convert(converter = TestTypeConverter.class)
+    public TestType type;
 
     @JsonView(Views.Simple.class)
     public int speed;
@@ -55,6 +57,6 @@ public class TestParameter extends AbstractEntity implements DataWithOwner {
     @Transient
     @JsonView(Views.Simple.class)
     public String getLabel() {
-        return type + " " + speed + " mm/min " + lowerShutOffThreshold + "kN - " + upperShutOffThreshold + "kN";
+        return (type == null ? null : type.wireName()) + " " + speed + " mm/min " + lowerShutOffThreshold + "kN - " + upperShutOffThreshold + "kN";
     }
 }

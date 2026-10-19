@@ -1,8 +1,10 @@
 package ch.rupfizupfi.deck.api.services;
 
+import ch.rupfizupfi.deck.data.Project;
 import ch.rupfizupfi.deck.data.Sample;
 import ch.rupfizupfi.deck.data.SampleRepository;
 import ch.rupfizupfi.deck.data.User;
+import ch.rupfizupfi.deck.hilla.crud.OwnerAccessDeniedException;
 import ch.rupfizupfi.deck.hilla.crud.OwnerDataHelper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,20 +23,20 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Samples reach the owner scoping of {@code CrudRepositoryServiceForOwnerData}: a non-admin lists
- * through the owner Specification and cannot write a row the scoped {@code get} does not resolve.
- * Both list paths call the same {@code findAll(Specification, Pageable)}, so the admin bypass is
- * observed on {@code OwnerDataHelper} instead.
+ * Owner scoping for samples. Both list paths call the same {@code findAll(Specification, Pageable)},
+ * so the admin bypass is observed on {@code OwnerDataHelper}.
  */
 class SampleServiceTest {
 
     private static final long FOREIGN_ID = 42L;
+    private static final long PROJECT_ID = 3L;
     private static final Pageable PAGE = PageRequest.of(0, 20);
 
     private SampleRepository repository;
@@ -63,6 +65,7 @@ class SampleServiceTest {
         ownerDataHelper = mock(OwnerDataHelper.class);
         when(ownerDataHelper.getAuthenticatedUser()).thenReturn(authenticatedUser);
         when(ownerDataHelper.addOwnerCriteriaToSpec(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ownerDataHelper.isVisible(any(), any())).thenReturn(true);
 
         service = new ScopedSampleService(repository);
         ReflectionTestUtils.setField(service, "ownerDataHelper", ownerDataHelper);
@@ -99,11 +102,44 @@ class SampleServiceTest {
     }
 
     @Test
-    void nonAdminCannotSaveAnIdTheScopedGetDoesNotResolve() {
+    void nonAdminListCapsAnOversizedPage() {
         authenticateAs("ROLE_USER");
-        when(repository.findOne(any(Specification.class))).thenReturn(Optional.empty());
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
 
-        assertThatExceptionOfType(SecurityException.class).isThrownBy(() -> service.save(sample(FOREIGN_ID, null)));
+        service.list(PageRequest.of(0, 1_000_000), null);
+
+        verify(repository).findAll(any(Specification.class), eq(PageRequest.of(0, 500)));
+    }
+
+    @Test
+    void adminListCapsAnUnpagedRequest() {
+        authenticateAs("ROLE_USER", "ROLE_ADMIN");
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.list(Pageable.unpaged(), null);
+
+        verify(repository).findAll(any(Specification.class), eq(PageRequest.of(0, 500)));
+    }
+
+    @Test
+    void listPassesANormalPageThrough() {
+        authenticateAs("ROLE_USER");
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.list(PageRequest.of(1, 50), null);
+
+        verify(repository).findAll(any(Specification.class), eq(PageRequest.of(1, 50)));
+    }
+
+    @Test
+    void nonAdminCannotSaveAnIdWithNoStoredRow() {
+        authenticateAs("ROLE_USER");
+        when(repository.findById(FOREIGN_ID)).thenReturn(Optional.empty());
+
+        assertThatExceptionOfType(OwnerAccessDeniedException.class).isThrownBy(() -> service.save(sample(FOREIGN_ID, null)));
         verify(repository, never()).save(any());
     }
 
@@ -119,11 +155,11 @@ class SampleServiceTest {
     }
 
     @Test
-    void nonAdminCannotDeleteABatchHoldingAnIdTheScopedGetDoesNotResolve() {
+    void nonAdminCannotDeleteABatchHoldingAnIdWithNoStoredRow() {
         authenticateAs("ROLE_USER");
-        when(repository.findOne(any(Specification.class))).thenReturn(Optional.empty());
+        when(repository.findById(FOREIGN_ID)).thenReturn(Optional.empty());
 
-        assertThatExceptionOfType(SecurityException.class)
+        assertThatExceptionOfType(OwnerAccessDeniedException.class)
                 .isThrownBy(() -> service.deleteAll(List.of(FOREIGN_ID)));
         verify(repository, never()).deleteAllById(any());
         verify(repository, never()).deleteById(any());
@@ -148,6 +184,9 @@ class SampleServiceTest {
         Sample sample = new Sample();
         sample.setId(id);
         sample.owner = owner;
+        // A sample needs a project (optional = false); a save without one is a validation error.
+        sample.project = new Project();
+        sample.project.setId(PROJECT_ID);
         return sample;
     }
 }

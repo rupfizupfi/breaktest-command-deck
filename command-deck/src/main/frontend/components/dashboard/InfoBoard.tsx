@@ -8,6 +8,7 @@ import {Notification} from "@vaadin/react-components/Notification";
 import {useLiveStatus} from "Frontend/service/useLiveStatus";
 import StaleValue, {formatAge} from "Frontend/components/dashboard/StaleValue";
 import {latestForce, parseBatch} from "Frontend/service/loadCellBatch";
+import {infoClientId} from "Frontend/service/infoClientId";
 
 interface Info {
     id: number;
@@ -16,21 +17,21 @@ interface Info {
     generalEnable: boolean;
     useSecondRamp: boolean;
     directionIsForward: boolean;
+    /** Amperes. */
     motorCurrent: number;
     motorVoltage: number;
-    motorTorque: number;
+    /** Percent of the motor's rated torque, signed; not Nm. */
+    motorTorquePercent: number;
 }
 
 interface InfoBoardProps {
 }
 
-/**
- * This component is placed under the navigation bar and shows the current status of the system.
- */
+/** Placed under the navigation bar; shows the current status of the system. */
 export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
     const service = getService();
     const [info, setFCInfo] = useState<Info | null>(null);
-    // null rather than 0: an initial zero is indistinguishable from a genuine "no load" reading.
+    // null, not 0: an initial zero would look like a genuine "no load" reading.
     const [force, setForce] = useState<number | null>(null);
     const [enabled, setEnabled] = useState<boolean>(false);
     const [suckEnabled, setSuck] = useState<boolean>(false);
@@ -51,15 +52,22 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         });
 
         const infoSubscription = service.frequencyInverterInfoObservable.subscribe((value: IMessage) => {
-            const newInfo: Info = JSON.parse(value.body);
-            setFCInfo(newInfo);
+            // A malformed frame keeps the last good values; the staleness deadline flags them.
+            try {
+                setFCInfo(JSON.parse(value.body) as Info);
+            } catch (error) {
+                console.error('unreadable /topic/frequency-inverter-info frame', error);
+            }
         });
 
-        DeviceInfoService.enable();
+        // The rpc middleware reports a failed call, deduplicated; a catch here only keeps the
+        // rejection from going unhandled. The hold is this tab's: other tabs keep broadcasting.
+        const clientId = infoClientId('info-board');
+        DeviceInfoService.enable(clientId).catch(() => {});
         service.connectComponent(InfoBoard);
 
         return () => {
-            DeviceInfoService.disable();
+            DeviceInfoService.disable(clientId).catch(() => {});
             service.disconnectComponent(InfoBoard);
             subscription.unsubscribe();
             infoSubscription.unsubscribe();
@@ -81,11 +89,12 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
             if (!cancelled) {
                 setSuck(on);
             }
+        }).catch(() => {
+            // Reported by the rpc middleware, which deduplicates a failure repeating every poll.
         });
 
         read();
-        // SuckJob switches the relay seconds after a run finishes, so only a poll keeps the checkbox
-        // showing what the service holds rather than the outcome of the last click here.
+        // Polled because SuckJob switches the relay on its own seconds after a run finishes.
         const poll = connected ? window.setInterval(read, 2000) : undefined;
 
         return () => {
@@ -94,8 +103,7 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
         };
     }, [connected]);
 
-    // The backend only publishes inverter info while broadcasting is enabled, so silence is only
-    // meaningful once we have asked for it.
+    // Inverter info is only published while broadcasting is enabled.
     const inverterStale = enabled && info !== null && frequencyInverter.stale;
 
     const infoDom = info ? (
@@ -110,9 +118,9 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
                 <li className="info-item"><span>Speed:</span> <span>{info.speed * .375} mm/min</span></li>
                 <li className="info-item"><span>Ramp:</span> <span>{info.useSecondRamp ? 'second' : 'first'}</span></li>
                 <li className="info-item"><span>Direction:</span> <span>{info.directionIsForward ? 'push' : 'pull'}</span></li>
-                <li className="info-item"><span>Motor current:</span> <span>{info.motorCurrent} A</span></li>
+                <li className="info-item"><span>Motor current:</span> <span>{info.motorCurrent.toFixed(1)} A</span></li>
                 <li className="info-item"><span>Motor voltage:</span> <span>{info.motorVoltage} V</span></li>
-                <li className="info-item"><span>Motor torque:</span> <span>{info.motorTorque} Nm</span></li>
+                <li className="info-item"><span>Motor torque:</span> <span>{info.motorTorquePercent.toFixed(1)} % rated</span></li>
             </ul>
         </>
     ) : <div>is loading...</div>;
@@ -136,16 +144,12 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
                 </li>
             </ul>
             {infoDom}
-            <label>
-                Show status: <Checkbox theme="primary" checked={enabled} onChange={function (e) {
+            <Checkbox label="Show status" theme="primary" checked={enabled} onChange={function (e) {
                 setEnabled(e.target.checked);
             }}/>
-            </label>
             <br/>
-            <label>
-                Suck: <Checkbox theme="primary" checked={suckEnabled} onChange={function (e) {
-                // The backend's relay state is the only truth about the vacuum, and React rewrites
-                // the element only on a state change, so the outcome goes to both.
+            <Checkbox label="Suck" theme="primary" checked={suckEnabled} onChange={function (e) {
+                // Write the backend's answer to the element too: React only rewrites it on a state change.
                 const checkbox = e.target;
                 if (checkbox.checked) {
                     SuckService.enable().then(energized => {
@@ -169,7 +173,6 @@ export default function InfoBoard(props: InfoBoardProps): React.JSX.Element {
                     });
                 }
             }}/>
-            </label>
         </div>
     );
 }

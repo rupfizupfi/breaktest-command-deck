@@ -44,7 +44,7 @@ class TestResultStatusPersisterTest {
     private TestResultStatusPersister persister(Executor executor, IntSupplier gapCount,
                                                 LongSupplier droppedSampleCount) {
         return new TestResultStatusPersister(RESULT_ID, repository, new ObjectMapper(), executor,
-                new RecoveryGates(10_000, List.of(1_000L), 60_000, 30_000, 100, 0.02, 2, 1_000, true),
+                new RecoveryGates(10_000, List.of(1_000L), 60_000, 30_000, 100, 0.02, 2, 1_000, true, 100, 10, 1_000),
                 gapCount, droppedSampleCount);
     }
 
@@ -110,8 +110,7 @@ class TestResultStatusPersisterTest {
     @Test
     @SuppressWarnings("unchecked")
     void interruptionLogIsAVersionedDocumentCarryingGatesAllTransitionsAndGapCount() {
-        // The field names asserted here are the persisted schema - readers of old rows depend
-        // on them.
+        // These field names are the persisted schema.
         TestResultStatusPersister persister = persister(Runnable::run, () -> 5, () -> 0);
         persister.onTransition(new TestStateMachine.TransitionRecord(
                 1, TestState.IDLE, TestState.STARTING, 1_000L, "operator start", "operator-1"));
@@ -120,17 +119,16 @@ class TestResultStatusPersisterTest {
 
         Map<String, Object> document = new ObjectMapper().readValue(result.interruptionLog, Map.class);
 
-        // Numbers via Number.longValue(): whether the mapper hands back Integer or Long for an
-        // untyped document is its business, the persisted value is not.
+        // Number.longValue(): the mapper may return Integer or Long for an untyped document.
         assertThat(((Number) document.get("schema")).longValue()).isEqualTo(2);
         assertThat(((Number) document.get("gapCount")).longValue()).isEqualTo(5);
 
-        // The gates keep the incident record readable once the deployment's configuration has
-        // moved on - the document's central auditability claim.
+        // The gates keep the record interpretable after the deployment's configuration changes.
         Map<String, Object> gates = (Map<String, Object>) document.get("gates");
         assertThat(gates).containsKeys("reconnectWindowMillis", "backoffMillis",
                 "safeHoldTimeoutMillis", "maxHoldForResumeMillis", "plausibilityGateMillis",
-                "driftFraction", "maxLossesPerRun", "minEnvelopeNewton", "resumeEnabled");
+                "driftFraction", "maxLossesPerRun", "minEnvelopeNewton", "resumeEnabled",
+                "maxSampleIntervalMillis", "plausibilityGateMinSamples", "maxFrozenMillis");
         assertThat(((Number) gates.get("reconnectWindowMillis")).longValue()).isEqualTo(10_000);
         assertThat(gates.get("resumeEnabled")).isEqualTo(true);
 

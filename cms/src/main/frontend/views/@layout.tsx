@@ -5,6 +5,7 @@ import { Button } from '@vaadin/react-components/Button.js';
 import { useAuth } from 'cms/util/auth.js';
 import { Suspense, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
+import ErrorBoundary from 'cms/components/ErrorBoundary';
 
 const defaultTitle = document.title;
 const documentTitleSignal = signal('');
@@ -12,7 +13,6 @@ effect(() => {
     document.title = documentTitleSignal.value;
 });
 
-// Publish for Vaadin to use
 (window as any).Vaadin.documentTitleSignal = documentTitleSignal;
 
 export default function MainLayout() {
@@ -65,9 +65,12 @@ export default function MainLayout() {
         {documentTitleSignal}
       </h1>
 
-      <Suspense>
-        <Outlet />
-      </Suspense>
+      {/* Inside the shell, so a crashing view leaves the navigation up. */}
+      <ErrorBoundary region="This page" resetKey={location.pathname}>
+        <Suspense>
+          <Outlet />
+        </Suspense>
+      </ErrorBoundary>
     </AppLayout>
   );
 }

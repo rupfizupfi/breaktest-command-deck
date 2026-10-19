@@ -27,6 +27,19 @@
 // Deliberate limits: a reference with no "/" (root files such as `build.gradle`
 // or `.gitignore:34`) is not checked, and a line number is only range-checked,
 // never matched against content.
+//
+// Second pass — Markdown links. Every inline link `[label](target)` and every
+// reference definition `[id]: target` whose target is relative (not a URL, not
+// rooted) is resolved against the linking file's own directory, the way a
+// renderer does:
+//   - the target must exist (file or directory) and stay inside this repo — a
+//     link that climbs out of the repo points at a sibling checkout or the
+//     umbrella workspace, which a fresh clone does not have, so it is BROKEN;
+//     cite an id (OQ-n, BL-nnn) instead
+//   - a "#anchor" on a .md target (or a bare "#anchor" in the same file) must
+//     match a heading under GitHub's slug rule (the one _check-size.py uses for
+//     TOC links) or an explicit <a id|name="..."> in that file
+// Links inside fenced blocks and inline code spans are not links and are skipped.
 
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative, resolve, extname, sep } from 'node:path';
@@ -38,7 +51,7 @@ const strict = args.has('--strict');
 const quiet = args.has('--quiet');
 
 // Extensions treated as code/config references. Not .md: doc-to-doc links are
-// relative and rendered, so Markdown link resolution already covers them.
+// relative Markdown links, checked by the second pass below.
 const CODE_EXT = new Set([
   '.java', '.kt', '.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.gradle',
   '.properties', '.yaml', '.yml', '.sh', '.ps1', '.py', '.bat', '.sql', '.css',
@@ -188,6 +201,81 @@ for (const mdPath of markdownFiles(docRoot)) {
   });
 }
 
+// ---- Second pass: relative Markdown links and their anchors -----------------
+
+// GitHub's heading -> anchor transform, identical to _check-size.py's slug():
+// lowercase, drop backticks/asterisks, drop everything but [a-z0-9 _-], spaces
+// to hyphens (not collapsed, so an em-dash between words yields "--").
+const slug = (heading) =>
+  heading.trim().toLowerCase().replace(/[`*]/g, '').replace(/[^a-z0-9 \-_]/g, '').replace(/ /g, '-');
+
+const anchorCache = new Map();
+function anchorsOf(absMd) {
+  if (anchorCache.has(absMd)) return anchorCache.get(absMd);
+  const anchors = new Set();
+  const seenSlugs = new Map();
+  let fenced = false;
+  for (const line of readFileSync(absMd, 'utf8').split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    const h = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (h) {
+      // A heading's own link syntax renders as its label.
+      const base = slug(h[1].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'));
+      const n = seenSlugs.get(base) ?? 0;
+      seenSlugs.set(base, n + 1);
+      anchors.add(n === 0 ? base : `${base}-${n}`);
+    }
+    for (const a of line.matchAll(/<a\s+(?:id|name)=["']([^"']+)["']/g)) anchors.add(a[1]);
+  }
+  anchorCache.set(absMd, anchors);
+  return anchors;
+}
+
+const INLINE_LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
+const REF_DEF = /^\s{0,3}\[[^\]]+\]:\s+<?(\S+?)>?(?:\s+"[^"]*")?\s*$/;
+let linksChecked = 0;
+
+for (const mdPath of markdownFiles(docRoot)) {
+  const relMd = relative(repoRoot, mdPath).split(sep).join('/');
+  const lines = readFileSync(mdPath, 'utf8').split(/\r?\n/);
+  let inFence = false;
+  lines.forEach((line, i) => {
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return; }
+    if (inFence) return;
+    const code = line.replace(/`[^`]*`/g, '');
+    const targets = [...code.matchAll(INLINE_LINK)].map((m) => m[1]);
+    const def = code.match(REF_DEF);
+    if (def) targets.push(def[1]);
+
+    for (const raw of targets) {
+      if (/^[a-z][a-z0-9+.\-]*:/i.test(raw)) continue;  // https:, mailto:, …
+      if (raw.startsWith('/')) continue;                 // site-rooted, not a file link
+      const hashAt = raw.indexOf('#');
+      const pathPart = decodeURI(hashAt === -1 ? raw : raw.slice(0, hashAt));
+      const anchor = hashAt === -1 ? null : decodeURIComponent(raw.slice(hashAt + 1));
+      const location = { doc: relMd, line: i + 1, ref: raw };
+      linksChecked++;
+
+      const target = pathPart === '' ? mdPath : resolve(mdPath, '..', pathPart);
+      const relTarget = relative(repoRoot, target);
+      if (relTarget.startsWith('..') || resolve(relTarget) === relTarget) {
+        broken.push({ ...location, why: 'link leaves the repo — cite an id (OQ-n, BL-nnn) instead' });
+        continue;
+      }
+      if (!existsSync(target)) {
+        broken.push({ ...location, why: 'link target does not exist' });
+        continue;
+      }
+      if (anchor !== null && anchor !== '' && target.endsWith('.md') && statSync(target).isFile()) {
+        if (!anchorsOf(target).has(anchor)) {
+          broken.push({ ...location, why: `no heading or anchor "#${anchor}" in ${relTarget.split(sep).join('/')}` });
+        }
+      }
+    }
+  });
+}
+
 function report(rows, heading) {
   console.log(`\n${heading}`);
   const width = Math.max(...rows.map((r) => `${r.doc}:${r.line}`.length));
@@ -196,7 +284,7 @@ function report(rows, heading) {
   }
 }
 
-console.log(`Checked ${checked} in-convention reference(s) across ${files} markdown files.`);
+console.log(`Checked ${checked} in-convention reference(s) and ${linksChecked} relative Markdown link(s) across ${files} markdown files.`);
 if (shorthand.length) {
   console.log(
     `${shorthand.length} reference(s) are shorthand and cannot be resolved` +

@@ -16,8 +16,6 @@ export function makeObjectEmptyValueCreatorIgnoreRelation<M extends ObjectModel>
         // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
         const obj: Partial<Value<M>> = {};
 
-        // Iterate the model class hierarchy up to the ObjectModel, and extract
-        // the property getter names from every prototypes
         for (const [key, getter] of getObjectModelOwnAndParentGetters(model)) {
             const propertyModel = getter.call(model);
 

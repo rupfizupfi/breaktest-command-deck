@@ -1,4 +1,5 @@
-import React, {useEffect, useRef, useState} from "react";
+import React, {useEffect, useId, useRef, useState} from "react";
+import {Button} from "@vaadin/react-components/Button.js";
 import Webcam from "react-webcam";
 import cvReady, {CV} from "@techstark/opencv-js";
 import creatCamshiftTracking from "Frontend/components/webcam/tracking/CamShiftTracking";
@@ -21,6 +22,7 @@ export default function DistanceMeasureCam() {
     // The capture loop is started once, so it reads the scale factor through a ref.
     const scaleFactorRef = useRef(scaleFactor);
     const [facingMode, setFacingMode] = useState(FACING_MODE_USER);
+    const instructionsId = useId();
 
     const videoConstraints: MediaTrackConstraints = {
         facingMode: facingMode,
@@ -112,8 +114,8 @@ export default function DistanceMeasureCam() {
 
     return (
         <div>
-            <button onClick={() => setIsCalibrating(true)}>Calibrate</button>
-            <button
+            <Button onClick={() => setIsCalibrating(true)}>Calibrate</Button>
+            <Button
                 onClick={() =>
                     setFacingMode(
                         facingMode === FACING_MODE_ENVIRONMENT ? FACING_MODE_USER : FACING_MODE_ENVIRONMENT
@@ -121,8 +123,12 @@ export default function DistanceMeasureCam() {
                 }
             >
                 Change cam
-            </button>
-            <p>Click on the image to select an object to track.</p>
+            </Button>
+            <p id={instructionsId}>
+                {isCalibrating
+                    ? "Calibrating: click two points a known distance apart."
+                    : "Click on the image to select an object to track."}
+            </p>
             <div style={{position: "relative", width: 640, height: 480}}>
                 <Webcam
                     ref={webcamRef}
@@ -138,10 +144,15 @@ export default function DistanceMeasureCam() {
                         pointerEvents: "none",
                     }}
                 />
+                {/* Selection is a pointer gesture on the picture (a click, or a drag for the tracked
+                    area); there is no keyboard equivalent, so the canvas is labelled, not focusable. */}
                 <canvas
                     ref={canvasRef}
                     width={640}
                     height={480}
+                    role="img"
+                    aria-label="Camera view"
+                    aria-describedby={instructionsId}
                     onClick={handleCanvasClick}
                 />
             </div>

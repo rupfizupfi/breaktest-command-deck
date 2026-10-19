@@ -1,13 +1,22 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.testrunner.measure.SensorReconnector;
+import ch.rupfizupfi.deck.testrunner.measure.MeasurementLoop;
 import ch.rupfizupfi.deck.api.services.SuckService;
 import ch.rupfizupfi.deck.data.TestResult;
+import ch.rupfizupfi.deck.data.SettingRepository;
 import ch.rupfizupfi.deck.data.TestResultRepository;
+import ch.rupfizupfi.deck.device.BenchPreparation;
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.HardwareModeInfo;
 import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
 import ch.rupfizupfi.deck.filesystem.CSVStoreService;
 import ch.rupfizupfi.deck.filesystem.StorageLocationService;
+import ch.rupfizupfi.deck.rig.RigLimits;
+import ch.rupfizupfi.deck.testrunner.measure.ForceLimits;
+import ch.rupfizupfi.deck.testrunner.measure.RunEventSink;
+import ch.rupfizupfi.deck.testrunner.program.TestProgram;
+import ch.rupfizupfi.deck.testrunner.program.TestProgramRegistry;
 import ch.rupfizupfi.deck.testrunner.startup.check.AbstractCheck;
 import ch.rupfizupfi.deck.testrunner.startup.check.FileSystemCheck;
 import ch.rupfizupfi.deck.testrunner.startup.check.FrequencyInverterCheck;
@@ -17,9 +26,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
-import java.lang.reflect.Constructor;
+import java.util.Optional;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -37,55 +45,31 @@ public class TestRunnerFactory {
                 applicationContext.getBean(HardwareModeInfo.class));
     }
 
+    /** The bench's line for the test log; empty when nothing needs preparing (real hardware). */
+    public Optional<String> prepareBench(TestResult testResult) {
+        BenchPreparation preparation = applicationContext.getBeanProvider(BenchPreparation.class).getIfAvailable();
+        return preparation == null ? Optional.empty() : Optional.of(preparation.prepare(testResult));
+    }
+
     public MotorSafetyController getMotorSafetyController() {
         return applicationContext.getBean(MotorSafetyController.class);
     }
 
-    @SuppressWarnings("unchecked")
-    public <T extends AbstractTest> T createTestRunner(Class<T> testRunnerClass, TestResult testResult, TestLogger testLogger) {
-        try {
-            // Class#getConstructors defines no order, so a second public constructor would silently
-            // wire a different collaborator set into a motor-driving run.
-            Constructor<?>[] constructors = testRunnerClass.getConstructors();
-            if (constructors.length != 1) {
-                throw new IllegalStateException(testRunnerClass.getName()
-                        + " must declare exactly one public constructor, found " + constructors.length);
-            }
-            Constructor<T> constructor = (Constructor<T>) constructors[0];
+    /**
+     * The run's program, from the registry keyed on the parameter's {@code TestType} (OQ-64 step 7),
+     * given the run's own rig-limit snapshot.
+     */
+    public TestProgram createProgram(TestResult testResult, RigLimits rigLimits) {
+        return applicationContext.getBean(TestProgramRegistry.class).create(testResult, rigLimits);
+    }
 
-            Class<?>[] parameterTypes = constructor.getParameterTypes();
-            Object[] parameters = new Object[parameterTypes.length];
-
-            for (int i = 0; i < parameterTypes.length; i++) {
-                if (parameterTypes[i].equals(TestResult.class)) {
-                    parameters[i] = testResult;
-                } else if (parameterTypes[i].equals(TestRunnerFactory.class)) {
-                    parameters[i] = this;
-                } else if (parameterTypes[i].equals(TestLogger.class)) {
-                    parameters[i] = testLogger;
-                } else {
-                    try {
-                        parameters[i] = applicationContext.getBean(parameterTypes[i]);
-                    } catch (Exception e) {
-                        throw new IllegalStateException("cannot resolve constructor parameter " + i
-                                + " (" + parameterTypes[i].getName() + ") of " + testRunnerClass.getName(), e);
-                    }
-                }
-            }
-
-            return constructor.newInstance(parameters);
-        } catch (IllegalStateException e) {
-            // Already names the class and the parameter it stumbled on; wrapping would bury that.
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create test runner instance", e);
-        }
+    public DeviceService deviceService() {
+        return applicationContext.getBean(DeviceService.class);
     }
 
     /**
-     * The force CSV and its gap sidecar, named once per run. Both paths are fixed before the run
-     * starts so a reconnect writes its gap record next to the trace it interrupts, rather than
-     * deriving a second name from a later timestamp.
+     * The force CSV and its gap sidecar, named once before the run starts so the gap record always
+     * sits next to the trace it interrupts.
      */
     public CSVStoreService.TestRunFiles createRunFiles(long testResultId) {
         return applicationContext.getBean(CSVStoreService.class).generateRunFilesForTestResult(testResultId);
@@ -96,17 +80,17 @@ public class TestRunnerFactory {
         return new GapRecorder(runFiles, testResultId, gates, applicationContext.getBean(ObjectMapper.class));
     }
 
-    public LoadCellThread createLoadCellThread(TestContext testContext, LoadCellDevice loadCellDevice,
-                                               CSVStoreService.TestRunFiles runFiles,
-                                               SensorLossListener lossListener,
-                                               RecoveryGates gates, GapRecorder gapRecorder) {
-        return new LoadCellThread(testContext, loadCellDevice, runFiles, getMotorSafetyController(),
-                lossListener, gates, gapRecorder);
+    public MeasurementLoop createMeasurementLoop(ForceLimits limits, LoadCellDevice loadCellDevice,
+                                               CSVStoreService.TestRunFiles runFiles, RunEventSink events,
+                                               RecoveryGates gates, RigLimits rigLimits,
+                                               GapRecorder gapRecorder) {
+        return new MeasurementLoop(limits, loadCellDevice, runFiles, getMotorSafetyController()::safeStop,
+                events, gates, rigLimits, gapRecorder);
     }
 
-    public SensorReconnector createReconnector(LoadCellDevice loadCellDevice, LoadCellThread loadCellThread,
+    public SensorReconnector createReconnector(LoadCellDevice loadCellDevice, MeasurementLoop measurementLoop,
                                                RecoveryGates gates) {
-        return new SensorReconnector(loadCellDevice, loadCellThread, gates);
+        return new SensorReconnector(loadCellDevice, measurementLoop, gates);
     }
 
     /**
@@ -117,9 +101,19 @@ public class TestRunnerFactory {
         return applicationContext.getBean(RecoveryProperties.class);
     }
 
-    public TestStateBroadcaster createStateBroadcaster(long testResultId, ScheduledExecutorService scheduler,
+    /**
+     * The rig limits as the settings stand now. A run takes this once and keeps it, as it does its
+     * {@link RecoveryGates}.
+     *
+     * @throws IllegalStateException when a stored limit is no number or out of range
+     */
+    public RigLimits rigLimits() {
+        return RigLimits.read(applicationContext.getBean(SettingRepository.class));
+    }
+
+    public TestStateBroadcaster createStateBroadcaster(long testResultId,
                                                        Supplier<TestStateMessage> snapshotSupplier) {
-        return new TestStateBroadcaster(applicationContext.getBean(SimpMessagingTemplate.class), scheduler,
+        return new TestStateBroadcaster(applicationContext.getBean(SimpMessagingTemplate.class),
                 testResultId, snapshotSupplier);
     }
 
@@ -132,8 +126,14 @@ public class TestRunnerFactory {
                 droppedSampleCount);
     }
 
+    /**
+     * The job's alarm goes to {@code /topic/logs} directly: it fires seconds after the run ended its
+     * {@link TestLogger}, so the dashboard log pane shows it and no run-log file holds it.
+     */
     public SuckJob createSuckJob(int durationSeconds) {
-        return new SuckJob(durationSeconds, applicationContext.getBean(SuckService.class));
+        SimpMessagingTemplate template = applicationContext.getBean(SimpMessagingTemplate.class);
+        return new SuckJob(durationSeconds, applicationContext.getBean(SuckService.class),
+                line -> template.convertAndSend("/topic/logs", line));
     }
 
     public TestLogger createLogger(TestResult testResult) {

@@ -1,7 +1,10 @@
 package ch.rupfizupfi.deck.device;
 
+import ch.rupfizupfi.deck.device.api.DriveProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
@@ -16,31 +19,26 @@ import static org.junit.jupiter.api.Assumptions.abort;
  * Checks each driver plugin jar in {@code drivers/} against the contract it will actually run on,
  * and the jars against each other.
  *
- * <p>Nothing else can catch what this catches. The driver repos compile against the live
- * {@code device-api} — that is their conformance check — but the jar sitting in {@code drivers/} is
- * whatever was last copied there, possibly built months and one contract bump ago. Instantiating a
- * plugin's auto-configuration class runs its initializer, which is where the plugin calls
- * {@code DeviceApi.verifyPluginBuiltAgainst(ContractVersion.VALUE)} with the version javac inlined
- * into <em>its</em> class file. So this compares the jar's build-time contract against this build's
- * contract, which is the one comparison that matters and the one no compiler can make.
+ * <p>The jar in {@code drivers/} may predate a contract bump. Instantiating a plugin's
+ * auto-configuration runs its initializer, which calls
+ * {@code DeviceApi.verifyPluginBuiltAgainst(ContractVersion.VALUE)} with the version inlined at the
+ * jar's build, so this compares that against this build's contract.
  *
- * <p>No Spring context and no hardware: instantiating the auto-configuration class does not invoke
- * its {@code @Bean} methods, and it is those methods — not the class — that open a USB device. This
- * runs per jar, so it is useful with only one driver present, which is the normal state of a dev
- * machine.
+ * <p>No Spring context and no hardware: instantiation does not invoke the {@code @Bean} methods,
+ * which are what open a USB device. Runs per jar, so one driver is enough.
  */
 @Tag("driver-plugin")
 class DriverPluginContractTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(DriverPluginContractTest.class);
 
     @Test
     void everyPluginJarPerformsTheContractSkewCheck() {
         List<Path> jars = requirePluginJars();
 
         for (Path jar : jars) {
-            // Asserted before the check's *result* is trusted below, because a jar that never makes
-            // the call cannot fail it. That is the one way this whole suite could report a pass it
-            // did not earn, and it is not hypothetical: a jar built before the check existed loads
-            // perfectly and verifies nothing.
+            // A jar that never makes the call cannot fail it, so the skew check's result means
+            // nothing without this.
             assertThat(DriverPlugins.verifiesItselfAgainstTheContract(jar))
                     .as("%s never calls DeviceApi.verifyPluginBuiltAgainst, so nothing checks it "
                             + "against the contract it is running on and a skewed jar would reach "
@@ -86,9 +84,7 @@ class DriverPluginContractTest {
             Set<Class<?>> declared =
                     DriverPlugins.declaredProviderTypes(DriverPlugins.autoConfigurationClasses(jar));
 
-            // A jar on loader.path that registers no provider is indistinguishable at startup from
-            // no jar at all: HardwareModeCheck names a missing provider and the operator goes
-            // looking for a file that is right there. Named here instead.
+            // At startup such a jar looks like a missing one; name it here instead.
             assertThat(declared)
                     .as("%s registers no device-api provider bean. Its auto-configuration declares "
                             + "no @Bean returning one of %s, so the deck would refuse to start in "
@@ -96,6 +92,66 @@ class DriverPluginContractTest {
                             jar.getFileName(), DriverPlugins.requiredProviderTypes())
                     .isNotEmpty();
             assertThat(DriverPlugins.requiredProviderTypes()).containsAll(declared);
+        }
+    }
+
+    /**
+     * A drive plugin built against contract 1.1.0 passes the skew check, which allows an older
+     * minor, and then fails every energize. Caught here instead of on the bench.
+     */
+    @Test
+    void everyDrivePluginArmsTheLinkLossStop() {
+        List<Path> jars = requirePluginJars();
+        List<Path> drivePlugins = jars.stream()
+                .filter(jar -> DriverPlugins.declaredProviderTypes(DriverPlugins.autoConfigurationClasses(jar))
+                        .contains(DriveProvider.class))
+                .toList();
+        if (drivePlugins.isEmpty()) {
+            abort("no drive plugin jar in " + DriverPlugins.directory() + " - nothing arms a link-loss stop.");
+        }
+
+        for (Path jar : drivePlugins) {
+            Map<String, Boolean> drives = DriverPlugins.driveImplementations(jar);
+
+            assertThat(drives)
+                    .as("%s registers a DriveProvider but contains no concrete Drive", jar.getFileName())
+                    .isNotEmpty();
+            assertThat(drives)
+                    .as("%s was built before Drive#enableLinkLossStop (device-api 1.2.0): it loads, but "
+                                    + "the deck refuses to energize a drive that cannot stop itself on a lost "
+                                    + "link. Rebuild it (`./gradlew shadowJar` in ../usbmodbus) and copy the "
+                                    + "result into %s.",
+                            jar.getFileName(), DriverPlugins.directory())
+                    .doesNotContainValue(false);
+        }
+    }
+
+    /**
+     * Warns, never fails: a drive jar built before {@code Drive#readControlSource} (device-api 1.3.0)
+     * answers UNKNOWN through the contract's default, and the boot de-energize treats UNKNOWN as
+     * remote — the pre-1.3.0 behaviour. The jar is still safe; it only cannot spare a drive under
+     * keypad control.
+     */
+    @Test
+    void everyDrivePluginReportsItsControlSource() {
+        List<Path> drivePlugins = requirePluginJars().stream()
+                .filter(jar -> DriverPlugins.declaredProviderTypes(DriverPlugins.autoConfigurationClasses(jar))
+                        .contains(DriveProvider.class))
+                .toList();
+        if (drivePlugins.isEmpty()) {
+            abort("no drive plugin jar in " + DriverPlugins.directory() + " - nothing reports a control source.");
+        }
+
+        for (Path jar : drivePlugins) {
+            Map<String, Boolean> drives = DriverPlugins.driveImplementationsOverriding(jar, "readControlSource");
+            if (drives.containsValue(false)) {
+                String warning = jar.getFileName() + " was built before Drive#readControlSource (device-api"
+                        + " 1.3.0): every boot de-energizes the drive even under keypad (LOCAL) control. Rebuild"
+                        + " it (`./gradlew shadowJar` in ../usbmodbus) and copy the result into "
+                        + DriverPlugins.directory() + ".";
+                logger.warn(warning);
+                System.err.println("WARNING: " + warning);
+            }
         }
     }
 
@@ -137,8 +193,8 @@ class DriverPluginContractTest {
     }
 
     /**
-     * The initializer's failure, or null when the plugin is compatible. Unwrapped from the
-     * reflection wrapper so the assertion above reports the driver's own message.
+     * The initializer's failure, or null when the plugin is compatible. Unwrapped so the assertion
+     * reports the driver's own message.
      */
     private static Throwable instantiationFailure(Class<?> autoConfiguration) {
         try {

@@ -9,13 +9,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 
 /**
- * Lifecycle state of ONE run, with the transition history that becomes its audit record.
- * <p>
- * One instance per run and deliberately not a Spring bean: the state belongs to the run, not to the
- * process, and a singleton would carry a previous run's history and listeners into the next one.
- * <p>
- * Written from several threads - the runner thread, the load-cell measurement thread on the loss
- * path, and an operator request thread on resume/abort - so all of it is thread safe.
+ * Lifecycle state of one run, with the transition history that becomes its audit record. One
+ * instance per run, not a Spring bean. Thread safe: written by the runner, the measurement thread
+ * and operator request threads.
  */
 public class TestStateMachine {
     private static final Logger logger = LoggerFactory.getLogger(TestStateMachine.class);
@@ -25,27 +21,21 @@ public class TestStateMachine {
      *
      * @param sequence      monotonic, assigned under the state lock, so records carry the commit
      *                      order even when the fan-out that delivers them does not
-     * @param reason        why it happened, in the words that reach the test log and the operator
-     * @param actor         the operator behind the transition, null for the ones the machine or the
-     *                      hardware made on its own
+     * @param reason        shown in the test log and to the operator
+     * @param actor         the operator behind the transition, null when none
      */
     public record TransitionRecord(long sequence, TestState from, TestState to, long atEpochMillis,
                                    String reason, String actor) {
     }
 
     /**
-     * Guards {@link #state}, {@link #sequence} and {@link #history}, and nothing else. Never held
-     * while a listener runs, so no listener's I/O can delay a thread that needs to read or change
-     * the state.
+     * Guards {@link #state}, {@link #sequence} and {@link #history}. Never held while a listener runs.
      */
     private final Object stateLock = new Object();
 
     /**
-     * Serializes listener fan-out without holding {@link #stateLock}, so a listener is never
-     * re-entered concurrently and cannot see its own callbacks interleave. Taken immediately after
-     * the state lock is released; under contention two fan-outs can still reach it out of commit
-     * order, which is exactly what {@link TransitionRecord#sequence()} exists to let a listener
-     * repair.
+     * Serializes listener fan-out without holding {@link #stateLock}. Two fan-outs can still arrive
+     * out of commit order; {@link TransitionRecord#sequence()} lets a listener repair that.
      */
     private final Object notifyLock = new Object();
 
@@ -75,10 +65,7 @@ public class TestStateMachine {
     /**
      * Transitions only if the machine is still in {@code expected} and {@code guard} agrees, both
      * decided under the state lock.
-     * <p>
-     * That is what makes Resume safe: {@code canResume()} has to be evaluated under the same lock as
-     * the compare-and-set, or a hold that just crossed its auto-abort deadline - or a second browser
-     * that clicked Resume a millisecond earlier - slips between the check and the transition.
+     * This keeps Resume from racing the auto-abort deadline or a second Resume.
      *
      * @param guard evaluated under the state lock, so it must be cheap and must not do I/O or take
      *              another lock. A guard that throws is treated as a refusal.
@@ -86,6 +73,22 @@ public class TestStateMachine {
     public boolean compareAndTransition(TestState expected, TestState to, String reason, String actor,
                                         BooleanSupplier guard) {
         return apply(expected, to, reason, actor, guard);
+    }
+
+    /**
+     * Runs {@code action} only while the run is in {@code expected}, holding the state lock so no
+     * transition can land between the check and the action. Same contract as a guard: cheap, no I/O.
+     *
+     * @return false, without running the action, when the run is in any other state
+     */
+    public boolean runWhileIn(TestState expected, Runnable action) {
+        synchronized (stateLock) {
+            if (state != expected) {
+                return false;
+            }
+            action.run();
+            return true;
+        }
     }
 
     public void addListener(TestStateListener listener) {
@@ -106,11 +109,8 @@ public class TestStateMachine {
         synchronized (stateLock) {
             TestState from = state;
 
-            // Every refusal below logs and returns false, never throws. This machine is driven from
-            // the emergency path and from AbstractTest.cleanup(), which is documented as running
-            // twice per test - so a duplicate terminal transition has to be a no-op, and an
-            // exception raised while the motor is being stopped would mask the incident it was
-            // raised about.
+            // Refusals log and return false, never throw: this is driven from the emergency path and
+            // from the run loop's teardown, which runs more than once.
             if (expected != null && from != expected) {
                 logger.warn("test state transition {} -> {} skipped, expected {} but the run is in {} ({})",
                         from, to, expected, from, reason);
@@ -144,8 +144,6 @@ public class TestStateMachine {
             }
             logger.info("test state transition {} -> {} refused by its guard ({})", from, to, reason);
         } catch (Throwable t) {
-            // A guard that blew up has not established the precondition, so the only safe reading is
-            // "not allowed".
             logger.warn("test state transition {} -> {} refused, its guard threw ({})", from, to, reason, t);
         }
         return false;
@@ -157,8 +155,7 @@ public class TestStateMachine {
                 try {
                     listener.onTransition(record);
                 } catch (Throwable t) {
-                    // The transition is already committed and the remaining listeners - the
-                    // broadcaster among them - still have to hear about it.
+                    // Already committed; the remaining listeners still have to hear about it.
                     logger.warn("test state listener {} failed on transition {} -> {}",
                             listener.getClass().getName(), record.from(), record.to(), t);
                 }

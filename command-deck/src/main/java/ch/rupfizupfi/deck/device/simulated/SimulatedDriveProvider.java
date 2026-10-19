@@ -23,7 +23,7 @@ public class SimulatedDriveProvider implements DriveProvider {
         this.faults = faults;
     }
 
-    /** A distinct handle every time, onto the one shared plant — tier 2 depends on that distinction. */
+    /** A distinct handle every time onto the one shared plant, which tier 2 depends on. */
     @Override
     public Drive open() {
         return new SimulatedDrive(bench, faults);

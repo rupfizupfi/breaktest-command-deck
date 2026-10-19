@@ -29,18 +29,16 @@ subprojects {
 		runtimeOnly 'com.h2database:h2'
 		runtimeOnly "org.postgresql:postgresql"
 		implementation 'com.vaadin:vaadin-spring-boot-starter'
-		// Vaadin 25 no longer bundles Hilla in vaadin-spring-boot-starter; React views need this explicitly.
+		// Not bundled in vaadin-spring-boot-starter since Vaadin 25; required for the React views.
 		implementation 'com.vaadin:hilla-spring-boot-starter'
 		implementation 'org.springframework.boot:spring-boot-starter-security'
 		implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 		implementation 'org.springframework.boot:spring-boot-starter-validation'
 		implementation 'org.springframework.boot:spring-boot-starter-websocket'
-		// Renamed from spring-boot-starter-aop in Spring Boot 4.
 		implementation 'org.springframework.boot:spring-boot-starter-aspectj'
 		implementation 'org.parttio:line-awesome:2.1.0'
-		implementation 'org.apache.poi:poi:5.5.1'
-		implementation 'org.apache.poi:poi-ooxml:5.5.1'
-		implementation 'com.fazecast:jSerialComm:2.11.4'
+		// Module-specific libraries live in the module's own build file: POI (result export) in cms,
+		// jSerialComm (relay switch) in command-deck.
 		// vaadin-dev is optional as of Vaadin 25 and must be requested explicitly.
 		developmentOnly 'org.springframework.boot:spring-boot-devtools'
 		developmentOnly 'com.vaadin:vaadin-dev'
@@ -69,9 +67,7 @@ subprojects {
 	vaadin {
 		productionMode = false
 		optimizeBundle = false
-		// pnpm hard-links from a shared store, so cms and command-deck no longer
-		// keep two near-identical copies of the same dependency tree on disk.
-		// Vaadin fetches its own pinned pnpm, so useGlobalPnpm stays off.
+		// Shared store for the cms and command-deck trees. Vaadin fetches its own pinned pnpm.
 		pnpmEnable = true
 	}
 }

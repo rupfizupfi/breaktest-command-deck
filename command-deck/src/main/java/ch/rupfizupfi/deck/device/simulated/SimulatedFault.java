@@ -1,12 +1,9 @@
 package ch.rupfizupfi.deck.device.simulated;
 
 /**
- * The fault a {@link SimulatedFaultSwitches} switch injects. Each trips a path that is unreachable
- * on a healthy bench, which is the whole point of the simulator.
- * <p>
- * What each one trips, and the outcome observed when it did:
- * {@code doc/06-feature-work/virtual-devices/fault-injection.md}. The one-liners below are
- * signposts, not that table — extend it, not them.
+ * The fault a {@link SimulatedFaultSwitches} switch injects; each trips a path unreachable on a
+ * healthy bench. What each trips and the observed outcome:
+ * {@code doc/dev/backend/fault-injection.md}.
  */
 public enum SimulatedFault {
 
@@ -43,11 +40,18 @@ public enum SimulatedFault {
     /** → both software tiers fail, tier 3 escalates to the operator. */
     DRIVE_UNRESPONSIVE("no drive handle answers at all"),
 
-    /** → {@code coasting()}, deliberately no escalation: the drive is answering. */
+    /** → {@code coasting()}, no escalation: the drive is answering. */
     DRIVE_MOTOR_NEVER_SLOWS("drive accepts the stop but the motor keeps turning"),
 
     /** → {@code FrequencyInverterDevice#closeDriveHandle}'s best-effort path. */
-    DRIVE_CLOSE_THROWS("closing a drive handle throws");
+    DRIVE_CLOSE_THROWS("closing a drive handle throws"),
+
+    /**
+     * → {@code DriveDeadlineException} for every call behind it, and the drive's own link-loss stop:
+     * one transaction hangs before it reaches the drive, starving the watchdog. One-shot: the
+     * transaction that takes it disarms it.
+     */
+    DRIVE_TRANSACTION_WEDGED("the next drive transaction hangs for deck.simulated.wedge-millis");
 
     private final String description;
 

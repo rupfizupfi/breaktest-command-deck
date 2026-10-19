@@ -1,40 +1,31 @@
 dependencies {
     implementation project(':cms')
-    // Resolved by the device-api included build (root settings.gradle), never from a repository -
-    // substitution matches on group:name, so the version here is inert and deliberately not chased
-    // when the contract is bumped. What ships is whatever device-api/build.gradle says.
+    // Substituted by the device-api included build (root settings.gradle); the version here is
+    // inert, device-api/build.gradle decides.
     implementation 'ch.rupfizupfi.deck:device-api:1.0.0'
+    // Serial port of the four-way relay switch (FourWayRelaySwitch); no cms code touches a port.
+    implementation 'com.fazecast:jSerialComm:2.11.4'
+    // DriveContractTest / LoadCellStreamContractTest, extended by the simulator's own tests. Same
+    // substitution, so the fixtures always match the contract the simulator compiles against.
+    testImplementation(testFixtures('ch.rupfizupfi.deck:device-api:1.0.0'))
+    // ArchitectureTest (OQ-64 step 10). Not managed by the Boot BOM, hence the version. The core
+    // library, not archunit-junit5: the rules run inside plain Jupiter tests, so no second test
+    // engine has to track the JUnit Platform version the BOM picks.
+    testImplementation 'com.tngtech.archunit:archunit:1.5.1'
 }
 
-// The vendor driver jars are runtime plugins, never build inputs. Each implements
-// ch.rupfizupfi.deck:device-api in its own repo (../dscusb, ../usbmodbus — both composite-include
-// device-api, so THEIR compile is the contract-conformance check) and ships a Spring Boot
-// auto-configuration that registers its provider beans. Nothing in this module names a driver class.
+// Vendor driver jars (../dscusb, ../usbmodbus) are runtime plugins, never build inputs: the boot jar
+// contains no driver, PropertiesLauncher loads them from loader.path at launch, and a missing jar is
+// a startup failure named by HardwareModeCheck. Only the native Windows bench (run-bench.ps1)
+// supplies one; the container runs simulated.
 //
-// The boot jar therefore contains NO driver, in any build: bootJar runs through PropertiesLauncher
-// (see the manifest below) and the drivers come from the loader.path directories at launch. A jar
-// present there is loaded, a jar absent is not, and absence stays a *startup* failure named by
-// HardwareModeCheck — put the jar in place and restart, no rebuild.
+// drivers/ is the one place a plugin jar goes; bootRun, driverPluginTest and run-bench.ps1 (via
+// LOADER_PATH) all read it, and an empty directory is fine. deck.hardware.mode decides at startup
+// which provider is active - the driver auto-configurations are conditional on mode=real, so under
+// `simulated` the jars sit inert (`bootRun --args='--deck.hardware.mode=real'` to use them).
 //
-// Only one deployment ever supplies a driver: the native Windows bench, via run-bench.ps1. The deck
-// container runs simulated (deck.hardware.mode=simulated, Linux, where both drivers refuse to
-// register anyway), so nothing here fetches, stages or packages a driver for an image — and the
-// licence-restricted usbmodbus.jar reaches no artifact by any route.
-//
-// drivers/ is the one place a plugin jar goes on this machine, and everything that consumes a
-// driver reads it: bootRun below, driverPluginTest further down, and script/run-bench.ps1 through
-// LOADER_PATH. An absent or empty directory contributes nothing and every task still runs.
-//
-// Unconditional, replacing an earlier -PdeckDrivers flag. Which provider a run gets is decided by
-// deck.hardware.mode at startup, never by the build: both driver auto-configurations are
-// @ConditionalOnProperty(deck.hardware.mode=real), mirroring this module's simulated providers, so
-// under dev's default `simulated` the jars sit on the classpath inert. A build-time gate for a
-// runtime-gated thing could only disagree with the property that actually governs, and it hid that
-// property behind a second switch — `bootRun --args='--deck.hardware.mode=real'` is the whole
-// interface now.
-//
-// developmentOnly is load-bearing: the Spring Boot plugin excludes it from bootJar, so no build can
-// pack a driver. That is what keeps the licence-restricted usbmodbus.jar out of every artifact.
+// developmentOnly is excluded from bootJar, which keeps the licence-restricted usbmodbus.jar out of
+// every artifact.
 def driverPluginDir = "${rootProject.projectDir}/drivers"
 def driverPluginJars = fileTree(driverPluginDir) { include '*.jar' }
 
@@ -43,24 +34,18 @@ dependencies {
 }
 
 tasks.named('bootRun') {
-    // Both modules must resolve the dev H2 file to the same path. Handing it over as an absolute
-    // path via env var (read by spring.datasource.url's ${DECK_H2_DIR:...} placeholder) instead of
-    // forcing the process's working directory to rootProject.projectDir: Vaadin's DevModeInitializer
-    // resolves the @Theme frontend folder relative to that same working directory at runtime, so
-    // overriding it here broke theme discovery for this module.
+    // Both modules must resolve the dev H2 file to the same path. Passed via env var (the
+    // ${DECK_H2_DIR:...} placeholder in spring.datasource.url) rather than by changing the working
+    // directory, because Vaadin resolves the @Theme folder relative to the working directory.
     environment 'DECK_H2_DIR', "${rootProject.projectDir}/.data"
-    // Vaadin's DevModeInitializer shells out to pnpm for frontend installs from inside this
-    // process. Without a TTY (IDE run configs, CI), pnpm refuses to purge/relink node_modules
-    // and aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY instead of prompting - CI=true
-    // is pnpm's own documented way to say "non-interactive, don't ask".
+    // Vaadin runs pnpm from this process; without a TTY pnpm aborts with
+    // ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY. CI=true makes it non-interactive.
     environment 'CI', 'true'
 }
 
-// The Vaadin plugin queries the runtime classpath while its tasks execute, without declaring a
-// task dependency on it — with device-api coming from an included build, a standalone
-// `hillaGenerate` (script/typecheck.ps1) then fails with "querying ... before task
-// ':device-api:jar' has completed is not supported". Compilation forces the jar as a side effect,
-// which is why `build` never sees this; the Vaadin/Hilla tasks need it stated.
+// The Vaadin plugin reads the runtime classpath without declaring a dependency on it, so a
+// standalone `hillaGenerate` (script/typecheck.ps1) fails with "querying ... before task
+// ':device-api:jar' has completed is not supported". `build` gets the jar via compilation.
 def deviceApiJar = gradle.includedBuild('device-api').task(':jar')
 tasks.matching {
     it.name in ['hillaGenerate', 'hillaConfigure', 'vaadinPrepareFrontend', 'vaadinBuildFrontend']
@@ -69,62 +54,48 @@ tasks.matching {
 }
 
 bootJar {
-    // Specific configuration for Command Deck application JAR
     archiveBaseName = 'command-deck-application'
     enabled = true
     manifest {
-        // PropertiesLauncher instead of the plugin's default JarLauncher: it extends the classpath
-        // with the directories named by loader.path (LOADER_PATH env / -Dloader.path), which is how
-        // the driver plugins get loaded at launch instead of being baked in. Start-Class and
-        // Spring-Boot-Classes/Lib are still written by the plugin, so BOOT-INF stays on the
-        // classpath and the app itself starts exactly as before. Boot 4 moved the launcher into
-        // org.springframework.boot.loader.launch — the pre-3.2 name would fail with CNFE.
+        // PropertiesLauncher instead of JarLauncher: it adds the loader.path directories
+        // (LOADER_PATH / -Dloader.path) to the classpath, which is how driver plugins load.
         attributes 'Main-Class': 'org.springframework.boot.loader.launch.PropertiesLauncher'
     }
 }
 
 jar {
-    // Library JAR configuration for shared components
     archiveBaseName = 'command-deck-library'
     enabled = true
 }
 
-// The driver plugins are verified rather than assumed, and in a task of their own so `test` stays
-// hermetic: dropping a jar into drivers/ must not change what the ordinary suite compiles against
-// or runs. Tagged rather than a separate source set, so the driver tests sit beside the context
-// test they mirror.
-//
-// This is the only automated check that the plugin contract holds end to end. Both facts it pins
-// are invisible to every compiler: the jar on the machine is whatever was last copied there, so
-// whether it registers its provider under deck.hardware.mode=real, and whether the device-api
-// version javac inlined into it still satisfies DeviceApi's skew check, are properties of a file -
-// not of this build. The driver repos' own compile checks the contract they were BUILT against;
-// this checks the one they will RUN against.
+// Verifies the jars actually in drivers/: that each registers its provider under mode=real and
+// passes DeviceApi's version skew check. A separate task so `test` stays hermetic; the driver
+// repos' compile checks the contract they were built against, this checks the one they run against.
 def driverPluginTag = 'driver-plugin'
 
 tasks.named('test') {
-    // Vendor jars are driverPluginTest's business. A machine with no driver must still go green.
+    // A machine with no driver must still go green.
     useJUnitPlatform {
         excludeTags driverPluginTag
     }
+    // device-api's own suite (the call gate in its support package) has no gate of its own; running
+    // it with the deck's tests puts it in the jvm gate.
+    dependsOn gradle.includedBuild('device-api').task(':test')
 }
 
 tasks.register('driverPluginTest', Test) {
     group = 'verification'
     description = 'Boots the deck against the real driver plugins in drivers/ and asserts they register.'
     testClassesDirs = sourceSets.test.output.classesDirs
-    // The app's own classpath first, the plugins appended - the same precedence loader.path gives
-    // them at launch, so device-api resolves to this build's copy and not to anything a jar carries.
+    // Plugins appended, the same precedence loader.path gives them, so device-api resolves to this
+    // build's copy.
     classpath = sourceSets.test.runtimeClasspath + driverPluginJars
     useJUnitPlatform {
         includeTags driverPluginTag
     }
-    // The tests locate the jars themselves to report which ones they checked, and to skip with a
-    // reason when there are none. Handed over explicitly rather than resolved from a working
-    // directory the task does not otherwise promise.
+    // The tests list the jars to report what they checked, or skip when there are none.
     systemProperty 'deck.driverPluginDir', driverPluginDir
-    // The jars decide the outcome, so a swapped jar has to re-run this - the classpath alone would
-    // catch that, but the directory may also gain or lose a file the classpath was built without.
+    // Re-run when the directory's contents change, not only the classpath.
     inputs.dir(driverPluginDir)
             .withPropertyName('driverPlugins')
             .optional()

@@ -139,11 +139,9 @@ export default function creatCamshiftTracking(cv: CV) {
                 trackingWindow = newTrackingWindow;
             }
 
-            // Display the result
             cv.imshow(canvas, frame);
 
             if (realMovement > 0) {
-                // Display movement
                 ctx.font = "20px Arial";
                 ctx.fillStyle = "blue";
                 ctx.fillText(`Movement: ${realMovement.toFixed(2)} cm`, 10, 30);

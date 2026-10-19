@@ -21,16 +21,14 @@ public class FrequencyInverterCheck extends AbstractCheck {
 
     @Override
     public void execute() throws CheckFailedException {
-        // Only a connect() that returned normally may be balanced by a disconnect() -- the reason is
-        // spelled out on LoadCellCheck.execute().
+        // Only a connect() that returned normally may be balanced; see LoadCellCheck.execute().
         boolean connected = false;
         try {
             try {
                 frequencyInverter.connect();
                 connected = true;
             } catch (Throwable t) {
-                // Includes UnsatisfiedLinkError from the USB native binding; the operator needs the
-                // cause in the test log, not a stack trace escaping into the runner's generic handler.
+                // Includes UnsatisfiedLinkError from the native binding.
                 logger.error("Frequency inverter check could not open the device", t);
                 throw new CheckFailedException("Could not open the frequency inverter: "
                         + t.getClass().getSimpleName()
@@ -40,9 +38,7 @@ public class FrequencyInverterCheck extends AbstractCheck {
             }
 
             try {
-                // Read-only, and serialized with the info-poll thread on driveLock. A closed handle
-                // arrives here as DriveUnavailableException, a dead link as the driver's own
-                // exception -- checked ones cross Drive undeclared, hence Exception.
+                // Read-only. Exception, because the driver's checked exceptions cross Drive undeclared.
                 frequencyInverter.queryDrive(Drive::getControlParameters);
             } catch (Exception e) {
                 logger.error("Frequency inverter check got no answer from the drive", e);
@@ -58,8 +54,7 @@ public class FrequencyInverterCheck extends AbstractCheck {
                 try {
                     frequencyInverter.disconnect();
                 } catch (Exception e) {
-                    // Swallowed on purpose -- a throw from here would replace the CheckFailedException
-                    // that is on its way out and hide the real reason the test was refused.
+                    // Swallowed so it cannot replace a CheckFailedException on its way out.
                     logger.warn("Failed to release the frequency inverter after the startup check", e);
                 }
             }

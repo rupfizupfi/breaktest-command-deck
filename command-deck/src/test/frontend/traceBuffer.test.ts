@@ -1,9 +1,6 @@
 /**
- * Pure-logic tests for the run view's force trace buffer (node environment — no browser, no DOM).
- *
- * Two invariants the chart cannot state: a hole the backend's no-data watchdog would declare must
- * reach Chart.js as a NaN separator so the line breaks over it, and no separator may reach the
- * Force/Max readouts, which are read straight off the buffer.
+ * A hole the backend's no-data watchdog would declare must reach Chart.js as a NaN separator, and no
+ * separator may reach the Force/Max readouts.
  */
 import { describe, expect, it } from 'vitest';
 import {

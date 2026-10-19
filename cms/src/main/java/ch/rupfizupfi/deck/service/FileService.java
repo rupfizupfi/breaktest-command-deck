@@ -13,12 +13,12 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 @Service
 public class FileService {
     private static final Logger log = LoggerFactory.getLogger(FileService.class);
+    private static final Pattern SAFE_EXTENSION = Pattern.compile("[A-Za-z0-9]{1,10}");
 
     private final FileMetadataRepository fileMetadataRepository;
 
@@ -38,16 +38,6 @@ public class FileService {
         return storageLocation;
     }
 
-    public List<FileMetadata> saveFiles(MultipartFile[] files) throws IOException {
-        return List.of(files).stream().map(file -> {
-            try {
-                return saveFile(file);
-            } catch (IOException ex) {
-                throw new RuntimeException("Could not store file " + file.getOriginalFilename() + ". Please try again!", ex);
-            }
-        }).collect(Collectors.toList());
-    }
-
     /**
      * Stores the bytes and returns the row describing them. A row survives only if its bytes do:
      * the first save mints the id {@link #generateFileName} needs, and a failed store removes it
@@ -58,7 +48,7 @@ public class FileService {
         FileMetadata savedMetadata = fileMetadataRepository.save(new FileMetadata(file.getOriginalFilename()));
 
         try {
-            Path targetLocation = storageLocation.resolve(generateFileName(file, savedMetadata));
+            Path targetLocation = resolveWithin(storageLocation, generateFileName(file, savedMetadata));
             Files.copy(file.getInputStream(), targetLocation);
             savedMetadata.setFilePath(targetLocation.getFileName().toString());
             fileMetadataRepository.save(savedMetadata);
@@ -76,8 +66,17 @@ public class FileService {
         return savedMetadata;
     }
 
+    /**
+     * {@code <id>.<ext>}: the client's name never reaches the filesystem, only an extension of 1-10
+     * ASCII letters or digits taken after its last separator of either kind. The original name stays
+     * on the row for display.
+     */
     protected String generateFileName(MultipartFile file, FileMetadata metadata) {
-        return metadata.getId() + "-" + file.getOriginalFilename();
+        String original = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        String baseName = original.substring(Math.max(original.lastIndexOf('/'), original.lastIndexOf('\\')) + 1);
+        int dot = baseName.lastIndexOf('.');
+        String extension = dot < 0 ? "" : baseName.substring(dot + 1);
+        return SAFE_EXTENSION.matcher(extension).matches() ? metadata.getId() + "." + extension : String.valueOf(metadata.getId());
     }
 
 

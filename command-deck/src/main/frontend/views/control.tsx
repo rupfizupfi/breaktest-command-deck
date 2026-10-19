@@ -12,7 +12,7 @@ import {parseBatch, peakForce} from "Frontend/service/loadCellBatch";
 export const config: ViewConfig = {menu: {order: 10, icon: 'line-awesome/svg/cogs-solid.svg', exclude:true}, title: 'Control board', loginRequired: true};
 
 export default function ControlBoard() {
-    // null rather than 0: an initial zero is indistinguishable from a genuine "no load" reading.
+    // null, not 0: an initial zero would look like a genuine "no load" reading.
     const [force, setForce] = useState<number | null>(null);
     const service = getService();
     const {loadCell, connected} = useLiveStatus();

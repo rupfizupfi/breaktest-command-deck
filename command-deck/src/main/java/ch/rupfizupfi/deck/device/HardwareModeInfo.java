@@ -6,8 +6,7 @@ import org.springframework.stereotype.Component;
 /**
  * The resolved {@link HardwareMode} for this process, for the code that has to announce it.
  * <p>
- * Safe to read without re-validating: {@link HardwareModeCheck} has already refused the boot if the
- * value were unusable, so anything reaching this bean is a mode that is actually being served.
+ * Needs no re-validation: {@link HardwareModeCheck} has already refused the boot for an unusable value.
  */
 @Component
 public class HardwareModeInfo {

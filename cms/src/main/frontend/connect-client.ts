@@ -1,10 +1,8 @@
 /**
- * Custom ConnectClient for this module's generated Hilla services. Its twin is
- * `command-deck/src/main/frontend/connect-client.ts` — both must exist, or the module without
- * one falls back to the generated default and silently loses the error policy.
- *
- * Why this file replaces `generated/connect-client.default.ts` at all, and the constraints it
- * has to satisfy: `doc/04-frontend/hilla-generated-layer.md#the-hand-written-client`.
+ * ConnectClient for this module's Hilla services, twin of
+ * `command-deck/src/main/frontend/connect-client.ts`; a module without one falls back to the
+ * generated default and loses the error policy.
+ * See `doc/dev/frontend/hilla-generated-layer.md#the-hand-written-client`.
  */
 import { createConnectClient } from './util/rpcErrorPolicy.js';
 

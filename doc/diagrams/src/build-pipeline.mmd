@@ -24,7 +24,7 @@ flowchart TD
     merge -.-> bootJar
 
     subgraph docker_phase["Docker (two-stage, profile-gated)"]
-        stage1["build-image<br/>gradle:9.7.0-jdk26-corretto<br/>RUN gradle :MODULE:bootJar<br/>-Pvaadin.productionMode=true"]
+        stage1["build-image<br/>gradle:9.7.1-jdk26-corretto<br/>RUN gradle :MODULE:bootJar<br/>-Pvaadin.productionMode=true"]
         stage2["app-image<br/>eclipse-temurin:26-jre<br/>COPY *.jar /app/MODULE.jar<br/>+ cms/src/docker/bin/startup.sh"]
     end
 

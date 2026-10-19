@@ -35,6 +35,7 @@
 LICENSE
 README.md
 /.secrets
-# The bench's driver plugin directory. The image stages the public driver from GitHub Packages
-# instead, and the licence-restricted usbmodbus.jar must not even enter the build context.
+# Bench driver plugins: unused by the image, and usbmodbus.jar is licence-restricted.
 /drivers
+# Host-side TLS material, bind-mounted at run time; never a build input.
+/docker/keystore

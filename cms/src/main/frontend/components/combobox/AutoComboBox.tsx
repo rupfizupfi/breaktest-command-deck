@@ -28,6 +28,8 @@ const AutoComboBox = React.forwardRef<ComboBoxElement<any>, AutoComboBoxProps<an
                 if (!ignore) {
                     items.value = value;
                 }
+            }).catch(() => {
+                // The rpc middleware reports it; the list keeps its last items.
             });
             return () => {
                 ignore = true;

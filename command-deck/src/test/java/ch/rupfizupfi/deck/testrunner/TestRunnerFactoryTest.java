@@ -1,26 +1,32 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.api.services.SuckService;
+import ch.rupfizupfi.deck.data.Setting;
+import ch.rupfizupfi.deck.data.SettingRepository;
 import ch.rupfizupfi.deck.data.TestResult;
 import ch.rupfizupfi.deck.device.DeviceService;
+import ch.rupfizupfi.deck.rig.RigLimits;
+import ch.rupfizupfi.deck.testrunner.program.TestProgram;
+import ch.rupfizupfi.deck.testrunner.program.TestProgramRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.context.ApplicationContext;
-
-import java.util.Random;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** The constructor lookup {@code TestRunnerFactory#createTestRunner} performs by reflection. */
+/** What {@code TestRunnerFactory} hands a run: its program, its rig-limit snapshot and its vacuum job. */
 class TestRunnerFactoryTest {
 
     private ApplicationContext applicationContext;
     private TestRunnerFactory factory;
     private TestResult testResult;
-    private TestLogger testLogger;
 
     @BeforeEach
     void wireFactory() {
@@ -31,70 +37,57 @@ class TestRunnerFactoryTest {
         factory = new TestRunnerFactory(applicationContext);
         testResult = new TestResult();
         testResult.setId(11L);
-        testLogger = mock(TestLogger.class);
+    }
+
+    /** OQ-64 step 7: the program comes from the registry, by type; no reflection is left. */
+    @Test
+    void theProgramComesFromTheRegistry() {
+        TestProgramRegistry registry = mock(TestProgramRegistry.class);
+        TestProgram program = mock(TestProgram.class);
+        when(applicationContext.getBean(TestProgramRegistry.class)).thenReturn(registry);
+        when(registry.create(testResult, RigLimits.DEFAULTS)).thenReturn(program);
+
+        assertThat(factory.createProgram(testResult, RigLimits.DEFAULTS)).isSameAs(program);
     }
 
     @Test
-    void theSolePublicConstructorIsResolvedByTypeOutOfTheContext() {
-        DestructiveTest test = factory.createTestRunner(DestructiveTest.class, testResult, testLogger);
+    void rigLimitsAreReadFromTheSettingsEachTimeSoEveryRunGetsAFreshSnapshot() {
+        SettingRepository settings = mock(SettingRepository.class);
+        when(applicationContext.getBean(SettingRepository.class)).thenReturn(settings);
+        doReturn(Setting.create(Setting.Key.RIG_RATED_CAPACITY, 50), Setting.create(Setting.Key.RIG_RATED_CAPACITY, 150)).when(settings).getSetting(Setting.Key.RIG_RATED_CAPACITY.getKey());
+        doReturn(Setting.create(Setting.Key.RIG_MAX_SPEED, 200)).when(settings).getSetting(Setting.Key.RIG_MAX_SPEED.getKey());
+        doReturn(Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 500)).when(settings).getSetting(Setting.Key.RIG_SUCTION_LOAD_MARGIN.getKey());
 
-        assertThat(test).isNotNull();
+        assertThat(factory.rigLimits()).isEqualTo(new RigLimits(50, 200));
+        assertThat(factory.rigLimits()).isEqualTo(new RigLimits(150, 200));
     }
 
     @Test
-    void aSecondPublicConstructorIsRefusedInsteadOfPickedAtRandom() {
-        assertThatThrownBy(() -> factory.createTestRunner(TwoConstructors.class, testResult, testLogger))
+    void anUnusableRigLimitSettingRefusesTheRunInsteadOfFallingBack() {
+        SettingRepository settings = mock(SettingRepository.class);
+        when(applicationContext.getBean(SettingRepository.class)).thenReturn(settings);
+        doReturn(Setting.create(Setting.Key.RIG_RATED_CAPACITY, -1)).when(settings).getSetting(Setting.Key.RIG_RATED_CAPACITY.getKey());
+        doReturn(Setting.create(Setting.Key.RIG_MAX_SPEED, 200)).when(settings).getSetting(Setting.Key.RIG_MAX_SPEED.getKey());
+        doReturn(Setting.create(Setting.Key.RIG_SUCTION_LOAD_MARGIN, 500)).when(settings).getSetting(Setting.Key.RIG_SUCTION_LOAD_MARGIN.getKey());
+
+        assertThatThrownBy(() -> factory.rigLimits())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("exactly one public constructor")
-                .hasMessageContaining("2");
+                .hasMessageContaining("rated capacity");
     }
 
+    /** BL-108: the vacuum job's alarm reaches the dashboard's log topic, not just a sink in a test. */
     @Test
-    void anUnresolvableParameterIsNamedWithItsIndexAndType() {
-        when(applicationContext.getBean(Random.class))
-                .thenThrow(new NoSuchBeanDefinitionException(Random.class));
+    @Timeout(10)
+    void aVacuumRelayThatStaysOnIsAnnouncedOnTheLogTopic() {
+        SuckService suckService = mock(SuckService.class);
+        when(suckService.enable()).thenReturn(true);
+        when(suckService.disable()).thenReturn(false);
+        SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
+        when(applicationContext.getBean(SuckService.class)).thenReturn(suckService);
+        when(applicationContext.getBean(SimpMessagingTemplate.class)).thenReturn(template);
 
-        assertThatThrownBy(() -> factory.createTestRunner(UnregisteredParameter.class, testResult, testLogger))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("constructor parameter 5")
-                .hasMessageContaining(Random.class.getName())
-                .hasMessageContaining(UnregisteredParameter.class.getName())
-                .hasCauseInstanceOf(NoSuchBeanDefinitionException.class);
-    }
+        factory.createSuckJob(0).suck();
 
-    public static class TwoConstructors extends AbstractTest {
-        public TwoConstructors(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory,
-                               DeviceService deviceService, MotorSafetyController motorSafety) {
-            super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
-        }
-
-        public TwoConstructors(TestResult testResult, TestLogger testLogger, TestRunnerFactory testRunnerFactory,
-                               DeviceService deviceService, MotorSafetyController motorSafety, Random random) {
-            super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
-        }
-
-        @Override
-        void setup() {
-        }
-
-        @Override
-        public void handleSignal(int signal) {
-        }
-    }
-
-    public static class UnregisteredParameter extends AbstractTest {
-        public UnregisteredParameter(TestResult testResult, TestLogger testLogger,
-                                     TestRunnerFactory testRunnerFactory, DeviceService deviceService,
-                                     MotorSafetyController motorSafety, Random random) {
-            super(testResult, testLogger, testRunnerFactory, deviceService, motorSafety);
-        }
-
-        @Override
-        void setup() {
-        }
-
-        @Override
-        public void handleSignal(int signal) {
-        }
+        verify(template).convertAndSend("/topic/logs", SuckJob.offRefusedAlarm(SuckJob.MAX_OFF_ATTEMPTS));
     }
 }

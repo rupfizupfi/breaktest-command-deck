@@ -1,14 +1,28 @@
 package ch.rupfizupfi.deck.testrunner;
 
+import ch.rupfizupfi.deck.device.Device.LifecycleLockTimeoutException;
 import ch.rupfizupfi.deck.device.DeviceService;
+import ch.rupfizupfi.deck.device.api.ContractVersion;
+import ch.rupfizupfi.deck.device.api.DeviceApi;
 import ch.rupfizupfi.deck.device.api.Drive;
+import ch.rupfizupfi.deck.device.api.DriveClosePendingException;
+import ch.rupfizupfi.deck.device.api.DriveDeadlineException;
+import ch.rupfizupfi.deck.device.api.DriveGating;
+import ch.rupfizupfi.deck.device.api.DriveLane;
 import ch.rupfizupfi.deck.device.api.DriveProvider;
+import ch.rupfizupfi.deck.device.api.StaleStopEpochException;
 import ch.rupfizupfi.deck.device.frequencyinverter.DriveUnavailableException;
 import ch.rupfizupfi.deck.device.frequencyinverter.FrequencyInverterDevice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.net.URL;
+import java.security.CodeSource;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,10 +34,9 @@ import java.util.function.Function;
  * measured motor speed instead of being fire-and-forget, and escalates through three tiers.
  * <p>
  * The tiers, their command order and the backstops behind tier 3 are owned by
- * {@code doc/06-feature-work/testrunner-safety/loadcell-recovery-design.md}. The one rule to carry
- * into every method here: escalation is driven by drive RESPONSIVENESS, never by the clock. Tier 1
- * de-energizes the output stage and lets the motor coast, so a still-turning shaft is a normal
- * mechanical outcome, not evidence of a broken USB handle.
+ * {@code doc/dev/backend/safety-and-recovery.md}. Escalation is driven
+ * by drive responsiveness, never by the clock: tier 1 lets the motor coast, so a still-turning shaft
+ * is not evidence of a broken USB handle.
  */
 @Service
 public class MotorSafetyController {
@@ -40,54 +53,98 @@ public class MotorSafetyController {
     /** Speed drop, in rpm, above which the shaft counts as measurably slowing down. */
     private static final int COASTING_DROP_RPM = 10;
 
+    /** {@link #VERIFY_DEADLINE_MS} outside tests. */
+    private final long verifyDeadlineMs;
+
     private final FrequencyInverterDevice frequencyInverter;
 
     /** Tier 2 opens its own handle, bypassing the one the device holds — see stopWithFreshHandle. */
     private final DriveProvider driveProvider;
+
+    /**
+     * Armed on the drive by every {@link #energize}; the drive stops itself after this much silence.
+     * The gated driver that armed it feeds it from its own traffic.
+     */
+    private final Duration linkLossTimeout;
+
+    /** Test seam: runs between a fenced call's latch check and its linked group's submit. */
+    private volatile Runnable afterLatchCheck = () -> {
+    };
 
     /** Set by safeStop, blocks any further energize until the next run clears it. */
     private final AtomicBoolean stopLatched = new AtomicBoolean(false);
     private volatile String stopReason;
 
     /**
-     * True once this run genuinely enabled the drive output stage. A run that died in the startup
-     * checks or in setup() never energized anything, so its cleanup stop has no motor to catch and
-     * must not tear the USB down. Reset per run by clearStopLatch().
+     * True once this run enabled the drive output stage; a run that never did must not tear the USB
+     * down on cleanup. Reset per run by clearStopLatch().
      */
     private final AtomicBoolean motorEnergized = new AtomicBoolean(false);
 
     /**
-     * Result of the last completed safeStop of this run. cleanup() runs twice per test by design and
-     * a LoadCellThread failure can add a third call, so an escalation that already happened is
-     * replayed from here instead of being repeated against the hardware.
+     * Result of the last completed safeStop of this run. safeStop is called several times per run,
+     * so an escalation is replayed from here instead of repeated against the hardware.
      */
     private volatile SafeStopResult lastResult;
 
     /**
-     * True from the moment a stop latches until it has recorded its result. Guards the window in
-     * which the latch is set but the stop is still working - up to VERIFY_DEADLINE_MS of it spent
-     * inside the drive lock - so nothing can clear the latch out from under a stop in flight.
+     * True when {@link #lastResult} is a tier 2 that timed out on the device's lifecycle lock: it
+     * did nothing, so the next stop runs the ladder again rather than replaying it. Written with
+     * {@link #lastResult} under {@link #latchLock}.
      */
-    private boolean stopInProgress = false;
+    private boolean lastResultRetryable;
+
+    /**
+     * Stops between latching and recording their result, so the latch cannot clear mid-stop. A count,
+     * not a flag: the measurement thread and the runner can stop concurrently, and the first to finish
+     * must not release the guard for the other.
+     */
+    private int stopsInProgress = 0;
 
     /**
      * Guards the latch bookkeeping only: {@link #stopLatched}, {@link #stopReason},
-     * {@link #motorEnergized}, {@link #lastResult} and {@link #stopInProgress}. Deliberately not the
-     * drive lock and never held across one, so it can never delay a stop reaching the hardware.
+     * {@link #motorEnergized}, {@link #lastResult}, {@link #lastResultRetryable} and
+     * {@link #stopsInProgress}. Never held across a drive call, so it cannot delay a stop reaching
+     * the hardware.
      */
     private final Object latchLock = new Object();
 
-    public MotorSafetyController(DeviceService deviceService, DriveProvider driveProvider) {
+    @Autowired
+    public MotorSafetyController(DeviceService deviceService, DriveProvider driveProvider,
+                                 DriveLinkProperties driveLinkProperties) {
+        this(deviceService, driveProvider, driveLinkProperties, VERIFY_DEADLINE_MS);
+    }
+
+    /** With a shorter verify deadline, so a test can run a tier over a silent drive quickly. */
+    MotorSafetyController(DeviceService deviceService, DriveProvider driveProvider,
+                          DriveLinkProperties driveLinkProperties, long verifyDeadlineMs) {
+        this.verifyDeadlineMs = verifyDeadlineMs;
         this.frequencyInverter = deviceService.getFrequencyInverter();
         this.driveProvider = driveProvider;
+        this.linkLossTimeout = driveLinkProperties.requireLinkLossTimeout();
+    }
+
+    /** Lets a test land a stop exactly between a fenced call's latch check and its submit. */
+    void afterLatchCheck(Runnable seam) {
+        this.afterLatchCheck = Objects.requireNonNull(seam);
     }
 
     public boolean isDriveAvailable() {
         return frequencyInverter.isDriveHandleOpen();
     }
 
+    /**
+     * Runs {@code action} against the drive, latched or not: the run teardown's second-ramp reset.
+     * Refused through a plugin that does not gate its own calls, like every non-stop write, since
+     * nothing serializes it against the info poll on such a handle.
+     *
+     * @throws IllegalStateException if the plugin does not gate its own calls; nothing is sent
+     */
     public void withDrive(Consumer<Drive> action) {
-        frequencyInverter.withDrive(action);
+        frequencyInverter.withDrive(drive -> {
+            refuseUngated(drive, "command the drive");
+            action.accept(drive);
+        });
     }
 
     public <T> T queryDrive(Function<Drive, T> action) {
@@ -99,12 +156,7 @@ public class MotorSafetyController {
         return stopLatched.get();
     }
 
-    /**
-     * How this run's last stop went, or null if none completed. Read by the resume path, which has to
-     * capture the tier and the verification into the run's incident record BEFORE calling
-     * {@link #clearStopLatch()} - that nulls this, so afterwards there is no record anywhere of how
-     * the motor was stopped.
-     */
+    /** How this run's last stop went, or null if none completed. Nulled by {@link #clearStopLatch()}. */
     public SafeStopResult getLastStopResult() {
         return lastResult;
     }
@@ -112,21 +164,16 @@ public class MotorSafetyController {
     /**
      * Clears the latch. Called when a new test run starts.
      *
-     * @throws IllegalStateException if a stop is still executing, which means this is not the start
-     *                               of a quiet run and the latch is not this caller's to clear
+     * @throws IllegalStateException if a stop is still executing
      */
     public void clearStopLatch() {
         String reason;
         boolean wasLatched;
 
-        // Refused rather than queued, under the same lock the stop latches under, so a stop cannot
-        // slip in between the check and the clear. Clearing under a safeStop that is inside
-        // verifyStopped() - up to VERIFY_DEADLINE_MS holding the drive lock - would let the next
-        // energize() re-enable the drive that stop just de-energized; and resetting motorEnergized
-        // there makes the following stop read a coasting motor as one that was never energized,
-        // returning "nothing to stop" without trying tier 2, tier 3, or telling anybody.
+        // Refused under the latch lock: clearing mid-stop would let the next energize() re-enable
+        // the drive, and resetting motorEnergized would make a later stop skip tiers 2 and 3.
         synchronized (latchLock) {
-            if (stopInProgress) {
+            if (stopsInProgress > 0) {
                 throw new IllegalStateException(
                         "refusing to clear the motor safety stop latch, a stop is still executing: "
                                 + stopReason);
@@ -134,10 +181,9 @@ public class MotorSafetyController {
 
             reason = stopReason;
             stopReason = null;
-            // A new run starts with the motor known-off and with no stop of its own on record, so the
-            // next safeStop neither replays the previous run's escalation nor assumes a live motor.
             motorEnergized.set(false);
             lastResult = null;
+            lastResultRetryable = false;
             wasLatched = stopLatched.getAndSet(false);
         }
 
@@ -147,94 +193,212 @@ public class MotorSafetyController {
     }
 
     /**
-     * Runs an energize action, but only if no safety stop has been requested for this run.
-     * The latch is checked INSIDE the drive lock so it cannot race a concurrent safeStop():
-     * setup() starts the load cell thread before it energizes, so a load cell failure can stop
-     * the motor while the energize block is still queued behind it on the drive lock.
+     * Latches without touching the drive, for a stop that arrives before anything was energized: every
+     * later {@link #energize} of this run refuses, and the run's own teardown performs the stop.
+     */
+    public void latchStop(String reason) {
+        synchronized (latchLock) {
+            if (!stopLatched.getAndSet(true)) {
+                stopReason = reason;
+            }
+        }
+        logger.info("motor safety stop latched without a drive stop: {}", reason);
+    }
+
+    /**
+     * Runs an energize action, but only if no safety stop has been requested for this run, and only
+     * through a drive plugin that gates its own calls.
+     * <p>
+     * The arming of the drive's link-loss stop - the communication-error action, then the timeout
+     * that triggers it - and the action run as one linked group fenced on the stop epoch read before
+     * the latch check ({@link #runFenced}): a stop that latches after the check either rejects the
+     * group before anything is sent or cuts it short, and is the last command the drive gets. Arming
+     * is here rather than in each test type so no energize can skip it.
+     * <p>
+     * A zero rpm in the action is itself a STOP-lane write: it goes out, bumps the epoch and cuts
+     * the group, so the energize fails without starting the motor. Fail-safe, and no program commands
+     * 0 rpm (BL-156).
      *
-     * @throws IllegalStateException if a safety stop has been requested
+     * @throws IllegalStateException if a safety stop has been requested or overtook the group, the
+     *                               plugin does not gate its own calls, or the drive cannot arm its
+     *                               link-loss stop
      */
     public void energize(Consumer<Drive> action) {
         frequencyInverter.withDrive(drive -> {
-            if (stopLatched.get()) {
+            refuseUngated(drive, "energize the motor");
+            boolean ran;
+            try {
+                ran = runFenced(drive, linked -> {
+                    // Ahead of motorEnergized: arming energizes nothing, so a refusal leaves nothing
+                    // to stop.
+                    armLinkLossStop(linked);
+                    // Before the action, so a stop has a motor to catch even if the action throws
+                    // halfway.
+                    motorEnergized.set(true);
+                    action.accept(linked);
+                });
+            } catch (StaleStopEpochException e) {
+                throw new IllegalStateException("refusing to energize the motor, a safety stop overtook"
+                        + " the energize (" + stopReason + "): " + e.getMessage(), e);
+            }
+            if (!ran) {
                 throw new IllegalStateException(
                         "refusing to energize the motor, a safety stop was requested for this run: " + stopReason);
             }
-            // Recorded before the action, and only after the latch check has passed: from this point
-            // on a stop has a real motor to catch, even if the action itself throws halfway through
-            // or the handle disappears later in the run.
-            motorEnergized.set(true);
-            action.accept(drive);
         });
     }
 
     /**
-     * Stops the motor and verifies it actually stood still. Never throws: callers use this from
-     * finally blocks and emergency paths, where an escaping exception would mask the original
-     * failure and leave the drive running. Idempotent, safe to call repeatedly: a repeat call that
-     * finds an escalation already recorded for this run replays it instead of re-running it.
+     * Runs {@code action} as one linked group unless a stop is latched: the RunLoop's reversals and
+     * phase setpoints. Fenced like {@link #energize}, so a call queued before a stop never runs after
+     * it.
+     *
+     * @return false when latched or a stop overtook the group; a group cut short ran its earlier calls
+     * @throws IllegalStateException if the plugin does not gate its own calls
+     */
+    public boolean withDriveUnlessLatched(Consumer<Drive> action) {
+        return frequencyInverter.queryDrive(drive -> {
+            refuseUngated(drive, "command the drive");
+            try {
+                return runFenced(drive, action);
+            } catch (StaleStopEpochException e) {
+                logger.info("drive command dropped, a stop overtook it: {}", e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    /**
+     * The epoch fence: read the stop epoch, then check the latch, then submit the group fenced on
+     * that epoch. A stop latches before it bumps the epoch, so one that slips in after the read is
+     * either seen by the latch check or rejects and cuts the group in the driver.
+     *
+     * @return false when latched and nothing was sent
+     * @throws StaleStopEpochException if a stop overtook the group before or during it
+     */
+    private boolean runFenced(Drive drive, Consumer<Drive> group) {
+        long epoch = drive.stopEpoch();
+        if (stopLatched.get()) {
+            return false;
+        }
+        afterLatchCheck.run();
+        drive.runLinked(epoch, group);
+        return true;
+    }
+
+    /**
+     * Refused the same way a pre-1.2.0 plugin is refused for {@code enableLinkLossStop}: the deck
+     * does not serialize drive calls, so a handle that relies on its caller to do so may carry stops
+     * and reads but never a test.
+     */
+    private static void refuseUngated(Drive drive, String what) {
+        if (drive.gating() == DriveGating.DRIVER_SERIALIZES) {
+            return;
+        }
+        throw new IllegalStateException("refusing to " + what + ": the drive plugin "
+                + drive.getClass().getName() + " (" + origin(drive.getClass()) + ") answers Drive#gating() "
+                + drive.gating() + ", as every plugin built before device-api 1.5.0 does, and this deck"
+                + " (device-api " + ContractVersion.VALUE + ") no longer serializes drive calls itself. It"
+                + " can still stop and de-energize the drive, never run a test. Rebuild the driver plugin"
+                + " against this contract and replace its jar (doc/dev/backend/driver-jars.md).");
+    }
+
+    /** Where {@code type} was loaded from, and the contract its plugin reported building against. */
+    private static String origin(Class<?> type) {
+        URL location = location(type);
+        String builtAgainst = DeviceApi.reportedBuiltAgainst().entrySet().stream()
+                .filter(reported -> location != null && location.equals(location(reported.getKey())))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse("an unreported version");
+        return "loaded from " + (location == null ? "an unknown location" : location)
+                + ", built against device-api " + builtAgainst;
+    }
+
+    private static URL location(Class<?> type) {
+        CodeSource source = type.getProtectionDomain().getCodeSource();
+        return source == null ? null : source.getLocation();
+    }
+
+    /**
+     * Without the timeout the action is inert (the drive's default is 0, watchdog off), so a drive
+     * that cannot take it is refused rather than run unguarded.
+     */
+    private void armLinkLossStop(Drive drive) {
+        drive.setActionInCaseOfCommunicationError(Drive.COMMUNICATION_ERROR_DISABLE_VIA_GENERAL_ENABLE);
+        try {
+            drive.enableLinkLossStop(linkLossTimeout);
+        } catch (UnsupportedOperationException e) {
+            throw new IllegalStateException("refusing to energize the motor, the drive cannot stop "
+                    + "itself on a lost link: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Stops the motor and verifies it stood still. Never throws, since callers use it from finally
+     * blocks and emergency paths. Idempotent: an escalation already recorded for this run is replayed,
+     * except one whose tier 2 timed out on the device's lifecycle lock and so did nothing (I2).
      */
     public SafeStopResult safeStop(String reason) {
         boolean alreadyLatched;
-        // Latched before any drive lock is taken, so an energize already queued on the drive lock
-        // still observes the latch by the time it gets in. getAndSet is one atomic step so two
-        // concurrent stops cannot both conclude they are the first. latchLock only keeps
-        // clearStopLatch() from interleaving; it is never held while the hardware is being touched.
+        // Latched before the stop bumps the drive's stop epoch, so a fenced call that read the epoch
+        // earlier either sees the latch or has its group rejected (runFenced).
         synchronized (latchLock) {
             stopReason = reason;
             alreadyLatched = stopLatched.getAndSet(true);
-            stopInProgress = true;
+            stopsInProgress++;
         }
 
         try {
             return performStop(reason, alreadyLatched);
         } finally {
-            // Cleared on every path, including the ones nobody expects: a stranded flag would refuse
-            // every later clearStopLatch() and with it every attempt to start another run.
+            // A stranded count would refuse every later clearStopLatch() and so every new run.
             synchronized (latchLock) {
-                stopInProgress = false;
+                stopsInProgress--;
             }
         }
     }
 
-    /** The stop itself, split out so the latch bookkeeping above can wrap it in a try/finally. */
     private SafeStopResult performStop(String reason, boolean alreadyLatched) {
-        SafeStopResult previous = lastResult;
-        if (alreadyLatched && previous != null && previous.tier() != SafeStopResult.Tier.EXISTING_HANDLE) {
-            // A previous stop already went past the cheap tier: repeating it would mean a second USB
-            // re-enumeration, a second full-deadline drive lock hold and a second "use the E-stop"
-            // alert for one incident. Tier 1 results are deliberately NOT cached: re-checking a motor
-            // over a working handle is cheap, non-destructive and worth doing again.
+        SafeStopResult previous;
+        boolean previousRetryable;
+        synchronized (latchLock) {
+            previous = lastResult;
+            previousRetryable = lastResultRetryable;
+        }
+        if (alreadyLatched && previous != null && previous.tier() != SafeStopResult.Tier.EXISTING_HANDLE
+                && !previousRetryable) {
+            // Only escalations past tier 1 are replayed; re-checking over a working handle is cheap.
             logger.info("safeStop({}) not repeated, a stop for this run already escalated to tier {}: {}",
                     reason, previous.tier(), previous.detail());
             return previous;
         }
 
-        // Read the flag ONCE for the whole stop and thread it into every result built below.
-        // Re-reading the atomic per construction site could observe a concurrent energize() and
-        // produce two results that disagree about the same stop.
+        // Read once so a concurrent energize() cannot make results of the same stop disagree.
         boolean wasEnergized = motorEnergized.get();
         if (wasEnergized) {
             logger.warn("safeStop requested: {}", reason);
         } else {
-            // Nothing was ever enabled in this run (failed startup check, setup() threw early), so
-            // this is bookkeeping, not an incident.
             logger.info("safeStop requested for a run that never energized the motor: {}", reason);
         }
 
         SafeStopResult result;
         boolean nothingToStop = false;
+        boolean retryable = false;
         try {
             var tier1 = stopWithExistingHandle(wasEnergized);
             result = tier1.result();
-            // A responsive drive is coasting on its own inertia, which no USB re-enumeration can
-            // shorten; an interrupt only truncates the evidence. Neither proves a dead handle, so
-            // neither may trigger a tier 2 teardown.
+            // Neither a responsive drive (coasting) nor an interrupt proves a dead handle.
             boolean handleSuspect = !result.verified() && !tier1.responsive() && !tier1.interrupted();
 
-            if (handleSuspect && !wasEnergized) {
-                // Nothing to talk to and no motor to chase. Escalating would punish a failed startup
-                // check with a USB re-enumeration, a full-deadline drive lock hold and an E-stop alert.
+            if (tier1.wedged()) {
+                // A fresh handle beside the transaction still in flight would be a second session
+                // on the bus (OQ-50): nothing in software is left to try.
+                result = escalateToOperator(result.motorSpeedRpm(), false, wasEnergized,
+                        result.detail(), "a fresh handle beside the transaction still in flight on the"
+                                + " existing one would be a second session on the drive (OQ-50)", false);
+            } else if (handleSuspect && !wasEnergized) {
+                // Nothing to talk to and no motor to chase.
                 nothingToStop = true;
                 result = new SafeStopResult(result.tier(), result.verified(), result.driveResponsive(),
                         wasEnergized, result.motorSpeedRpm(),
@@ -244,9 +408,10 @@ public class MotorSafetyController {
                 String tier1Detail = result.detail();
                 var tier2 = stopWithFreshHandle(result.motorSpeedRpm(), wasEnergized);
                 result = tier2.result();
+                retryable = tier2.retryable();
                 if (!result.verified()) {
                     result = escalateToOperator(result.motorSpeedRpm(), tier2.responsive(),
-                            wasEnergized, tier1Detail, result.detail());
+                            wasEnergized, tier1Detail, result.detail(), !tier2.notAttempted());
                 }
             }
         } catch (Throwable t) {
@@ -271,7 +436,10 @@ public class MotorSafetyController {
                     result.motorSpeedRpm(), result.tier(), reason, result.detail());
         }
 
-        lastResult = result;
+        synchronized (latchLock) {
+            lastResult = result;
+            lastResultRetryable = retryable;
+        }
         return result;
     }
 
@@ -285,8 +453,13 @@ public class MotorSafetyController {
                 commandProblems.set(commandStop(drive));
                 outcome.set(verifyStopped(drive));
             });
+        } catch (DriveDeadlineException e) {
+            logger.error("safeStop could not reach the drive within the stop deadline: {}", e.getMessage());
+            return TierOutcome.wedged(wasEnergized, "existing handle unreachable, the stop missed its "
+                    + DriveLane.STOP_DEADLINE_MILLIS + " ms deadline behind a transaction still in flight"
+                    + " (it goes out once that transaction ends): " + e.getMessage());
         } catch (DriveUnavailableException e) {
-            // No handle open: tier 1 is simply not applicable, this is not a hardware fault.
+            // No handle open: tier 1 does not apply; not a hardware fault.
             return TierOutcome.unresponsive(SafeStopResult.Tier.EXISTING_HANDLE, null, wasEnergized,
                     "no open drive handle: " + e.getMessage());
         } catch (Throwable t) {
@@ -301,27 +474,52 @@ public class MotorSafetyController {
                 commandProblems.get(), outcome.get(), null, wasEnergized);
     }
 
-    /** Tier 2: the existing handle is dead or lying. Drop it and enumerate the drive fresh. */
+    /**
+     * Tier 2: the existing handle is dead or lying. Drop it and enumerate the drive fresh.
+     * <p>
+     * Waits for the device's lifecycle lock at most
+     * {@link FrequencyInverterDevice#RUN_EXCLUSIVE_WAIT_MS}: past it tier 2 is not attempted and
+     * touches no handle, since anything it opened or closed outside the lock could be a second
+     * session (OQ-50). That outcome is retryable: the holder may be a {@code connect()} that leaves
+     * a working handle for the next stop's tier 1.
+     */
     private TierOutcome stopWithFreshHandle(Integer previousSpeed, boolean wasEnergized) {
+        var tier = new AtomicReference<TierOutcome>();
+        try {
+            // Exclusive from the old handle's close to the lost mark: a Device.connect() anywhere in
+            // between would open a second session on one drive, or have its session closed under it
+            // (OQ-50); one arriving after the mark re-opens rather than reuses. The lost mark sits
+            // outside the tier's own catch, so even a failure there reaches safeStop's last-resort
+            // result.
+            frequencyInverter.runExclusive(() -> {
+                try {
+                    tier.set(stopWithFreshHandleExclusively(previousSpeed, wasEnergized));
+                } finally {
+                    frequencyInverter.invalidateConnection();
+                }
+            });
+        } catch (LifecycleLockTimeoutException e) {
+            return TierOutcome.lockTimedOut(previousSpeed, wasEnergized, e.getMessage()
+                    + ", so no fresh handle was opened and nothing was closed or marked lost outside it"
+                    + " (OQ-50); the next safeStop of this run retries");
+        }
+        return tier.get();
+    }
+
+    private TierOutcome stopWithFreshHandleExclusively(Integer previousSpeed, boolean wasEnergized) {
         var commandProblems = new AtomicReference<>("");
         var outcome = new AtomicReference<VerifyOutcome>();
-
-        // Reset the connection bookkeeping FIRST, with no lock held. It takes the device's instance
-        // monitor and the lock order is monitor-before-driveLock, so doing it inside runExclusive
-        // would deadlock against closeConnection(). Doing it before the close is also what makes a
-        // later connect() genuinely re-open instead of handing back the handle we are about to kill.
-        frequencyInverter.dropConnectionBookkeeping();
+        var portStillHeld = new AtomicBoolean();
 
         try {
-            // Exclusive for the rest of the tier: the 400 ms info poller must not talk on the bus
-            // mid-re-enumeration, and - because DriveProvider.open() eagerly grabs the USB device -
-            // close-then-open has to be ONE atomic step. Hoist the close out and a Device.connect()
-            // landing in the gap opens a second live session on one physical drive, the dual-handle
-            // condition this teardown exists to prevent (OQ-50).
-            // Deadlock-free: closeDriveHandle() takes driveLock only, never the instance monitor, so
-            // nothing here inverts the monitor-before-driveLock order.
-            frequencyInverter.runExclusive(() -> {
-                frequencyInverter.closeDriveHandle();
+            // The device's handle is dropped first, so the info poll and the run's calls fail fast
+            // instead of reaching the old session. Bounded by the contract's close bound. Pending:
+            // the old handle's transfer is still in flight, and a fresh handle beside it would be a
+            // second session - and would let that transfer, an energizing write perhaps, land after
+            // the fresh stop (BL-135).
+            if (frequencyInverter.closeDriveHandle() == FrequencyInverterDevice.HandleClose.PENDING) {
+                portStillHeld.set(true);
+            } else {
                 Drive fresh = null;
                 try {
                     fresh = driveProvider.open();
@@ -331,12 +529,15 @@ public class MotorSafetyController {
                     if (fresh != null) {
                         try {
                             fresh.close();
+                        } catch (DriveClosePendingException e) {
+                            // Its own transfer outlasted the bound: the next connect must wait for it.
+                            frequencyInverter.parkPendingClose(fresh);
                         } catch (Throwable ignored) {
                             // best effort, the stop result must not depend on a clean close
                         }
                     }
                 }
-            });
+            }
         } catch (Throwable t) {
             logger.warn("stop over a freshly enumerated drive handle failed", t);
             var partial = outcome.get();
@@ -346,32 +547,42 @@ public class MotorSafetyController {
                     "fresh handle failed: " + t);
         }
 
-        // The device is left without a handle on purpose: every later withDrive throws
-        // DriveUnavailableException so the test fails fast instead of driving blind.
+        if (portStillHeld.get()) {
+            return TierOutcome.notAttempted(previousSpeed, wasEnergized, "the existing handle's transaction"
+                    + " is still in flight after the " + DriveLane.STOP_DEADLINE_MILLIS + " ms close bound,"
+                    + " so no fresh handle was opened beside it (OQ-50); the stops queued on it go out"
+                    + " when that transaction ends, and its port is closed no later than the next"
+                    + " connect's retry of that close");
+        }
+
+        // Left without a handle, so every later withDrive fails fast with DriveUnavailableException.
         return describe(SafeStopResult.Tier.FRESH_HANDLE, "fresh handle",
                 commandProblems.get(), outcome.get(), previousSpeed, wasEnergized);
     }
 
     /**
-     * Tier 3: nothing in software could confirm a stop. Log loudly, there is nothing left to
-     * command. The proposed hardware kill line that would give this tier something to pull is a
-     * paired hardware task in {@code loadcell-recovery-design.md}; until it exists, tier 3 logs only.
+     * Tier 3: nothing in software could confirm a stop, so it only logs. The hardware kill line it
+     * would pull is a paired task in {@code safety-and-recovery.md}.
      */
     private SafeStopResult escalateToOperator(Integer lastSpeed, boolean tier2Responsive,
                                               boolean wasEnergized, String tier1Detail,
-                                              String tier2Detail) {
-        // Name every tier that ran, so a post-incident trace reads the whole ladder from one line.
+                                              String tier2Detail, boolean tier2Ran) {
+        // Name every tier and what it did, so a post-incident trace reads the whole ladder from one line.
         String detail = "tier 1 (EXISTING_HANDLE) ran and reported: " + tier1Detail
-                + " | tier 2 (FRESH_HANDLE) ran, re-enumerated the drive and reported: " + tier2Detail
-                + " | tier 3 (operator escalation): both software stop tiers failed, motor may still be "
-                + "running - USE THE PHYSICAL E-STOP. The only active backstop left is the drive's own "
-                + "setActionInCaseOfCommunicationError(2), which reacts to loss of the drive link only "
-                + "and not to loss of the load cell.";
-        logger.error("safeStop escalated to the operator after both software tiers ran."
-                + " Last measured motor speed: {} rpm. {}", lastSpeed, detail);
-        // Carry tier 2's responsiveness verdict, not a blanket false: if the fresh handle did answer
-        // and only the standstill was missing, the operator alert is still warranted but the caller
-        // can report it as a drive that is talking rather than as a silent one.
+                + (tier2Ran
+                ? " | tier 2 (FRESH_HANDLE) ran, re-enumerated the drive and reported: " + tier2Detail
+                + " | tier 3 (operator escalation): both software stop tiers failed"
+                : " | tier 2 (FRESH_HANDLE) not attempted: " + tier2Detail
+                + " | tier 3 (operator escalation): tier 1 failed and tier 2 could not run")
+                + ", motor may still be "
+                + "running - USE THE PHYSICAL E-STOP. Do not count on the drive stopping itself: its "
+                + "link-loss stop, armed at energize, removes general enable only once no request has "
+                + "reached it for " + linkLossTimeout.toMillis() + " ms, so a deck that still reaches "
+                + "the drive keeps it from firing, and it never reacts to loss of the load cell.";
+        logger.error("safeStop escalated to the operator after {}. Last measured motor speed: {} rpm. {}",
+                tier2Ran ? "both software tiers ran" : "tier 1 failed and tier 2 could not run",
+                lastSpeed, detail);
+        // Tier 2's responsiveness, so the caller can tell a talking drive from a silent one.
         return new SafeStopResult(SafeStopResult.Tier.OPERATOR_ESCALATION, false, tier2Responsive,
                 wasEnergized, lastSpeed, detail);
     }
@@ -383,13 +594,23 @@ public class MotorSafetyController {
     private TierOutcome describe(SafeStopResult.Tier tier, String label, String commandProblems,
                                  VerifyOutcome outcome, Integer fallbackSpeed,
                                  boolean wasEnergized) {
-        // Responsive means the drive both took our writes and answered our reads. Only when it did
-        // neither is the handle itself suspect, and only then may tier 2 tear down the USB.
-        boolean responsive = commandProblems.isEmpty() && outcome.anyReadSucceeded();
+        // Responsive: the drive read back the de-energize and answered a speed read. Judged by the
+        // read-back, not by the first write: a write lost to one dropped frame and completed by a
+        // re-send is a working handle, and tearing it down would leave the run unresumable.
+        boolean responsive = outcome.deEnergizeConfirmed() && outcome.anyReadSucceeded();
         Integer lastSpeed = outcome.lastSpeed() == null ? fallbackSpeed : outcome.lastSpeed();
 
         var detail = new StringBuilder(commandProblems);
         detail.append("stop commands sent over the ").append(label);
+        if (outcome.deEnergizeConfirmed()) {
+            detail.append(", general enable and start read back clear");
+            if (outcome.reissues() > 0) {
+                detail.append(" after ").append(outcome.reissues()).append(" re-sent de-energize write(s)");
+            }
+        } else {
+            detail.append(", general enable and start NOT read back clear despite ")
+                    .append(outcome.reissues()).append(" re-sent de-energize write(s)");
+        }
 
         if (outcome.verified()) {
             detail.append(", standstill confirmed by ").append(REQUIRED_CONSECUTIVE_STOPPED_READINGS)
@@ -400,9 +621,14 @@ public class MotorSafetyController {
                             ? "at " + outcome.lastSpeed() + " rpm"
                             : "before any speed reading came back")
                     .append(outcome.trend());
+        } else if (outcome.anyReadSucceeded() && !outcome.deEnergizeConfirmed()
+                && Math.abs(outcome.lastSpeed()) <= STOPPED_RPM_TOLERANCE) {
+            detail.append(", motor reads ").append(outcome.lastSpeed())
+                    .append(" rpm but the drive never confirmed it is de-energized within the ")
+                    .append(verifyDeadlineMs).append(" ms verify deadline");
         } else if (outcome.anyReadSucceeded()) {
             detail.append(", motor still turning at ").append(outcome.lastSpeed())
-                    .append(" rpm when the ").append(VERIFY_DEADLINE_MS)
+                    .append(" rpm when the ").append(verifyDeadlineMs)
                     .append(" ms verify deadline expired").append(outcome.trend());
         } else {
             detail.append(", but no motor speed reading could be obtained - the drive is not answering");
@@ -415,55 +641,61 @@ public class MotorSafetyController {
     }
 
     /**
-     * Sends the three stop commands in safety order. Each is wrapped individually so that a failing
-     * command still lets the other two through. Returns a description of whatever failed.
+     * Sends the stop with {@link Drive#stop()}: start and general enable cleared and the speed
+     * reference zero, direction and ramp untouched, so it never ramps or reverses
+     * (safety-and-recovery.md). One telegram at the head of the STOP lane on a gated CFW11 driver;
+     * on an older plugin the contract's fallback, the one-write de-energize then the zero reference,
+     * each going out whatever the other did. Returns a description of whatever failed;
+     * {@link #verifyStopped} re-sends the de-energize until the drive reads it back.
+     *
+     * @throws DriveDeadlineException if the stop missed its deadline: the handle is wedged, and tier 1
+     *                                sends nothing more over it
      */
     private String commandStop(Drive drive) {
-        var problems = new StringBuilder();
-
         try {
-            // General enable FIRST, then reference, then start. Never ramp, never reverse — the
-            // reasoning is in loadcell-recovery-design.md and this order is not free to change.
-            drive.setGeneralEnable(false);
+            drive.stop();
+            return "";
+        } catch (DriveDeadlineException e) {
+            throw e;
         } catch (Throwable t) {
-            logger.warn("setGeneralEnable(false) failed during safeStop", t);
-            problems.append("setGeneralEnable failed: ").append(t).append("; ");
+            logger.warn("the stop command failed during safeStop", t);
+            return "stop command failed: " + t + "; ";
         }
+    }
 
-        try {
-            drive.setSpeedReferenceValueAsRpm(0);
-        } catch (Throwable t) {
-            logger.warn("setSpeedReferenceValueAsRpm(0) failed during safeStop", t);
-            problems.append("setSpeedReference failed: ").append(t).append("; ");
-        }
+    /** General enable and start off in one write, every other control bit untouched. */
+    private static void deEnergize(Drive drive) {
+        drive.setControlParameters(false, false, null, null, null);
+    }
 
-        try {
-            drive.setStart(false);
-        } catch (Throwable t) {
-            logger.warn("setStart(false) failed during safeStop", t);
-            problems.append("setStart failed: ").append(t).append("; ");
-        }
-
-        return problems.toString();
+    /** True only for a control-word read-back with general enable and start both present and clear. */
+    private static boolean readsDeEnergized(Map<String, Boolean> controlParameters) {
+        return controlParameters != null
+                && Boolean.FALSE.equals(controlParameters.get("generalEnable"))
+                && Boolean.FALSE.equals(controlParameters.get("start"));
     }
 
     /**
      * Polls the drive until the measured motor speed has been within tolerance of zero for
-     * {@link #REQUIRED_CONSECUTIVE_STOPPED_READINGS} consecutive samples, or the deadline expires.
-     * This read back is the entire point of the controller: a written command is not evidence that
-     * the motor stopped.
+     * {@link #REQUIRED_CONSECUTIVE_STOPPED_READINGS} consecutive samples AND the control word has
+     * read back general enable and start clear, or the deadline expires.
+     * <p>
+     * Until that read-back, every poll re-sends the de-energize write: a stop whose first write was
+     * lost to one dropped frame is completed here instead of being handed to tier 2, which would tear
+     * down a working handle. Once confirmed, the control word is not read again.
      */
     private VerifyOutcome verifyStopped(Drive drive) {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(VERIFY_DEADLINE_MS);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(verifyDeadlineMs);
         Integer firstSpeed = null;
         Integer lastSpeed = null;
         int consecutiveStopped = 0;
+        boolean deEnergizeConfirmed = false;
+        int reissues = 0;
 
         while (true) {
             try {
-                // MEASURED speed. Never verify against getSpeedReferenceValueAsRpm(): it reads back
-                // the setpoint and reports 0 the instant we write 0, motor still spinning. The sign
-                // convention for direction is unverified, so compare the magnitude.
+                // Measured speed, never getSpeedReferenceValueAsRpm(), which reads back the setpoint.
+                // Magnitude, because the direction sign convention is unverified.
                 int rpm = drive.getMotorSpeedValueAsRpm();
                 if (firstSpeed == null) {
                     firstSpeed = rpm;
@@ -472,45 +704,71 @@ public class MotorSafetyController {
 
                 if (Math.abs(rpm) <= STOPPED_RPM_TOLERANCE) {
                     consecutiveStopped++;
-                    if (consecutiveStopped >= REQUIRED_CONSECUTIVE_STOPPED_READINGS) {
-                        return new VerifyOutcome(true, true, false, firstSpeed, lastSpeed);
-                    }
                 } else {
                     consecutiveStopped = 0;
                 }
             } catch (Throwable t) {
-                // A single failed read is not proof of anything, keep trying until the deadline,
-                // but it does break the run of quiet samples.
+                // Keep trying until the deadline, but a failed read breaks the run of quiet samples.
                 consecutiveStopped = 0;
                 logger.debug("motor speed read failed during stop verification", t);
             }
 
+            if (!deEnergizeConfirmed) {
+                deEnergizeConfirmed = confirmDeEnergized(drive);
+                if (!deEnergizeConfirmed) {
+                    reissues++;
+                    try {
+                        deEnergize(drive);
+                    } catch (Throwable t) {
+                        logger.debug("re-sending the de-energize write failed during stop verification", t);
+                    }
+                }
+            }
+
+            if (deEnergizeConfirmed && consecutiveStopped >= REQUIRED_CONSECUTIVE_STOPPED_READINGS) {
+                return new VerifyOutcome(true, true, false, true, reissues, firstSpeed, lastSpeed);
+            }
+
             if (System.nanoTime() >= deadline) {
-                return new VerifyOutcome(false, firstSpeed != null, false, firstSpeed, lastSpeed);
+                return new VerifyOutcome(false, firstSpeed != null, false, deEnergizeConfirmed, reissues,
+                        firstSpeed, lastSpeed);
             }
 
             try {
                 Thread.sleep(VERIFY_POLL_INTERVAL_MS);
             } catch (InterruptedException e) {
-                // TestRunnerThread.stopThread() interrupts exactly this thread. Restore the flag and
-                // report the abort, so a truncated verification is never read as "polled the full
-                // deadline and the motor never stopped".
+                // TestRunnerThread.stopThread() interrupts this thread; report it as interrupted,
+                // not as a motor that never stopped.
                 Thread.currentThread().interrupt();
-                return new VerifyOutcome(false, firstSpeed != null, true, firstSpeed, lastSpeed);
+                return new VerifyOutcome(false, firstSpeed != null, true, deEnergizeConfirmed, reissues,
+                        firstSpeed, lastSpeed);
             }
+        }
+    }
+
+    /** One control-word read; a failed read is "not confirmed", never an exception. */
+    private static boolean confirmDeEnergized(Drive drive) {
+        try {
+            return readsDeEnergized(drive.getControlParameters());
+        } catch (Throwable t) {
+            logger.debug("control word read failed during stop verification", t);
+            return false;
         }
     }
 
     /**
      * What one verification pass observed.
      *
-     * @param anyReadSucceeded at least one measured speed came back, so the drive is answering
-     * @param interrupted      polling was cut short by a thread interrupt, not by the deadline
+     * @param anyReadSucceeded    at least one measured speed came back, so the drive is answering
+     * @param interrupted         polling was cut short by a thread interrupt, not by the deadline
+     * @param deEnergizeConfirmed the control word read back general enable and start clear
+     * @param reissues            de-energize writes re-sent before that read-back, or until the end
      */
     private record VerifyOutcome(boolean verified, boolean anyReadSucceeded, boolean interrupted,
+                                 boolean deEnergizeConfirmed, int reissues,
                                  Integer firstSpeed, Integer lastSpeed) {
 
-        /** Falling or not tells the incident log apart from a runaway. */
+        /** Whether the speed was falling, to tell coasting from a runaway in the incident log. */
         String trend() {
             if (firstSpeed == null || lastSpeed == null || firstSpeed.equals(lastSpeed)) {
                 return "";
@@ -523,17 +781,50 @@ public class MotorSafetyController {
     }
 
     /**
-     * A tier result plus the two flags that gate escalation. Both mean "do not tear down the USB":
-     * responsive because the handle demonstrably works, interrupted because we stopped looking.
+     * A tier result plus the flags that gate escalation: responsive or interrupted means "do not tear
+     * down the USB"; wedged (tier 1) and notAttempted (tier 2) mean tier 2 sent nothing; retryable
+     * means the next stop runs the ladder again instead of replaying this result.
      */
-    private record TierOutcome(SafeStopResult result, boolean responsive, boolean interrupted) {
+    private record TierOutcome(SafeStopResult result, boolean responsive, boolean interrupted,
+                               boolean wedged, boolean notAttempted, boolean retryable) {
 
-        /** Nothing came back from the drive on this tier, so the result is not responsive either. */
+        TierOutcome(SafeStopResult result, boolean responsive, boolean interrupted) {
+            this(result, responsive, interrupted, false, false, false);
+        }
+
+        /** Tier 2 sent nothing: the old handle still holds the port, so no fresh one was opened. */
+        static TierOutcome notAttempted(Integer lastSpeed, boolean wasEnergized, String detail) {
+            return new TierOutcome(
+                    new SafeStopResult(SafeStopResult.Tier.FRESH_HANDLE, false, false, wasEnergized,
+                            lastSpeed, detail),
+                    false, false, false, true, false);
+        }
+
+        /** Tier 2 sent nothing: the device's lifecycle lock was not free within its bound. */
+        static TierOutcome lockTimedOut(Integer lastSpeed, boolean wasEnergized, String detail) {
+            return new TierOutcome(
+                    new SafeStopResult(SafeStopResult.Tier.FRESH_HANDLE, false, false, wasEnergized,
+                            lastSpeed, detail),
+                    false, false, false, true, true);
+        }
+
         static TierOutcome unresponsive(SafeStopResult.Tier tier, Integer lastSpeed,
                                         boolean wasEnergized, String detail) {
             return new TierOutcome(
                     new SafeStopResult(tier, false, false, wasEnergized, lastSpeed, detail),
                     false, false);
+        }
+
+        /**
+         * The stop missed the STOP lane's deadline behind a transaction still in flight
+         * ({@link DriveDeadlineException}). On a gated handle it is still queued and goes out once
+         * that transaction ends; tier 1 sent nothing more and read nothing back.
+         */
+        static TierOutcome wedged(boolean wasEnergized, String detail) {
+            return new TierOutcome(
+                    new SafeStopResult(SafeStopResult.Tier.EXISTING_HANDLE, false, false, wasEnergized,
+                            null, detail),
+                    false, false, true, false, false);
         }
     }
 }

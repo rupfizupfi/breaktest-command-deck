@@ -5,11 +5,12 @@ import TestParameterModel from "Frontend/generated/ch/rupfizupfi/deck/data/TestP
 import OwnerSelector from "cms/components/owner/OwnerSelector";
 import {OwnerGridView} from "cms/components/owner/OwnerGridView";
 import createEmptyValueProxy from "cms/components/owner/createEmptyValueProxy";
+import CurrentUserGate from "cms/components/owner/CurrentUserGate";
 
 createEmptyValueProxy(TestParameterModel);
 
 export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, model: DetachedModelConstructor<any>, visibleFields: string[]): JSX.Element {
-    return <AutoCrud
+    return <CurrentUserGate><AutoCrud
         model={model}
         service={service}
         gridProps={{
@@ -59,5 +60,5 @@ export function buildAutoCrud(service: CrudService<Value<TestParameterModel>>, m
                 }
             }
         }}
-    />;
+    /></CurrentUserGate>;
 }

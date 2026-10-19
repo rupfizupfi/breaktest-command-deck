@@ -13,6 +13,8 @@ export const config: ViewConfig = {
     menu: {order: 1, icon: 'line-awesome/svg/suitcase-rolling-solid.svg', exclude: true},
     title: 'Setting',
     loginRequired: true,
+    // SettingService is ADMIN-only: the directories decide where the server writes files.
+    rolesAllowed: ['ADMIN'],
 };
 
 const customSettingService = {
@@ -56,16 +58,21 @@ export default function SettingView() {
                         },
                         disableAddButtons: true
                     }}
-                    formFieldUpdater={(item, formProps) => {
-                        formProps.fieldOptions.value.renderer = getDynamicField(item.value, item.type);
-                    }}
+                    formPropsForItem={(item, formProps) => ({
+                        ...formProps,
+                        fieldOptions: {
+                            ...formProps.fieldOptions,
+                            value: {...formProps.fieldOptions?.value, renderer: getDynamicField(item.value, item.type)},
+                        },
+                    })}
                 />
             </div>
             <div className="w-full">
+                {/* The rpc middleware toasts a failed sync. */}
                 <Button theme="secondary" onClick={() => customSettingService.sync().then(() => {
                     setReload(Date.now());
                     Notification.show('Settings synced');
-                })}>Sync</Button>
+                }).catch(() => {})}>Sync</Button>
             </div>
         </VerticalLayout>
     )

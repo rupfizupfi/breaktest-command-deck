@@ -132,4 +132,16 @@ class TestStateMachineTest {
         assertThat(machine.current()).isEqualTo(TestState.RUNNING);
         assertThat(machine.history()).hasSize(2);
     }
+
+    @Test
+    void runWhileInRunsTheActionOnlyInTheExpectedState() {
+        TestStateMachine machine = new TestStateMachine();
+        machine.transition(TestState.STARTING, "run requested");
+        int[] runs = {0};
+
+        assertThat(machine.runWhileIn(TestState.RUNNING, () -> runs[0]++)).isFalse();
+        assertThat(machine.runWhileIn(TestState.STARTING, () -> runs[0]++)).isTrue();
+
+        assertThat(runs[0]).isEqualTo(1);
+    }
 }

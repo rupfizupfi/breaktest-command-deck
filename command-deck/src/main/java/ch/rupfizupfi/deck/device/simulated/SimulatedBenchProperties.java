@@ -3,13 +3,15 @@ package ch.rupfizupfi.deck.device.simulated;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Plant-model parameters for {@link SimulatedBench}, all under {@code deck.simulated}.
  * <p>
- * <b>Every number here is invented.</b> Nobody has read stiffness, slack or break force off a real
- * force trace, so simulated curves are shape-plausible, not calibrated — they must never be used to
- * judge whether a real result looks right. The material presets are ordered by intuition about the
- * gear in question, nothing more.
+ * The specimen comes from a {@link SpecimenProfile} measured off real runs, and so does the sensor
+ * noise; the drive's ramp and coast rates are still invented. A simulated curve is a typical run of
+ * its profile, never evidence about a real result.
  */
 @Component
 @ConfigurationProperties("deck.simulated")
@@ -21,54 +23,81 @@ public class SimulatedBenchProperties {
     /** Crosshead travel per motor revolution. Matches the deck's own speed→rpm divisor of 0.375. */
     private double mmPerRev = 0.375;
 
-    /** Free travel before the specimen takes any load. */
-    private double slackMm = 5.0;
-
-    /** Elastic spring rate, N/mm. */
-    private double stiffnessNewtonPerMm = 2000;
-
-    /** Above this the specimen work-hardens at a reduced rate instead of failing immediately. */
-    private double yieldForceNewton = 18_000;
-
-    /** Slope multiplier applied between yield and break. */
-    private double postYieldStiffnessFactor = 0.25;
-
-    /** Specimen fails here and force collapses permanently. Only reachable in the fracture model. */
-    private double breakForceNewton = 25_000;
-
-    private SampleModel sampleModel = SampleModel.ELASTIC_YIELD_FRACTURE;
+    /**
+     * Forces one specimen profile for every run, matched case-insensitively against a profile key
+     * such as {@code stiff}, the enum constant, or a seeded material name ({@code Polyamid}); a
+     * name that matches nothing fails startup. Empty, each run picks its profile from its sample's
+     * materials through {@link #materialProfiles}.
+     */
+    private String profile = "";
 
     /**
-     * Optional preset name overriding stiffness and break force, matched case-insensitively against
-     * the seeded `material` rows. Empty means "use the values above".
+     * Material name (as seeded in the {@code material} table, case-insensitive) to profile key.
+     * Polyamid is measured; the low-stretch fibres and metals are mapped to {@code stiff} by
+     * physics, not by any recorded run. Unmapped materials get {@link SpecimenProfile#DEFAULT}.
+     * Keys with spaces or brackets need the bracket form:
+     * {@code deck.simulated.material-profiles[Dyneema (UHMW-PE)]=stiff}.
      */
-    private String material = "";
+    private Map<String, String> materialProfiles = new LinkedHashMap<>(Map.of(
+            "Polyamid", "polyamide-webbing",
+            "Polyester", "stiff",
+            "Dyneema (UHMW-PE)", "stiff",
+            "Kevlar", "stiff",
+            "Steel", "stiff",
+            "Aluminium", "stiff"));
 
     /**
-     * Peak-to-peak noise added to every sample, in newton. Load-bearing, not decoration: a live
-     * strain gauge always dithers, and {@code LoadCellThread}'s frozen detector trips on 100
-     * bit-identical samples — which a clamped-to-zero force would produce within two seconds.
+     * Draw each mounted specimen's break force and length from the profile's batch scatter. Off,
+     * every specimen is the profile's median and every run repeats exactly.
      */
-    private double ditherNewton = 0.5;
+    private boolean scatter = true;
+
+    private SampleModel sampleModel = SampleModel.FRACTURE;
+
+    /**
+     * Standard deviation of the Gaussian noise on every sample, in newton: the median over the real
+     * runs since run 121, when the cell stopped spiking by ~1 kN. Required: without it a clamped-to-zero force trips
+     * {@code MeasurementLoop}'s frozen detector (100 bit-identical samples).
+     */
+    private double noiseNewton = 10;
 
     /** Ramp rate toward the commanded speed while energized. */
     private double rampRpmPerSecond = 600;
 
     /**
-     * Deceleration once de-energized. Deliberately a real coast, never a snap to zero: the
-     * coast-down is what makes tier 1's "still coasting" branch and the tier 2/3 ladder reachable.
-     * Fast enough that a normal cleanup still verifies inside the 5 s deadline.
+     * Deceleration once de-energized. A real coast, not a snap to zero, so tier 1's "still coasting"
+     * branch is reachable; fast enough that a normal cleanup verifies inside the 5 s deadline.
      */
     private double coastRpmPerSecond = 400;
 
-    /** Hard ceiling, well under LoadCellThread's 450 kN implausibility bound. A model guard, not physics. */
-    private double maxForceNewton = 280_000;
+    /** Hard ceiling, under the bench's 150 kN rated capacity. A model guard, not physics. */
+    private double maxForceNewton = 140_000;
+
+    /**
+     * Bus time of one drive transaction, request to reply. The CFW11 answers in 2 to 10 ms; a few
+     * ms keep a run's control loop as fast as before while a stop still visibly waits for the
+     * transaction ahead of it.
+     */
+    private long transactionLatencyMillis = 3;
+
+    /** The longest wedge: a day stands for "never ends" and keeps the deadline arithmetic finite. */
+    public static final long MAX_WEDGE_MILLIS = 86_400_000;
+
+    /**
+     * How long {@link SimulatedFault#DRIVE_TRANSACTION_WEDGED} holds the transaction it takes, at
+     * most {@link #MAX_WEDGE_MILLIS} (a larger value is clamped), unless
+     * {@link SimulatedBench#endWedge()} releases it first. Above the STOP lane's 1500 ms deadline and
+     * above a typical link-loss timeout, so a stop behind it fails and the drive's own watchdog fires
+     * first. Above the 1500 ms close bound too, so a {@code close()} during the wedge gives up and
+     * the handle closes its port by itself once the wedge ends.
+     */
+    private long wedgeMillis = 3000;
 
     public enum SampleModel {
-        /** Hookean forever — a cyclic run never terminates on its own. */
-        ELASTIC,
-        /** Elastic, then work-hardening, then fracture at {@code breakForceNewton}. */
-        ELASTIC_YIELD_FRACTURE
+        /** The profile's curve without its break — a cyclic run never terminates on its own. */
+        UNBREAKABLE,
+        /** The profile's curve up to the specimen's drawn break force, then collapse. */
+        FRACTURE
     }
 
     public long getTickMillis() {
@@ -87,44 +116,28 @@ public class SimulatedBenchProperties {
         this.mmPerRev = mmPerRev;
     }
 
-    public double getSlackMm() {
-        return slackMm;
+    public String getProfile() {
+        return profile;
     }
 
-    public void setSlackMm(double slackMm) {
-        this.slackMm = slackMm;
+    public void setProfile(String profile) {
+        this.profile = profile;
     }
 
-    public double getStiffnessNewtonPerMm() {
-        return stiffnessNewtonPerMm;
+    public Map<String, String> getMaterialProfiles() {
+        return materialProfiles;
     }
 
-    public void setStiffnessNewtonPerMm(double stiffnessNewtonPerMm) {
-        this.stiffnessNewtonPerMm = stiffnessNewtonPerMm;
+    public void setMaterialProfiles(Map<String, String> materialProfiles) {
+        this.materialProfiles = materialProfiles;
     }
 
-    public double getYieldForceNewton() {
-        return yieldForceNewton;
+    public boolean isScatter() {
+        return scatter;
     }
 
-    public void setYieldForceNewton(double yieldForceNewton) {
-        this.yieldForceNewton = yieldForceNewton;
-    }
-
-    public double getPostYieldStiffnessFactor() {
-        return postYieldStiffnessFactor;
-    }
-
-    public void setPostYieldStiffnessFactor(double postYieldStiffnessFactor) {
-        this.postYieldStiffnessFactor = postYieldStiffnessFactor;
-    }
-
-    public double getBreakForceNewton() {
-        return breakForceNewton;
-    }
-
-    public void setBreakForceNewton(double breakForceNewton) {
-        this.breakForceNewton = breakForceNewton;
+    public void setScatter(boolean scatter) {
+        this.scatter = scatter;
     }
 
     public SampleModel getSampleModel() {
@@ -135,20 +148,12 @@ public class SimulatedBenchProperties {
         this.sampleModel = sampleModel;
     }
 
-    public String getMaterial() {
-        return material;
+    public double getNoiseNewton() {
+        return noiseNewton;
     }
 
-    public void setMaterial(String material) {
-        this.material = material;
-    }
-
-    public double getDitherNewton() {
-        return ditherNewton;
-    }
-
-    public void setDitherNewton(double ditherNewton) {
-        this.ditherNewton = ditherNewton;
+    public void setNoiseNewton(double noiseNewton) {
+        this.noiseNewton = noiseNewton;
     }
 
     public double getRampRpmPerSecond() {
@@ -165,6 +170,22 @@ public class SimulatedBenchProperties {
 
     public void setCoastRpmPerSecond(double coastRpmPerSecond) {
         this.coastRpmPerSecond = coastRpmPerSecond;
+    }
+
+    public long getTransactionLatencyMillis() {
+        return transactionLatencyMillis;
+    }
+
+    public void setTransactionLatencyMillis(long transactionLatencyMillis) {
+        this.transactionLatencyMillis = transactionLatencyMillis;
+    }
+
+    public long getWedgeMillis() {
+        return wedgeMillis;
+    }
+
+    public void setWedgeMillis(long wedgeMillis) {
+        this.wedgeMillis = Math.clamp(wedgeMillis, 0, MAX_WEDGE_MILLIS);
     }
 
     public double getMaxForceNewton() {

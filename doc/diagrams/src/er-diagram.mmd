@@ -2,6 +2,7 @@
 %% All entities live in :cms; :command-deck has none of its own.
 %% Branch: main @ 2026-08-29
 erDiagram
+    USER ||--o{ CUSTOMER      : "owns (nullable)"
     USER ||--o{ PROJECT       : "owns (nullable)"
     USER ||--o{ SAMPLE        : "owns (nullable)"
     USER ||--o{ TEST_PARAMETER: "owns (nullable)"
@@ -35,6 +36,7 @@ erDiagram
     CUSTOMER {
         Long   id PK
         int    version
+        Long   owner_id FK "nullable, DataWithOwner"
         string organization
         string firstname
         string lastname
@@ -84,7 +86,7 @@ erDiagram
         Long   id PK
         int    version
         Long   owner_id FK "nullable, DataWithOwner"
-        string type "destructive|cyclic|timeCyclic"
+        string type "TestType enum, stored destructive|cyclic|timeCyclic"
         int    speed
         double upperShutOffThreshold
         double lowerShutOffThreshold

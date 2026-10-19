@@ -15,8 +15,8 @@ The system replaces manual machine operation with a browser-based interface that
 
 | Component | Part | Interface |
 |-----------|------|-----------|
-| Motor driver | CFW11 frequency inverter | USB Modbus (`dscusb.jar`) |
-| Force sensor | Load cell | USB (`CellValueStream`) |
+| Motor driver | CFW11 frequency inverter | USB Modbus (`usbmodbus.jar`) |
+| Force sensor | Load cell | USB (`dscusb.jar`, `CellValueStream`) |
 | Suction pump | 4-way relay switch (CH9102 USB-UART) | Serial, 115200 8N1 |
 | Optional camera | Webcam | Browser MediaDevices API |
 
@@ -76,7 +76,7 @@ Motor alternates direction every time force crosses a threshold:
 After each full cycle the remaining cycle counter decrements and the thresholds are adjusted to the actual min/max values measured in the previous cycle. Test ends when the counter reaches zero.
 
 ### Time-cyclic test
-Same as cyclic but the direction-change timing is derived from the analysis phase (measured travel times) rather than force thresholds. `TimeProcessor` schedules signals at the calculated intervals so the motor reverses at precise time points regardless of force readings.
+Same as cyclic but the direction-change timing is derived from the analysis phase (measured travel times) rather than force thresholds. Once calibrated, the timed phase schedules each turn at the calculated interval so the motor reverses at precise time points regardless of force readings.
 
 ---
 
@@ -137,6 +137,6 @@ Because the motor can reverse direction and there is no software-enforced decele
 Two independently deployable Spring Boot applications share a PostgreSQL database (docker) or H2 file database (dev):
 
 - **cms** — web UI and API for managing projects, samples, customers, standards, and results. Port 8043 externally.
-- **command-deck** — web UI for running tests and operating the hardware. Port 8043 externally (separate container).
+- **command-deck** — web UI for running tests and operating the hardware. Runs natively on the Windows bench (`script/run-bench.ps1`); its container is simulation-only. Port 8043 externally.
 
-Both are built with `gradle clean :<module>:bootJar -Pvaadin.productionMode=true` and run as a non-root user (`appuser`, UID 10001) inside eclipse-temurin:23-jre containers.
+Both are built with `gradle clean :<module>:bootJar -Pvaadin.productionMode=true` and run as a non-root user (`appuser`, UID 10001) inside eclipse-temurin:26-jre containers.

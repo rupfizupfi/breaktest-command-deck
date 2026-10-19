@@ -19,7 +19,7 @@ class SuckServiceTest {
     /** Counts the port openings, so a retry after a failed enable is visible. */
     private static class CountingProvider implements RelaySwitchProvider {
         private final RelaySwitch relay;
-        private final ComportNotFoundException discoveryFailure;
+        private ComportNotFoundException discoveryFailure;
         private int openCount;
 
         CountingProvider(RelaySwitch relay, ComportNotFoundException discoveryFailure) {
@@ -83,7 +83,60 @@ class SuckServiceTest {
         service.enable();
 
         assertThat(service.disable()).isFalse();
+        assertThat(service.isEnabled()).isTrue();
         verify(relay).disconnect();
+    }
+
+    /** Without this a retry above the service would return true and touch no hardware. */
+    @Test
+    void aRetriedDisableOpensAFreshPortAndResendsOff() {
+        when(relay.connect()).thenReturn(true);
+        when(relay.enableRelay1()).thenReturn(true);
+        when(relay.disableRelay1()).thenReturn(false, true);
+        CountingProvider provider = new CountingProvider(relay, null);
+        SuckService service = new SuckService(provider);
+        service.enable();
+
+        assertThat(service.disable()).isFalse();
+        assertThat(service.disable()).isTrue();
+
+        assertThat(provider.openCount).isEqualTo(2);
+        verify(relay, times(2)).connect();
+        verify(relay, times(2)).disableRelay1();
+        verify(relay, times(2)).disconnect();
+        assertThat(service.isEnabled()).isFalse();
+    }
+
+    @Test
+    void aRetriedDisableWhosePortIsGoneStaysOn() {
+        when(relay.connect()).thenReturn(true);
+        when(relay.enableRelay1()).thenReturn(true);
+        when(relay.disableRelay1()).thenReturn(false);
+        CountingProvider provider = new CountingProvider(relay, null);
+        SuckService service = new SuckService(provider);
+        service.enable();
+        service.disable();
+
+        provider.discoveryFailure = new ComportNotFoundException("unplugged");
+
+        assertThat(service.disable()).isFalse();
+        assertThat(service.isEnabled()).isTrue();
+        verify(relay).disableRelay1();
+    }
+
+    @Test
+    void aRetriedDisableWhosePortDoesNotConnectStaysOn() {
+        when(relay.connect()).thenReturn(true, false);
+        when(relay.enableRelay1()).thenReturn(true);
+        when(relay.disableRelay1()).thenReturn(false);
+        SuckService service = new SuckService(new CountingProvider(relay, null));
+        service.enable();
+        service.disable();
+
+        assertThat(service.disable()).isFalse();
+        assertThat(service.isEnabled()).isTrue();
+        verify(relay).disableRelay1();
+        verify(relay, times(2)).disconnect();
     }
 
     @Test

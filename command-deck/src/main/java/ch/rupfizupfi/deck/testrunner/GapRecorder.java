@@ -19,15 +19,13 @@ import java.util.List;
 
 /**
  * Records the holes a sensor loss punches in a run's force CSV into a {@code <millis>_gaps.json}
- * sidecar beside it. The CSV itself stays free of markers - external tools read it - so the gaps
- * are only visible there as a jump in the epoch-millis column; this file is what explains them.
+ * sidecar beside it. The CSV stays free of markers because external tools read it; there a gap is
+ * only a jump in the epoch-millis column.
  * <p>
- * Owned by {@link LoadCellThread}: it is the only component that sees the samples stop and start,
- * so it is the only one that can say where a gap begins and ends.
+ * Gaps are opened by {@code measure.MeasurementLoop}, the only component that sees the samples stop.
  * <p>
- * The sidecar is created ON THE FIRST GAP. A run that never loses the sensor must leave its result
- * directory exactly as it is today, so no consumer of that directory changes behaviour for the
- * runs that are the overwhelming majority.
+ * The sidecar is created on the first gap, so a run that never loses the sensor leaves its result
+ * directory untouched.
  */
 public class GapRecorder {
 
@@ -58,9 +56,8 @@ public class GapRecorder {
     }
 
     /**
-     * Opens a gap and makes it durable immediately. This is the write that has to survive a crash:
-     * an entry with {@code outcome:"HOLDING"} and a null {@code endMillis} is how a post-mortem
-     * tells a run that died mid-hold from one that never lost the sensor at all.
+     * Opens a gap and makes it durable immediately: an entry with {@code outcome:"HOLDING"} and a
+     * null {@code endMillis} marks a run that died mid-hold.
      */
     public synchronized void beginGap(String reason, float lastKnownForce) {
         gaps.add(new GapEntry(gaps.size() + 1, reason, lastKnownForce, System.currentTimeMillis(),
@@ -68,19 +65,34 @@ public class GapRecorder {
         write();
     }
 
-    /**
-     * @param outcome one of {@code HOLDING | RESUMED | ABORTED | FAULT}
-     */
+    /** Closes the newest gap; see {@link #endGap(int, String, Float, Float, Double, int, String, Boolean)}. */
     public synchronized void endGap(String outcome, @Nullable Float firstForceAfter,
                                     @Nullable Float driftNewton,
                                     @Nullable Double driftFractionOfEnvelope, int reconnectAttempts,
                                     @Nullable String stopTier, @Nullable Boolean stopVerified) {
-        if (gaps.isEmpty()) {
-            logger.error("endGap({}) for test result {} with no gap open", outcome, testResultId);
+        endGap(gaps.size(), outcome, firstForceAfter, driftNewton, driftFractionOfEnvelope,
+                reconnectAttempts, stopTier, stopVerified);
+    }
+
+    /**
+     * Closes gap {@code index}, counting from 1. Not always the newest: a loss during a resume opens
+     * the next gap before the run loop closes the one the resume belonged to.
+     *
+     * @param outcome {@code RESUMED}, {@code RESUME_FAILED}, {@code SUPERSEDED} (a further loss
+     *                superseded this gap's resume; the next gap continues the incident), or the
+     *                terminal state the run ended in while holding: {@code ABORTED | FAULT}. A gap
+     *                still {@code HOLDING} marks a run that died mid-hold.
+     */
+    public synchronized void endGap(int index, String outcome, @Nullable Float firstForceAfter,
+                                    @Nullable Float driftNewton,
+                                    @Nullable Double driftFractionOfEnvelope, int reconnectAttempts,
+                                    @Nullable String stopTier, @Nullable Boolean stopVerified) {
+        if (index < 1 || index > gaps.size()) {
+            logger.error("endGap({}) for test result {} with no gap {} open", outcome, testResultId, index);
             return;
         }
 
-        GapEntry open = gaps.getLast();
+        GapEntry open = gaps.get(index - 1);
         if (open.endMillis() != null) {
             logger.error("endGap({}) for test result {}, but gap {} was already closed as {}",
                     outcome, testResultId, open.index(), open.outcome());
@@ -88,13 +100,13 @@ public class GapRecorder {
         }
 
         long end = System.currentTimeMillis();
-        gaps.set(gaps.size() - 1, new GapEntry(open.index(), open.reason(), open.lastKnownForceNewton(),
+        gaps.set(index - 1, new GapEntry(open.index(), open.reason(), open.lastKnownForceNewton(),
                 open.startMillis(), end, end - open.startMillis(), reconnectAttempts, outcome,
                 firstForceAfter, driftNewton, driftFractionOfEnvelope, stopTier, stopVerified));
         write();
     }
 
-    /** No-op on a run that never had a gap, which is what keeps a clean run's directory untouched. */
+    /** No-op on a run that never had a gap. */
     public synchronized void recordRunOutcome(String outcome) {
         if (gaps.isEmpty()) {
             return;
@@ -108,20 +120,15 @@ public class GapRecorder {
     }
 
     /**
-     * Rewrites the whole document, temp file first, then {@link FileChannel#force(boolean)}, then an
-     * atomic replace. A gap entry is written while the motor is coasting and the process may not
-     * survive the incident, so a half-written or unflushed sidecar is the case worth engineering
-     * against; rewriting whole also means no reader ever sees a partially appended array.
+     * Rewrites the whole document: temp file, {@link FileChannel#force(boolean)}, atomic replace, so
+     * a crash during the incident never leaves a half-written sidecar.
      * <p>
-     * Written COMPACT, on one line, and it must stay that way: the export path reached by
-     * {@code CSVStoreService.getPeakFromResultFile} parses any file of 100+ lines as force data, and
-     * the {@code *_force.csv} filter in {@code listCSVFilesForTestResult} is the only thing standing
-     * between a pretty-printed sidecar and an unguarded {@code Double.parseDouble}. The injected
-     * mapper is Spring Boot's, which does not indent - do not hand this class an indenting one.
+     * Must stay compact, on one line: {@code CSVStoreService.getPeakFromResultFile} parses any file
+     * of 100+ lines as force data, guarded only by the {@code *_force.csv} filter in
+     * {@code listCSVFilesForTestResult}. Do not inject an indenting mapper.
      * <p>
-     * SAFETY INVARIANT: this method never throws. It runs on the incident path, between the motor
-     * stop and the operator notification, so a failing sidecar write must not be able to break the
-     * escalation it is describing. A failure is logged at ERROR and nothing else.
+     * Never throws: it runs on the incident path between the motor stop and the operator
+     * notification. Failures are logged at ERROR.
      */
     private void write() {
         Path temp = null;
@@ -137,15 +144,14 @@ public class GapRecorder {
                 while (buffer.hasRemaining()) {
                     channel.write(buffer);
                 }
-                // true: metadata too, so the bytes are on the platter before the rename publishes them.
+                // true: metadata too, before the rename publishes the file.
                 channel.force(true);
             }
 
             Files.move(temp, sidecar, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             temp = null;
         } catch (Exception e) {
-            // writeValueAsString throws unchecked JacksonException in Jackson 3, the NIO calls throw
-            // IOException; both land here, and neither may propagate.
+            // JacksonException (unchecked in Jackson 3) and IOException both land here.
             logger.error("failed to write the gap sidecar {} for test result {}", sidecar, testResultId, e);
         } finally {
             if (temp != null) {
@@ -167,10 +173,8 @@ public class GapRecorder {
     }
 
     /**
-     * {@code forceFile} names the CSV the gaps are holes in, so the sidecar stays readable after the
-     * directory has collected several runs. The gates ride along for the same reason
-     * {@code TestResultStatusPersister} carries them: they decide whether a loss was survivable, and
-     * a gap list cannot be audited without them once the deployment has moved on.
+     * {@code forceFile} names the CSV the gaps belong to. The gates are included because a gap list
+     * cannot be audited without the thresholds that decided it.
      */
     private record Document(int schema, long testResultId, String forceFile, RecoveryGates gates,
                             List<GapEntry> gaps, @Nullable String runOutcome) {

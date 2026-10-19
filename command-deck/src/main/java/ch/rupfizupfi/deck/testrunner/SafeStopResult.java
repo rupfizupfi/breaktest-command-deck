@@ -5,8 +5,10 @@ package ch.rupfizupfi.deck.testrunner;
  *
  * @param tier              the highest tier that was reached
  * @param verified          true only if the motor was read back as standing still
- * @param driveResponsive   true if the drive took the stop commands and answered at least one speed
- *                          read, i.e. the USB handle demonstrably works
+ * @param driveResponsive   true if the drive's control word read back general enable and start clear
+ *                          and it answered at least one speed read, i.e. the USB handle demonstrably
+ *                          works and the de-energize landed — judged by that read-back, not by
+ *                          whether the first stop write succeeded
  * @param motorWasEnergized true if this run had genuinely enabled the drive output stage before the
  *                          stop, i.e. there was a live motor for the stop to catch
  * @param motorSpeedRpm     last measured motor speed, or null if none could be read
@@ -27,21 +29,16 @@ public record SafeStopResult(Tier tier, boolean verified, boolean driveResponsiv
 
     /**
      * De-energized and the drive is answering, but the shaft had not stopped yet. Expected on a
-     * loaded rig, where the mass coasts for longer than the verify deadline; not an operator
-     * emergency.
+     * loaded rig; not an operator emergency.
      */
     public boolean coasting() {
         return !verified && driveResponsive;
     }
 
     /**
-     * No standstill could be confirmed for a motor that this run actually energized: the drive went
-     * silent and the motor state is genuinely unknown. This is the only outcome that warrants
-     * telling the operator to use the E-stop.
-     * <p>
-     * A run that died before energizing anything - a failed startup check, a setup() that threw
-     * before its energize block - also reports {@code !verified() && !coasting()}, because there was
-     * no handle to answer. That is bookkeeping, not an incident, and must stay out of the loud path.
+     * No standstill confirmed for a motor this run energized, with the drive silent: the only outcome
+     * that warrants the E-stop. A run that never energized also reports
+     * {@code !verified() && !coasting()} but is excluded.
      */
     public boolean needsOperatorAttention() {
         return !verified && !driveResponsive && motorWasEnergized;

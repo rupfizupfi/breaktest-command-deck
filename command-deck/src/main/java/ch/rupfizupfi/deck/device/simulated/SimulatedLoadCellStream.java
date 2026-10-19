@@ -12,9 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Drains samples the {@link SimulatedBench} pushes while this stream is registered. Pushed, not
- * pulled: a stream that only answered when asked would look dead to the no-data watchdog whenever
- * the reader thread was descheduled.
+ * Drains samples the {@link SimulatedBench} pushes while this stream is registered. Pushed, so a
+ * descheduled reader thread does not look like a dead sensor to the no-data watchdog.
  */
 public class SimulatedLoadCellStream implements LoadCellStream {
 
@@ -42,7 +41,8 @@ public class SimulatedLoadCellStream implements LoadCellStream {
                     "simulated load cell stream was stopped and cannot be restarted; open a new one");
         }
         if (reading) {
-            return;
+            // As the real driver does: one start per stream.
+            throw new IllegalStateException("simulated load cell stream is already reading");
         }
         reading = true;
         bench.register(this);
@@ -84,15 +84,23 @@ public class SimulatedLoadCellStream implements LoadCellStream {
     }
 
     /**
-     * The real driver rejecting a reading it does not trust: nothing is queued, but the discard is
-     * counted, so the deck sees a hole plus a rising count rather than bare silence. Bench tick
-     * thread.
+     * Mimics the driver rejecting a reading: nothing is queued, but the discard is counted. Bench
+     * tick thread.
      */
     void drop() {
         if (!reading) {
             return;
         }
         droppedSamples.incrementAndGet();
+    }
+
+    /**
+     * Forgets the samples nobody has drained yet, without counting them as dropped: the bench calls
+     * it when it swaps the specimen, so a run never reads its predecessor's force.
+     */
+    void discardPending() {
+        pending.clear();
+        queued.set(0);
     }
 
     /** Called from the bench tick thread. */

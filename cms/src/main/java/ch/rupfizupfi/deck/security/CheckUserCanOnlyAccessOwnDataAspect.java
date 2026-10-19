@@ -2,6 +2,7 @@ package ch.rupfizupfi.deck.security;
 
 import ch.rupfizupfi.deck.data.User;
 import ch.rupfizupfi.deck.hilla.crud.CrudRepositoryService;
+import ch.rupfizupfi.deck.hilla.crud.OwnerDataHelper;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
@@ -13,13 +14,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
-
 /**
  * Single-row ownership check for a custom method whose <em>first</em> argument is the owned entity
  * or its {@code Long} id; it never filters a list. Owned CRUD services use
- * {@link ch.rupfizupfi.deck.hilla.crud.CrudRepositoryServiceForOwnerData} instead. See
- * {@code doc/03-backend/security-and-tenancy.md}.
+ * {@link ch.rupfizupfi.deck.hilla.crud.CrudRepositoryServiceForOwnerData} instead. It applies the
+ * <em>read</em> rule (own or shared), so it must not guard a method that changes the row: a shared
+ * row is read-only for non-admins, and only {@code CrudRepositoryServiceForOwnerData}'s write rule
+ * enforces that. See
+ * {@code doc/dev/backend/security-and-tenancy.md}.
  */
 @Aspect
 @Component
@@ -68,12 +70,10 @@ public class CheckUserCanOnlyAccessOwnDataAspect {
                 + (target == null ? "null" : target.getClass().getName()) + " is not one");
     }
 
+    /** The read rule, from {@link OwnerDataHelper}: a shared row passes, so this never guards a write. */
     private void checkOwnership(User user, DataWithOwner valueWithOwner) {
-        Optional.ofNullable(valueWithOwner.getOwner())
-                .ifPresent(owner -> {
-                    if (!owner.getId().equals(user.getId())) {
-                        throw new SecurityException("User can only access their own data");
-                    }
-                });
+        if (!OwnerDataHelper.isReadableBy(valueWithOwner, user)) {
+            throw new SecurityException("User can only access their own data");
+        }
     }
 }

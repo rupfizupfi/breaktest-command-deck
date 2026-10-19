@@ -1,12 +1,12 @@
 %% Sensor reading -> chart, end-to-end, in :command-deck.
-%% Branch main, 2026-08-29.
+%% Branch main, 2026-10-09.
 %% Files anchoring this diagram:
 %%   command-deck/src/main/frontend/views/run.tsx
 %%   command-deck/src/main/frontend/components/dashboard/LiveTestResult.tsx
 %%   command-deck/src/main/frontend/service/StatusService.ts
 %%   command-deck/src/main/java/ch/rupfizupfi/deck/api/services/TestRunnerService.java
 %%   command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/TestRunnerThread.java
-%%   command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/LoadCellThread.java
+%%   command-deck/src/main/java/ch/rupfizupfi/deck/testrunner/measure/MeasurementLoop.java
 %%   command-deck/src/main/java/ch/rupfizupfi/deck/device/loadcell/ForceBroadcaster.java
 %%   cms/src/main/java/ch/rupfizupfi/deck/messaging/WebSocketConfig.java
 
@@ -19,7 +19,7 @@ sequenceDiagram
     participant Spring as Spring MVC /<br/>Hilla dispatcher
     participant Runner as TestRunnerService.java<br/>@BrowserCallable
     participant Thread as TestRunnerThread.java<br/>(plain class that owns a java.lang.Thread)
-    participant LCThread as LoadCellThread.java
+    participant LCThread as MeasurementLoop.java
     participant Device as LoadCellDevice<br/>(dscusb.jar serial)
     participant Broadcast as ForceBroadcaster.java<br/>(MeasurementObserver)
     participant Broker as Spring SimpleBroker<br/>/topic/load-cell
@@ -48,11 +48,13 @@ sequenceDiagram
 
     Broker-->>Status: STOMP MESSAGE frame
     Status-->>ChartCmp: IMessage (rxjs Observable)
-    ChartCmp->>ChartCmp: setDataPoints(prev =&gt; push into prev arrays)<br/>mutates in place, unbounded — Chart.js re-renders
+    ChartCmp->>ChartCmp: ingest(buffer, parseBatch(body))<br/>bounded trace buffer, chart.update('none')
 
     User->>ChartCmp: Click "Stop"
     ChartCmp->>Hilla: TestRunnerService.stop()
     Hilla->>Runner: stop()
     Runner->>Thread: stopThread() / interrupt()
+
+    User->>ChartCmp: Click "Close" (unmounts the chart)
     ChartCmp->>Status: disconnectComponent(this)
-    Status->>Broker: DISCONNECT (refcount==0)
+    Status->>Broker: DISCONNECT (only once the last consumer has left)

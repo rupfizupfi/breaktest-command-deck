@@ -5,26 +5,18 @@
 
 .DESCRIPTION
     Hilla generates src/main/frontend/generated/ from the compiled @BrowserCallable
-    services, so a backend signature change (renamed method, changed parameter type,
-    added DTO field, changed nullability) surfaces as a TypeScript compile error at
-    the call site. That makes `tsc --noEmit` a Java-to-TypeScript contract check --
-    the cheapest real verification available to this repo.
+    services, so a backend signature change surfaces as a TypeScript error at the call
+    site. This checks the Java-to-TypeScript contract, not runtime behaviour.
 
-    It is a *contract* check, not a *behaviour* check: it says nothing about runtime
-    behaviour, auth enforcement, WebSocket wiring, or rendering.
-
-    The generation step is `hillaGenerate`, run once per module. It has one nasty
-    failure mode worth knowing about: it boots a Spring AOT context to discover
-    @BrowserCallable classes, and when that discovery comes back empty it reports
-    BUILD SUCCESSFUL and *deletes* the client instead of writing it. So the generated
-    client is verified after generation, and regenerated once if it came back empty,
-    rather than trusting Gradle's exit code.
+    `hillaGenerate` boots a Spring AOT context to discover @BrowserCallable classes;
+    when discovery comes back empty it reports BUILD SUCCESSFUL and deletes the client.
+    The generated client is therefore verified after generation and regenerated once
+    if empty.
 
 .PARAMETER SkipGenerate
     Skip the Gradle generation step and typecheck whatever is already in
-    src/main/frontend/generated/. This is the fast path (seconds instead of a minute)
-    and is correct whenever no Java has changed since the last generation. The
-    sanity check on the generated client still runs.
+    src/main/frontend/generated/. Valid when no Java has changed since the last
+    generation. The generated-client check still runs.
 
 .EXAMPLE
     ./script/typecheck.ps1
@@ -55,12 +47,9 @@ function Write-Section {
 }
 
 function Test-IsWindows {
-    # $IsWindows is a PowerShell 7+ automatic variable; Windows PowerShell 5.1 has no such
-    # variable at all, and 5.1 only runs on Windows -- so its absence is itself the answer.
-    # Test-Path is what makes that readable under Set-StrictMode, which would otherwise throw
-    # on the undefined variable. Keep this expressed with if/else and not the ?: operator:
-    # cms/package.json and command-deck/package.json invoke this script through `powershell`
-    # (5.1), where a ternary is a *parse* error and takes the whole file down.
+    # $IsWindows only exists in PowerShell 7+; 5.1 runs only on Windows, so its absence means
+    # Windows. Test-Path avoids the StrictMode error on the undefined variable. No ?: here:
+    # the package.json scripts run this under `powershell` 5.1, where a ternary fails to parse.
     if (-not (Test-Path variable:IsWindows)) { return $true }
     return [bool]$IsWindows
 }
@@ -78,30 +67,17 @@ function Get-Gradlew {
 
 function Invoke-GenerateModule {
     <#
-        Runs hillaGenerate for one module. `hillaGenerate` is the task that turns the
-        compiled @BrowserCallable classes into src/main/frontend/generated/ -- it boots
-        a Spring AOT context (see build/hilla-aot-report.txt) to discover them.
+        Runs hillaGenerate for one module (AOT scan report: build/hilla-aot-report.txt).
 
-        One invocation per module, never both at once. Requesting
-        ':cms:hillaGenerate :command-deck:hillaGenerate' together fails at
-        configuration time with "Could not determine the dependencies of task
-        ':cms:jar' > Task with name 'generate' not found in project ':cms'" -- the
-        Hilla plugin does not survive being asked to generate for two projects in a
-        single build.
+        One module per Gradle invocation: requesting both in one build fails at
+        configuration time with "Task with name 'generate' not found in project ':cms'".
 
-        vaadinPrepareFrontend is deliberately NOT run here. It would refresh the Flow
-        scaffolding (vaadin.ts, vite-devmode.ts, jar-resources/), but it also performs
-        a frontend install using *npm* despite `pnpmEnable = true` in build.gradle --
-        it deletes pnpm-lock.yaml and writes package-lock.json. Far too destructive
-        for a gate meant to run on every change. Only hillaGenerate produces the
-        Java-to-TypeScript contract this gate exists to check.
-
-        The scaffolding it produces is NOT committed, despite what this comment
-        claimed until CI proved otherwise: generated-flow-imports.js,
-        app-shell-imports.js and vaadin-react.js are untracked, so they exist here
-        only as leftover output of an earlier local run. This gate therefore needs
-        `./gradlew :MODULE:vaadinPrepareFrontend` once on a fresh clone before it can
-        pass -- which is exactly what .github/workflows/build.yml does.
+        vaadinPrepareFrontend is not run here: it installs with npm despite
+        `pnpmEnable = true`, deleting pnpm-lock.yaml and writing package-lock.json.
+        Its scaffolding (generated-flow-imports.js, app-shell-imports.js,
+        vaadin-react.js) is untracked, so a fresh clone needs
+        `./gradlew :MODULE:vaadinPrepareFrontend` once first, as
+        .github/workflows/build.yml does.
     #>
     param(
         [string]$Module,
@@ -111,8 +87,7 @@ function Invoke-GenerateModule {
     $gradlew = Get-Gradlew
     $tasks = @(":${Module}:hillaGenerate", '--quiet')
     if ($Force) {
-        # Outputs were wiped or are suspect; make Gradle redo the work rather than
-        # reporting UP-TO-DATE against a directory we have already rejected.
+        # Otherwise Gradle reports UP-TO-DATE against the rejected output.
         $tasks += '--rerun'
     }
 
@@ -122,15 +97,9 @@ function Invoke-GenerateModule {
 
 function Invoke-Generate {
     <#
-        Generates, verifies, and retries once on a wipe.
-
-        The retry is the point. When the AOT endpoint scan comes back empty --
-        observed on a cold Gradle daemon, and when another build is running against
-        the same project concurrently -- hillaGenerate reports BUILD SUCCESSFUL and
-        *deletes* the client it was supposed to write. A single attempt would then
-        fail the gate for a reason that has nothing to do with the code under test,
-        and a gate that cries wolf gets switched off. Re-running has recovered it
-        every time it has been seen.
+        Generates, verifies, and retries once on a wipe. The empty AOT scan has been
+        seen on a cold Gradle daemon and with a concurrent build on the same project;
+        a re-run has recovered it each time.
     #>
     foreach ($module in $modules) {
         Write-Section "Generating Hilla client for $module"
@@ -163,11 +132,7 @@ function Invoke-Generate {
 
 function Test-GeneratedClient {
     <#
-        Guards the silent-wipe failure mode described in the header comment: Gradle
-        reports success, but the generated directory came back empty. Without this
-        check the gate would then "pass" purely because there was nothing left that
-        referenced the missing endpoints, or fail with a confusing cascade of
-        module-not-found errors.
+        Returns a problem description if the client was wiped (see header), else $null.
     #>
     param([string]$Module)
 
@@ -194,9 +159,7 @@ function Test-GeneratedClient {
 function Resolve-Tsc {
     param([string]$ModulePath)
 
-    # Windows first, and only there: pnpm writes a tsc.cmd shim *beside* the extensionless
-    # POSIX one, and that extensionless file is a sh script PowerShell cannot execute.
-    # Elsewhere only the extensionless shim exists. Nothing found falls through to pnpm exec.
+    # On Windows the extensionless shim is a sh script PowerShell cannot run; use tsc.cmd.
     if (Test-IsWindows) {
         $candidates = @('node_modules/.bin/tsc.cmd', 'node_modules/.bin/tsc.CMD')
     } else {
@@ -219,8 +182,7 @@ function Invoke-Typecheck {
     Push-Location $modulePath
     try {
         if ($null -eq $tsc) {
-            # No local install -- fall back to pnpm, which resolves the pinned
-            # typescript from the module's devDependencies.
+            # No local install: pnpm resolves the module's pinned typescript.
             $output = & pnpm exec tsc --noEmit -p tsconfig.json
         } else {
             $output = & $tsc --noEmit -p tsconfig.json
@@ -248,10 +210,7 @@ try {
     if ($SkipGenerate) {
         Write-Section 'Skipping generation (-SkipGenerate)'
 
-        # Invoke-Generate verifies its own output, so this check only has to cover
-        # the skipped path: typechecking against a client that was never generated
-        # (or was left wiped by an earlier run) would produce a wall of
-        # module-not-found noise that looks nothing like the real problem.
+        # Invoke-Generate verifies its own output; this covers the skipped path.
         foreach ($module in $modules) {
             $problem = Test-GeneratedClient -Module $module
             if ($null -ne $problem) {

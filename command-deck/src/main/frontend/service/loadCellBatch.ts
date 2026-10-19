@@ -1,15 +1,20 @@
 /**
- * The one parser for `/topic/load-cell` batches: every consumer reads the wire through here, so the
- * `force`/`timestamp` keys of `Measurement` are pinned to a single frontend site. Relative import
- * and no React, STOMP or generated-client dependency, so Vitest's node environment loads it.
+ * The one parser for `/topic/load-cell` batches, so the `force`/`timestamp` keys of `Measurement`
+ * are read in a single place. Kept free of React, STOMP and generated-client imports so Vitest's
+ * node environment can load it.
  */
 import type {ForceSample} from "../components/dashboard/traceBuffer.js";
 
 export type {ForceSample};
 
-/** The batch, or empty for anything that is not a JSON array. */
+/** The batch, or empty for anything that is not a JSON array — a STOMP callback must not throw. */
 export function parseBatch(body: string): ForceSample[] {
-    const parsed = JSON.parse(body);
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(body);
+    } catch {
+        return [];
+    }
     return Array.isArray(parsed) ? parsed as ForceSample[] : [];
 }
 

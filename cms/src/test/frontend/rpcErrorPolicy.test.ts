@@ -1,17 +1,9 @@
 /**
- * Pure-logic tests for the RPC error policy (node environment — no browser, no jsdom).
+ * What the RPC error policy decides, not what the toast looks like. `Notification.js` and
+ * `@vaadin/hilla-frontend`'s ConnectClient are mocked; browser globals are per-test stubs.
  *
- * The DOM boundary is stubbed at the two module seams the policy touches:
- * `@vaadin/react-components/Notification.js` (a shadow-DOM web component jsdom cannot
- * render) and `@vaadin/hilla-frontend`'s
- * ConnectClient. What the toast *looks like* is out of scope here; what the policy
- * *decides* — status→message mapping, dedupe, 401 recovery, marker lifecycle — is the
- * subject. Browser globals the policy reads (sessionStorage, window.location,
- * window.setTimeout, requestAnimationFrame) are per-test stubs.
- *
- * The policy keeps module-level state (dedupe map, `recovering`, the marker-clear
- * latch), so every test re-imports it fresh via loadPolicy(); a second load inside one
- * test simulates the page reload that session recovery triggers.
+ * The policy keeps module-level state, so every test re-imports it via loadPolicy(); a second
+ * load inside one test simulates the reload that session recovery triggers.
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import type { MiddlewareContext, MiddlewareNext } from '@vaadin/hilla-frontend';
@@ -85,8 +77,7 @@ async function loadPolicy() {
   const { Notification } = await import('@vaadin/react-components/Notification.js');
   const show = Notification.show as unknown as Mock;
   show.mockClear();
-  // Hilla's Middleware is a MiddlewareFunction | MiddlewareClass union; rpcErrorPolicy is
-  // the function form, but TS cannot call the union — narrow once here.
+  // Middleware is a function | class union; narrow to the function form to call it.
   const run = policy.rpcErrorPolicy as (context: MiddlewareContext, next: MiddlewareNext) => Promise<Response>;
   return { policy, run, show };
 }
@@ -178,8 +169,7 @@ describe('status mapping', () => {
 
     const response = await run(ctx('SampleService'), respond(500, { message: 'boom' }));
 
-    // Connect.js#assertResponseIsOk awaits response.text() one level up the chain, so
-    // readErrorBody must read a clone() and leave the body itself unread.
+    // Connect.js#assertResponseIsOk reads the body one level up the chain.
     await expect(response.text()).resolves.toBe(JSON.stringify({ message: 'boom' }));
   });
 
@@ -351,8 +341,7 @@ describe('auth endpoint exemption', () => {
     expect(response.status).toBe(401);
     expect(windowStub.setTimeout).not.toHaveBeenCalled();
     expect(storage.getItem(RELOAD_MARKER)).toBeNull();
-    // The mount-time auth probe answering 401 is the normal anonymous state: no toast of any
-    // kind and no console noise — report() is skipped entirely.
+    // The mount-time auth probe answering 401 is the anonymous state: no toast, no console noise.
     expect(show).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
   });

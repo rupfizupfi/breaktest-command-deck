@@ -5,11 +5,10 @@ import { Notification, type NotificationElement } from '@vaadin/react-components
  * The single error policy for every generated Hilla RPC call, installed as a ConnectClient
  * middleware by both modules' `connect-client.ts`.
  *
- * Why a middleware, where it sits in the chain, and what it does per status:
- * `doc/04-frontend/hilla-generated-layer.md#the-hand-written-client`.
+ * See `doc/dev/frontend/hilla-generated-layer.md#the-hand-written-client`.
  */
 
-/** Byte-identical to the generated default this replaces — no leading slash, or every RPC 404s. */
+/** Matches the generated default; a leading slash makes every RPC 404. */
 const PREFIX = 'connect';
 
 const LOGIN_PATH = '/login';
@@ -40,8 +39,7 @@ function markReloadAttempt(): void {
   try {
     sessionStorage.setItem(RELOAD_MARKER, String(Date.now()));
   } catch {
-    // sessionStorage can be unavailable (locked-down browser profile); the marker is a
-    // loop guard, not correctness.
+    // sessionStorage may be unavailable; the marker is only a loop guard.
   }
 }
 
@@ -56,10 +54,9 @@ function clearReloadAttempt(): void {
 const shown = new Map<string, { element: NotificationElement; at: number }>();
 
 /**
- * `Notification.show()` moves the visible card into a `vaadin-notification-container` in
- * `<body>`, so a click on the toast never reaches the element `show()` returned. Wire the card
- * once Lit has rendered it — a `duration: 0` toast otherwise has no way out. If the internal
- * accessor ever goes away the toast simply stays put.
+ * `Notification.show()` moves the card into a `vaadin-notification-container` in `<body>`, so
+ * clicks never reach the returned element; wire the card after Lit renders it. Relies on the
+ * internal `_card`; without it the toast just stays.
  */
 function makeDismissable(element: NotificationElement): void {
   requestAnimationFrame(() => {
@@ -104,11 +101,9 @@ function recoverFromLostSession(): void {
     theme: 'error',
   });
 
-  // Full-page navigation, not react-router: `configureAuth` computes its state once at
-  // AuthProvider mount and `useAuth` exposes no refresh, so only a document load re-initialises
-  // it — the same move `views/@layout.tsx` makes after logout. The target is the current path,
-  // not /login; a `?redirectUrl=` query parameter would be ignored, because login.tsx reads
-  // redirectUrl from the login *response*.
+  // Full-page load, not react-router: `configureAuth` computes its state once at mount and
+  // `useAuth` has no refresh. Target the current path, not `/login?redirectUrl=`: login.tsx
+  // reads redirectUrl from the login response.
   const target = reloadAlreadyAttempted() ? LOGIN_PATH : window.location.pathname + window.location.search;
   markReloadAttempt();
   window.setTimeout(() => window.location.assign(target), REDIRECT_DELAY_MS);
@@ -181,8 +176,7 @@ export const rpcErrorPolicy: Middleware = async (
 
   const body = await readErrorBody(response);
 
-  // Probed before the status checks, matching the discrimination order in
-  // Connect.js#assertResponseIsOk. autoform.js already renders these into the form.
+  // Checked first, as in Connect.js#assertResponseIsOk; autoform.js renders these into the form.
   if (body?.validationErrorData) {
     return response;
   }
@@ -191,8 +185,7 @@ export const rpcErrorPolicy: Middleware = async (
     if (context.endpoint !== AUTH_ENDPOINT) {
       recoverFromLostSession();
     }
-    // An AUTH_ENDPOINT 401 is the mount-time auth probe seeing a normal anonymous state, not a
-    // failure: no recovery, and no report() either — fully silent.
+    // An AUTH_ENDPOINT 401 is the mount-time probe seeing an anonymous user: stay silent.
     return response;
   }
 

@@ -36,13 +36,9 @@ function headline(state: TestState): string {
 /**
  * Annunciates a sensor-loss incident and carries the two commands that end it.
  *
- * Self-contained in the same sense as SimulatedModeBanner, and for the same reason: a safety
- * annunciator must not be able to take the app shell down with it. Every promise is caught, and the
- * render falls back to a plain sentence rather than throwing into the tree — a banner that renders
- * badly is recoverable, one that unmounts the view around it is not.
- *
- * Nothing here is optimistic. The buttons show what the server answered, including a refusal and its
- * reason; the state they read back is the server's, never a locally assumed one.
+ * Like SimulatedModeBanner, it must not take the app shell down: every promise is caught and a
+ * render failure falls back to a plain sentence. Nothing is optimistic; the buttons show what the
+ * server answered, including a refusal and its reason.
  */
 export default function TestIncidentBanner(): React.JSX.Element | null {
     const frame = useTestState();
@@ -54,9 +50,8 @@ export default function TestIncidentBanner(): React.JSX.Element | null {
     const [pending, setPending] = useState(false);
 
     /**
-     * When this browser first saw the incident. Only ever used to put a number in front of the
-     * operator before they decide; the run's authoritative gap length is measured server side and
-     * written to the gap sidecar, and a browser that joined mid-incident will read low here.
+     * When this browser first saw the incident; display only, and reads low for a browser that
+     * joined mid-incident. The authoritative gap length is measured server side.
      */
     const incidentStartRef = useRef<number | null>(null);
 
@@ -101,8 +96,9 @@ export default function TestIncidentBanner(): React.JSX.Element | null {
             : Math.max(0, frame.safeHoldDeadlineMillis - now);
 
         return (
+            // The alert is the headline and reason only: the countdown below changes every second, and
+            // inside an alert region it would be re-announced each time.
             <div
-                role="alert"
                 style={{
                     background: 'var(--lumo-error-color, #e53935)',
                     color: 'var(--lumo-error-contrast-color, #fff)',
@@ -110,9 +106,11 @@ export default function TestIncidentBanner(): React.JSX.Element | null {
                     borderRadius: '4px',
                 }}
             >
-                <strong style={{fontSize: '1.05em'}}>{headline(frame.state)}</strong>
-                <p style={{margin: '0.35rem 0'}}>{frame.reason ?? 'the load cell stopped delivering measurements'}</p>
-                <ul style={{margin: '0.35rem 0', paddingLeft: '1.2em'}}>
+                <div role="alert">
+                    <strong style={{fontSize: '1.05em'}}>{headline(frame.state)}</strong>
+                    <p style={{margin: '0.35rem 0'}}>{frame.reason ?? 'the load cell stopped delivering measurements'}</p>
+                </div>
+                <ul aria-live="off" style={{margin: '0.35rem 0', paddingLeft: '1.2em'}}>
                     <li>
                         Last known force:{' '}
                         {frame.lastKnownForce === null
@@ -131,12 +129,11 @@ export default function TestIncidentBanner(): React.JSX.Element | null {
                 </ul>
 
                 {refusal && (
-                    <p style={{margin: '0.35rem 0', fontWeight: 600}}>The machine refused: {refusal}</p>
+                    <p role="alert" style={{margin: '0.35rem 0', fontWeight: 600}}>The machine refused: {refusal}</p>
                 )}
 
                 <div style={{display: 'flex', gap: 'var(--lumo-space-s)', marginTop: 'var(--lumo-space-xs)'}}>
-                    {/* Never disabled, not even while a command is in flight: ending the run is the one
-                        control that must always answer. */}
+                    {/* Never disabled, not even while a command is in flight. */}
                     <Button theme="primary error" onClick={() => send(TestRunnerService.abort, 'Abort')}>
                         Abort
                     </Button>

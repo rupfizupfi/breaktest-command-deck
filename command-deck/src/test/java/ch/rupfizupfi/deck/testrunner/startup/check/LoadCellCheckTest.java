@@ -2,10 +2,10 @@ package ch.rupfizupfi.deck.testrunner.startup.check;
 
 import ch.rupfizupfi.deck.device.DeviceService;
 import ch.rupfizupfi.deck.device.api.LoadCellStream;
-import ch.rupfizupfi.deck.device.api.LoadCellStreamProvider;
 import ch.rupfizupfi.deck.device.api.Measurement;
 import ch.rupfizupfi.deck.device.api.StreamFailure;
 import ch.rupfizupfi.deck.device.loadcell.LoadCellDevice;
+import ch.rupfizupfi.deck.device.loadcell.SessionAwareStreamProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -68,7 +68,7 @@ class LoadCellCheckTest {
     @Test
     @Timeout(20)
     void aDeliveringCellPassesAndTheCheckBalancesItsOwnConnect() {
-        device = new LoadCellDevice(() -> new FakeStream(true));
+        device = new LoadCellDevice(reconnect -> new FakeStream(true));
 
         assertThatCode(() -> checkOver(device).execute()).doesNotThrowAnyException();
 
@@ -78,7 +78,7 @@ class LoadCellCheckTest {
     @Test
     @Timeout(20)
     void aDeviceAnotherHolderKeepsOpenStaysOpenAfterTheCheck() throws InterruptedException {
-        device = new LoadCellDevice(() -> new FakeStream(true));
+        device = new LoadCellDevice(reconnect -> new FakeStream(true));
         device.connect();
         awaitDataFlowing(device);
 
@@ -90,7 +90,7 @@ class LoadCellCheckTest {
     @Test
     @Timeout(20)
     void aSilentCellIsRefusedAndReleased() {
-        device = new LoadCellDevice(() -> new FakeStream(false));
+        device = new LoadCellDevice(reconnect -> new FakeStream(false));
 
         assertThatThrownBy(() -> checkOver(device).execute())
                 .isInstanceOf(CheckFailedException.class)
@@ -101,7 +101,7 @@ class LoadCellCheckTest {
     @Test
     @Timeout(20)
     void aFailingReleaseDoesNotMaskTheRefusal() {
-        LoadCellDevice spied = spy(new LoadCellDevice(() -> new FakeStream(false)));
+        LoadCellDevice spied = spy(new LoadCellDevice(reconnect -> new FakeStream(false)));
         doThrow(new IllegalStateException("release failed")).when(spied).disconnect();
         device = spied;
 
@@ -118,8 +118,8 @@ class LoadCellCheckTest {
         return new LoadCellCheck(deviceService);
     }
 
-    private static LoadCellStreamProvider refusing(Throwable failure) {
-        return () -> {
+    private static SessionAwareStreamProvider refusing(Throwable failure) {
+        return reconnect -> {
             throw sneaky(failure);
         };
     }

@@ -33,7 +33,6 @@ public class User extends AbstractEntity {
         return super.getId();
     }
 
-    // Getters and setters
     public String getUsername() {
         return username;
     }

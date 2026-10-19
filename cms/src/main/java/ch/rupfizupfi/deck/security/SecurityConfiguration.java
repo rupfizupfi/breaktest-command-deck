@@ -30,39 +30,32 @@ public class SecurityConfiguration {
         return new BCryptPasswordEncoder();
     }
 
-    /**
-     * Vaadin 25 removed {@code VaadinWebSecurity}; the Vaadin defaults are now contributed
-     * by {@link VaadinSecurityConfigurer} into an application-owned filter chain bean.
-     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, RequestUtil requestUtil,
                                            ObjectProvider<RouteUtil> routeUtil) throws Exception {
-        // Disable CSRF protection for specific endpoints
-        http.csrf(csrf -> csrf.ignoringRequestMatchers(
-                PathPatternRequestMatcher.withDefaults().matcher("/api/files/uploads"),
-                PathPatternRequestMatcher.withDefaults().matcher("/api/files/upload")
-        ));
+        // No CSRF exemptions of our own: <vaadin-upload> sends the token header (util/csrf.ts), so a
+        // session cookie alone cannot post a file. VaadinSecurityConfigurer still exempts the login
+        // form and Vaadin's internal requests.
 
-        // Public access
+        // Public access. Only the hardware button box calls /api/** without a session; any other
+        // /api path falls through to Vaadin's closing denyAll().
         http.authorizeHttpRequests(authorize -> authorize
                 .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/tests")).permitAll()
                 .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/images/*.png")).permitAll()
                 .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/line-awesome/**")).permitAll()
-                .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/api/**")).permitAll()
+                .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/api/ControllerEndpoint/**")).permitAll()
+                .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/api/files/**")).authenticated()
+                .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/api/DownloadEndpoint/**")).authenticated()
         );
 
-        // The STOMP handshake is neither a Vaadin route nor a Hilla endpoint, and
-        // VaadinSecurityConfigurer closes the chain with anyRequest().denyAll() — so without a
-        // rule of its own the live telemetry socket is refused with 403 for a logged-in operator.
-        // Authenticated, never permitAll: the topics carry one machine's telemetry, shared
-        // between its operators by decision, not published.
+        // The STOMP handshake needs its own rule: VaadinSecurityConfigurer ends the chain with
+        // anyRequest().denyAll(). Authenticated, not permitAll: telemetry is for operators only.
         http.authorizeHttpRequests(authorize -> authorize
                 .requestMatchers( PathPatternRequestMatcher.withDefaults().matcher("/status")).authenticated()
         );
 
-        // Vaadin 25.2 matches a Hilla view's rolesAllowed against granted authorities verbatim.
-        // Registered ahead of Vaadin's own rule, this one applies the ROLE_ prefix the way
-        // isUserInRole does, so rolesAllowed keeps naming Role enum values.
+        // Vaadin matches a Hilla view's rolesAllowed against authorities verbatim; this rule, ahead
+        // of Vaadin's, adds the ROLE_ prefix so rolesAllowed can name Role enum values.
         http.authorizeHttpRequests(authorize -> authorize
                 .requestMatchers(requestUtil::isSecuredHillaRoute)
                 .access(hillaRouteAccess(request -> {
