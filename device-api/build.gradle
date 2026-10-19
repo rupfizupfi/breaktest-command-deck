@@ -37,14 +37,14 @@ repositories {
 // drifts from the contract fails a test rather than a run. Consumers take them with
 // testImplementation(testFixtures(...)); the versions are the floor, a consumer's own BOM wins.
 dependencies {
-    testFixturesApi 'org.junit.jupiter:junit-jupiter-api:6.0.3'
+    testFixturesApi 'org.junit.jupiter:junit-jupiter-api:6.1.3'
     testFixturesApi 'org.assertj:assertj-core:3.27.7'
 
     // device-api's own suite (the support package's scheduler). Test scope only, so it reaches no
     // consumer; :command-deck:test runs it, which puts it in the jvm gate.
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.3'
     testImplementation 'org.assertj:assertj-core:3.27.7'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.1.3'
 }
 
 tasks.named('test') {
