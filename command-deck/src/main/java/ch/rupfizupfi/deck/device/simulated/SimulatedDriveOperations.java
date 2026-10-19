@@ -129,7 +129,7 @@ final class SimulatedDriveOperations implements DriveOperations {
     }
 
     /**
-     * The bench's state, never the {@code localRemote} request, which this plant ignores. REMOTE
+     * The bench's state, never the {@code localRemote} request, which this plant ignores. LOCAL
      * unless a test sets otherwise through {@link SimulatedBench#setControlSource}.
      */
     @Override

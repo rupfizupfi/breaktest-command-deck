@@ -98,8 +98,8 @@ public class SimulatedBench {
     private volatile long linkLossTimeoutNanos = 0;
     private volatile int communicationErrorAction = 0;
 
-    /** The drive's LOC/REM state. No keypad exists here, so only a test moves it. */
-    private volatile ControlSource controlSource = ControlSource.REMOTE;
+    /** The drive's LOC/REM state: LOCAL, the deck's own control on this bench. Only a test moves it. */
+    private volatile ControlSource controlSource = ControlSource.LOCAL;
     /** When a request last reached the drive from any handle. */
     private volatile long lastRequestNanos = System.nanoTime();
     /** Bus time of one drive transaction on any handle; seeded from the properties, set by tests. */
@@ -277,7 +277,7 @@ public class SimulatedBench {
         measuredRpm = rpm;
     }
 
-    /** Public so a deck test can put the simulated drive under keypad control. */
+    /** Public so a deck test can put the simulated drive under the button board (REMOTE). */
     public void setControlSource(ControlSource controlSource) {
         this.controlSource = controlSource;
     }

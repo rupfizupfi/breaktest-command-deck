@@ -36,8 +36,9 @@ import java.util.function.Supplier;
  * {@link RunStatus#ABORTED} with a marker. Independently of that sweep, every real-mode boot
  * de-energizes the drive: a crash before the first status save leaves no row behind, and a drive
  * left enabled is just as live without one. The one exception is a drive that reports
- * {@link ControlSource#LOCAL}: an operator may be jogging it at the keypad, so it is left alone
- * (owner decision, OQ-87).
+ * {@link ControlSource#REMOTE}: on this bench that is the push-button control board, so an operator
+ * may be running it by hand and it is left alone (owner decision, OQ-87). LOCAL is the deck's own
+ * USB control and is de-energized.
  * <p>
  * The de-energize goes through the {@link FrequencyInverterDevice}'s own reference-counted handle,
  * never a private handle (H-13), and {@link BootDeEnergizeGate} holds every Start back until it is
@@ -230,7 +231,7 @@ public class StartupRecoveryRunner {
         }
 
         try {
-            device.withDrive(this::deEnergizeUnlessLocal);
+            device.withDrive(this::deEnergizeUnlessRemote);
         } catch (Throwable t) {
             logger.warn("boot de-energize failed", t);
         } finally {
@@ -245,7 +246,7 @@ public class StartupRecoveryRunner {
     /**
      * The probe is one read-only drive request ahead of the stop, bounded like it by the driver's own
      * deadline, so it adds one request's worth to how long {@link BootDeEnergizeGate} stays closed.
-     * Only an affirmative {@link ControlSource#LOCAL} skips: an unknown source de-energizes, as every
+     * Only an affirmative {@link ControlSource#REMOTE} skips: an unknown source de-energizes, as every
      * boot did before the drive could report it.
      * <p>
      * {@link Drive#stop()}, as {@code MotorSafetyController#commandStop} sends it: start and general
@@ -253,7 +254,7 @@ public class StartupRecoveryRunner {
      * driver; an older plugin runs the contract's two-call fallback, which this boot may send although
      * the deck refuses to energize through such a plugin - it is idempotent, and the poll only reads.
      */
-    private void deEnergizeUnlessLocal(Drive drive) {
+    private void deEnergizeUnlessRemote(Drive drive) {
         ControlSource source;
         String unknownBecause;
         try {
@@ -271,14 +272,15 @@ public class StartupRecoveryRunner {
         }
 
         switch (source) {
-            case LOCAL -> {
-                logger.warn("boot de-energize SKIPPED: the drive is under LOCAL (keypad) control, so it was"
-                        + " left as is - an operator may be jogging it; no command was sent to the drive");
+            case REMOTE -> {
+                logger.warn("boot de-energize SKIPPED: the drive is under REMOTE control (button control"
+                        + " board), so it was left as is - an operator may be running it; no command was"
+                        + " sent to the drive");
                 return;
             }
-            case REMOTE -> logger.info("de-energizing the drive at boot, it is under REMOTE control");
+            case LOCAL -> logger.info("de-energizing the drive at boot, it is under LOCAL (USB/deck) control");
             case UNKNOWN -> logger.warn("de-energizing the drive at boot although its control source is"
-                    + " unknown - {}; a drive under keypad control is not exempted", unknownBecause);
+                    + " unknown - {}; a drive under the button board is not exempted", unknownBecause);
         }
 
         try {

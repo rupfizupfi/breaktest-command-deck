@@ -93,7 +93,7 @@ then every energize is refused. `driverPluginTest` fails such a jar by name. A d
 `Drive#gating()` (1.5.0) loads with a startup warning, and since the deck dropped its own drive lock
 (BL-121) every energize is refused too: it can still stop and de-energize the drive, never run a test. A safe fallback only
 warns, at every startup and in `driverPluginTest`: a jar older than `Drive#readControlSource`
-(1.3.0) answers `UNKNOWN`, so every boot de-energizes even a drive under keypad control — the
+(1.3.0) answers `UNKNOWN`, so every boot de-energizes even a drive under the button board (REMOTE) — the
 pre-1.3.0 behaviour — and a load-cell jar older than `LoadCellStream#droppedSampleCount()` (1.1.0)
 answers 0, so dropped samples are not reported.
 
@@ -216,10 +216,11 @@ declined as not worth it while the repo stays private (see [decisions](../../dec
   talks over the drive's USB port. On the bench: confirm the write is accepted, then pull the USB
   cable mid-run and watch for A128 and the coast.
 - **`readControlSource` reads P0680 bit 12** (`Cfw11#isRemote`), the drive's actual LOC/REM state —
-  WEG 0899.5741 §3, Table 3.3 (p. 14): 0 local, 1 remote. One read, no retry, never `UNKNOWN`.
+  WEG 0899.5741 §3, Table 3.3 (p. 14): 0 local, 1 remote. One read, no retry, never `UNKNOWN`. Per
+  this bench's P0220 setup, LOCAL is the deck over USB and REMOTE the push-button board (owner, 2026-10-19).
   `getControlParameters`' extra `localRemote` key is P0682 bit 4, the LOC/REM *request* (Table 3.4,
-  p. 15), acted on only when P0220 selects serial; no deck code reads it. **Bench check owed:** put
-  the drive in LOCAL at the keypad, restart the deck, expect the `SKIPPED` warning and no write.
+  p. 15), acted on only when P0220 selects serial; no deck code reads it. **Bench check owed (OQ-87):**
+  REMOTE at the board, restart the deck, expect `SKIPPED` and no write; LOCAL, restart, it de-energizes.
 
 `CommunicationLib.jar` also holds `devicemanager.VirtualDeviceConnection`, an in-memory Modbus
 slave reporting vendor `WEG` / product `VDW-00`. The deck does not use it: no vendor code loads in

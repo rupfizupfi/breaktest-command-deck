@@ -212,9 +212,10 @@ an older document is told apart by its absence.
 on every real-mode boot, orphans or not, de-energizes the drive with one `Drive#stop()` on a
 **detached daemon thread** through `FrequencyInverterDevice`'s own refcounted handle - never a
 private handle (H-13). `BootDeEnergizeGate` refuses a Start until it is done, so no run is de-energized mid-setup.
-A drive reporting `LOCAL` through `Drive#readControlSource` (keypad control, owner decision) is left
-as is with a `SKIPPED` warning, since an operator may be jogging it; `REMOTE` and `UNKNOWN` (a
-pre-1.3.0 plugin, a failed read) de-energize. The read is one request ahead of the stop. Not `safeStop()`: `motorEnergized` is false on a fresh singleton. `ShutdownSafeStop`
+A drive reporting `REMOTE` through `Drive#readControlSource` (on this bench the push-button control
+board; owner, 2026-10-19, OQ-87) is left as is with a `SKIPPED` warning, since an operator may be
+running it; `LOCAL` (the deck's own USB control) and `UNKNOWN` (a pre-1.3.0 plugin, a failed read)
+de-energize. The read is one request ahead of the stop. Not `safeStop()`: `motorEnergized` is false on a fresh singleton. `ShutdownSafeStop`
 (`SmartLifecycle`, top phase) `safeStop`s an open drive on context close, 15 s bound.
 
 **The force CSV stays byte-identical** — no comment rows, no sentinels; external tools read it. Its

@@ -58,11 +58,11 @@ public interface Drive {
      * <p>
      * {@link ControlSource#UNKNOWN} when the provider cannot report it. A failed read throws, as
      * every other read does. A caller acting on the answer treats both as "not known to be
-     * {@link ControlSource#LOCAL}".
+     * {@link ControlSource#REMOTE}".
      * <p>
      * Added in contract 1.3.0 as a default method. The fallback answers
      * {@link ControlSource#UNKNOWN}: an older plugin still loads, and the deck keeps its
-     * pre-1.3.0 behaviour of treating the drive as remote-controlled.
+     * pre-1.3.0 behaviour of treating the drive as under its own control.
      */
     default ControlSource readControlSource() {
         return ControlSource.UNKNOWN;

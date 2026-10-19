@@ -129,8 +129,8 @@ class DriverPluginContractTest {
     /**
      * Warns, never fails: a drive jar built before {@code Drive#readControlSource} (device-api 1.3.0)
      * answers UNKNOWN through the contract's default, and the boot de-energize treats UNKNOWN as
-     * remote — the pre-1.3.0 behaviour. The jar is still safe; it only cannot spare a drive under
-     * keypad control.
+     * not REMOTE — the pre-1.3.0 behaviour. The jar is still safe; it only cannot spare a drive under
+     * the button control board (REMOTE).
      */
     @Test
     void everyDrivePluginReportsItsControlSource() {
@@ -146,7 +146,7 @@ class DriverPluginContractTest {
             Map<String, Boolean> drives = DriverPlugins.driveImplementationsOverriding(jar, "readControlSource");
             if (drives.containsValue(false)) {
                 String warning = jar.getFileName() + " was built before Drive#readControlSource (device-api"
-                        + " 1.3.0): every boot de-energizes the drive even under keypad (LOCAL) control. Rebuild"
+                        + " 1.3.0): every boot de-energizes the drive even under button-board (REMOTE) control. Rebuild"
                         + " it (`./gradlew shadowJar` in ../usbmodbus) and copy the result into "
                         + DriverPlugins.directory() + ".";
                 logger.warn(warning);

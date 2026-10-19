@@ -22,7 +22,7 @@ enum ContractFeature {
 
     READ_CONTROL_SOURCE(DriveProvider.class, 1, 3, "Drive#readControlSource()",
             "the control source always reads UNKNOWN, so every boot de-energizes the drive even under "
-                    + "keypad (LOCAL) control"),
+                    + "button-board (REMOTE) control"),
 
     DRIVER_GATING(DriveProvider.class, 1, 5, "Drive#gating()",
             "the driver does not gate its own calls (CALLER_SERIALIZES) and the deck no longer "

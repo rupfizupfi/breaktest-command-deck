@@ -277,7 +277,7 @@ class StartupRecoveryRunnerTest {
         // What DriverPluginBootTest relies on to boot real mode without touching a drive.
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
         var runner = new StartupRecoveryRunner(repository, mapper, new HardwareModeInfo("real"),
-                () -> device, false, d -> ControlSource.REMOTE);
+                () -> device, false, d -> ControlSource.LOCAL);
 
         assertThat(BootDeEnergizeGate.isPending()).isFalse();
         runner.onApplicationReady(null);
@@ -291,7 +291,7 @@ class StartupRecoveryRunnerTest {
         TestResult row = orphan(1L, RunStatus.IN_PROGRESS, null);
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of(row));
         var runner = new StartupRecoveryRunner(repository, mapper, new HardwareModeInfo("real"),
-                () -> null, true, d -> ControlSource.REMOTE);
+                () -> null, true, d -> ControlSource.LOCAL);
 
         assertThatCode(() -> runner.onApplicationReady(null)).doesNotThrowAnyException();
 
@@ -318,7 +318,7 @@ class StartupRecoveryRunnerTest {
         when(repository.findByRunStatusIn(anyCollection()))
                 .thenReturn(List.of(orphan(1L, RunStatus.IN_PROGRESS, null)));
 
-        runner("real", ControlSource.REMOTE).onApplicationReady(null);
+        runner("real", ControlSource.LOCAL).onApplicationReady(null);
         awaitDeEnergize();
 
         // Drive#stop(), as the safe stop sends it: start and general enable cleared and the speed
@@ -344,7 +344,7 @@ class StartupRecoveryRunnerTest {
         doCallRealMethod().when(drive).stop();
         assertThat(drive.gating()).isEqualTo(DriveGating.CALLER_SERIALIZES);
 
-        runner("real", ControlSource.REMOTE).onApplicationReady(null);
+        runner("real", ControlSource.LOCAL).onApplicationReady(null);
         awaitDeEnergize();
 
         InOrder order = inOrder(drive);
@@ -354,11 +354,12 @@ class StartupRecoveryRunnerTest {
     }
 
     @Test
-    void aDriveUnderLocalControlIsLeftAlone() throws Exception {
-        // An operator may be jogging at the keypad: not one write may reach the drive.
+    void aDriveUnderRemoteControlIsLeftAlone() throws Exception {
+        // REMOTE is the button control board: an operator may be running it, so not one write may
+        // reach the drive.
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
 
-        runner("real", ControlSource.LOCAL).onApplicationReady(null);
+        runner("real", ControlSource.REMOTE).onApplicationReady(null);
         awaitDeEnergize();
 
         verify(drive, never()).stop();
@@ -380,9 +381,9 @@ class StartupRecoveryRunnerTest {
     }
 
     @Test
-    void theWiredProbeAsksTheDriveAndSkipsWhenItReportsLocal() throws Exception {
+    void theWiredProbeAsksTheDriveAndSkipsWhenItReportsRemote() throws Exception {
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
-        when(drive.readControlSource()).thenReturn(ControlSource.LOCAL);
+        when(drive.readControlSource()).thenReturn(ControlSource.REMOTE);
 
         wiredRunner(device).onApplicationReady(null);
         awaitDeEnergize();
@@ -393,6 +394,21 @@ class StartupRecoveryRunnerTest {
         verify(drive, never()).setSpeedReferenceValueAsRpm(anyInt());
         verify(drive, never()).setStart(anyBoolean());
         verify(drive).close();
+    }
+
+    @Test
+    void theWiredProbeDeEnergizesWhenItReportsLocal() throws Exception {
+        // LOCAL is the deck's own USB control: the boot owes it the stop.
+        when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
+        when(drive.readControlSource()).thenReturn(ControlSource.LOCAL);
+
+        wiredRunner(device).onApplicationReady(null);
+        awaitDeEnergize();
+
+        InOrder order = inOrder(drive);
+        order.verify(drive).readControlSource();
+        order.verify(drive).stop();
+        order.verify(drive).close();
     }
 
     @Test
@@ -420,8 +436,8 @@ class StartupRecoveryRunnerTest {
 
     @ParameterizedTest
     @NullSource
-    @EnumSource(value = ControlSource.class, names = {"REMOTE", "UNKNOWN"})
-    void everyAnswerButLocalDeEnergizes(ControlSource source) throws Exception {
+    @EnumSource(value = ControlSource.class, names = {"LOCAL", "UNKNOWN"})
+    void everyAnswerButRemoteDeEnergizes(ControlSource source) throws Exception {
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
 
         runner("real", source).onApplicationReady(null);
@@ -433,7 +449,7 @@ class StartupRecoveryRunnerTest {
     /** End to end over the simulated drive, whose control source the bench holds. */
     @ParameterizedTest
     @EnumSource(ControlSource.class)
-    void theSimulatedDriveIsDeEnergizedUnlessItReportsLocal(ControlSource source) throws Exception {
+    void theSimulatedDriveIsDeEnergizedUnlessItReportsRemote(ControlSource source) throws Exception {
         when(repository.findByRunStatusIn(anyCollection())).thenReturn(List.of());
         // Never started, so no plant tick thread runs and nothing needs stopping.
         SimulatedFaultSwitches faults = new SimulatedFaultSwitches();
@@ -448,7 +464,7 @@ class StartupRecoveryRunnerTest {
         awaitDeEnergize();
 
         Map<String, Boolean> control = provider.open().getControlParameters();
-        boolean leftAlone = source == ControlSource.LOCAL;
+        boolean leftAlone = source == ControlSource.REMOTE;
         assertThat(control.get("generalEnable")).isEqualTo(leftAlone);
         assertThat(control.get("start")).isEqualTo(leftAlone);
     }
