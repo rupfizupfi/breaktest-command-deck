@@ -19,7 +19,9 @@ public final class PageCap {
 
     /**
      * Keeps page number and sort; a size above {@link #MAX_PAGE_SIZE} becomes the cap, and an
-     * unpaged (or missing) request becomes the first capped page.
+     * unpaged (or missing) request becomes the first capped page. A sort order sent without
+     * {@code nullHandling} (optional in the generated TS {@code Order}) gets {@code NATIVE}: Hilla
+     * maps the omission to null, and Spring Data JPA throws on a null one when it builds the query.
      */
     public static Pageable clamp(@Nullable Pageable pageable) {
         if (pageable == null) {
@@ -31,11 +33,26 @@ public final class PageCap {
         if (pageable.getPageSize() > MAX_PAGE_SIZE) {
             return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, sortOf(pageable));
         }
+        if (hasNullHandlingGap(pageable.getSort())) {
+            return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sortOf(pageable));
+        }
         return pageable;
     }
 
     private static Sort sortOf(Pageable pageable) {
         Sort sort = pageable.getSort();
-        return sort == null ? Sort.unsorted() : sort;
+        if (sort == null) {
+            return Sort.unsorted();
+        }
+        if (!hasNullHandlingGap(sort)) {
+            return sort;
+        }
+        return Sort.by(sort.stream()
+                .map(order -> order.getNullHandling() == null ? order.with(Sort.NullHandling.NATIVE) : order)
+                .toList());
+    }
+
+    private static boolean hasNullHandlingGap(@Nullable Sort sort) {
+        return sort != null && sort.stream().anyMatch(order -> order.getNullHandling() == null);
     }
 }

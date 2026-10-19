@@ -51,6 +51,20 @@ class PageCapTest {
         assertThat(PageCap.clamp(page)).isSameAs(page);
     }
 
+    /** The OwnerSelector's order omits nullHandling; JPA's query builder threw on the null. */
+    @Test
+    void orderWithoutNullHandlingGetsNative() {
+        Sort.Order bare = new Sort.Order(Sort.Direction.ASC, "name", false, null);
+        Pageable capped = PageCap.clamp(PageRequest.of(1, 100, Sort.by(bare)));
+
+        assertThat(capped.getPageNumber()).isEqualTo(1);
+        assertThat(capped.getPageSize()).isEqualTo(100);
+        Sort.Order order = capped.getSort().getOrderFor("name");
+        assertThat(order).isNotNull();
+        assertThat(order.getNullHandling()).isEqualTo(Sort.NullHandling.NATIVE);
+        assertThat(order.getDirection()).isEqualTo(Sort.Direction.ASC);
+    }
+
     @Test
     void pageAtTheCapIsUnchanged() {
         Pageable page = PageRequest.of(0, 500);
