@@ -159,7 +159,7 @@ importers:
         version: 3.3.3
       plotly.js:
         specifier: ^3.0.1
-        version: 3.7.0(mapbox-gl@1.13.3)
+        version: 3.7.0(mapbox-gl@1.13.3)(supports-color@2.0.0)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -168,29 +168,29 @@ importers:
         version: 19.2.8(react@19.2.8)
       react-plotly.js:
         specifier: ^4.1.0
-        version: 4.1.0(plotly.js@3.7.0(mapbox-gl@1.13.3))(react@19.2.8)
+        version: 4.1.0(plotly.js@3.7.0(mapbox-gl@1.13.3)(supports-color@2.0.0))(react@19.2.8)
       react-router:
         specifier: 7.18.2
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@babel/core':
         specifier: 7.29.7
-        version: 7.29.7
+        version: 7.29.7(supports-color@2.0.0)
       '@babel/plugin-transform-react-jsx-development':
         specifier: 7.29.7
-        version: 7.29.7(@babel/core@7.29.7)
+        version: 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)
       '@babel/preset-react':
         specifier: 7.29.7
-        version: 7.29.7(@babel/core@7.29.7)
+        version: 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)
       '@babel/types':
         specifier: 7.29.8
         version: 7.29.8
       '@preact/signals-react-transform':
         specifier: 0.8.2
-        version: 0.8.2(@babel/core@7.29.7)(react@19.2.8)
+        version: 0.8.2(@babel/core@7.29.7(supports-color@2.0.0))(react@19.2.8)(supports-color@2.0.0)
       '@rolldown/plugin-babel':
         specifier: 0.2.3
-        version: 0.2.3(@babel/core@7.29.7)(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5))
+        version: 0.2.3(@babel/core@7.29.7(supports-color@2.0.0))(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5))
       '@rollup/plugin-replace':
         specifier: 6.0.3
         version: 6.0.3
@@ -241,10 +241,10 @@ importers:
         version: 25.2.6
       '@vitejs/plugin-react':
         specifier: 6.0.5
-        version: 6.0.5(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7)(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5)))(vite@8.0.16(@types/node@25.9.5))
+        version: 6.0.5(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@2.0.0))(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5)))(vite@8.0.16(@types/node@25.9.5))
       magic-string:
-        specifier: 0.30.21
-        version: 0.30.21
+        specifier: 1.4.3
+        version: 1.4.3
       rollup-plugin-brotli:
         specifier: 3.1.0
         version: 3.1.0
@@ -442,6 +442,9 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
+
+  '@jridgewell/sourcemap-codec@1.6.0':
+    resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
@@ -1957,6 +1960,9 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
+  magic-string@1.4.3:
+    resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
+
   map-limit@0.0.1:
     resolution: {integrity: sha512-pJpcfLPnIF/Sk3taPW21G/RQsEEirGaFpCW3oXRwH9dnFHPHNGjNyvh++rdmC2fNqEaTw2MhYJraoJWAHx8kEg==}
 
@@ -2769,20 +2775,20 @@ snapshots:
 
   '@babel/compat-data@7.29.7': {}
 
-  '@babel/core@7.29.7':
+  '@babel/core@7.29.7(supports-color@2.0.0)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.8
       '@babel/helper-compilation-targets': 7.29.7
-      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7)
+      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)
       '@babel/helpers': 7.29.7
       '@babel/parser': 7.29.8
       '@babel/template': 7.29.7
-      '@babel/traverse': 7.29.8
+      '@babel/traverse': 7.29.8(supports-color@2.0.0)
       '@babel/types': 7.29.8
       '@jridgewell/remapping': 2.3.5
       convert-source-map: 2.0.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@2.0.0)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -2811,19 +2817,19 @@ snapshots:
 
   '@babel/helper-globals@7.29.7': {}
 
-  '@babel/helper-module-imports@7.29.7':
+  '@babel/helper-module-imports@7.29.7(supports-color@2.0.0)':
     dependencies:
-      '@babel/traverse': 7.29.8
+      '@babel/traverse': 7.29.8(supports-color@2.0.0)
       '@babel/types': 7.29.8
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7)':
+  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)':
     dependencies:
-      '@babel/core': 7.29.7
-      '@babel/helper-module-imports': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
+      '@babel/helper-module-imports': 7.29.7(supports-color@2.0.0)
       '@babel/helper-validator-identifier': 7.29.7
-      '@babel/traverse': 7.29.8
+      '@babel/traverse': 7.29.8(supports-color@2.0.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -2844,49 +2850,49 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.8
 
-  '@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
       '@babel/helper-plugin-utils': 7.29.7
 
-  '@babel/plugin-transform-react-display-name@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-transform-react-display-name@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
       '@babel/helper-plugin-utils': 7.29.7
 
-  '@babel/plugin-transform-react-jsx-development@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-transform-react-jsx-development@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)':
     dependencies:
-      '@babel/core': 7.29.7
-      '@babel/plugin-transform-react-jsx': 7.29.7(@babel/core@7.29.7)
+      '@babel/core': 7.29.7(supports-color@2.0.0)
+      '@babel/plugin-transform-react-jsx': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/plugin-transform-react-jsx@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-transform-react-jsx@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
       '@babel/helper-annotate-as-pure': 7.29.7
-      '@babel/helper-module-imports': 7.29.7
+      '@babel/helper-module-imports': 7.29.7(supports-color@2.0.0)
       '@babel/helper-plugin-utils': 7.29.7
-      '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.29.7)
+      '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))
       '@babel/types': 7.29.8
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/plugin-transform-react-pure-annotations@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-transform-react-pure-annotations@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
       '@babel/helper-annotate-as-pure': 7.29.7
       '@babel/helper-plugin-utils': 7.29.7
 
-  '@babel/preset-react@7.29.7(@babel/core@7.29.7)':
+  '@babel/preset-react@7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
       '@babel/helper-plugin-utils': 7.29.7
       '@babel/helper-validator-option': 7.29.7
-      '@babel/plugin-transform-react-display-name': 7.29.7(@babel/core@7.29.7)
-      '@babel/plugin-transform-react-jsx': 7.29.7(@babel/core@7.29.7)
-      '@babel/plugin-transform-react-jsx-development': 7.29.7(@babel/core@7.29.7)
-      '@babel/plugin-transform-react-pure-annotations': 7.29.7(@babel/core@7.29.7)
+      '@babel/plugin-transform-react-display-name': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))
+      '@babel/plugin-transform-react-jsx': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)
+      '@babel/plugin-transform-react-jsx-development': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))(supports-color@2.0.0)
+      '@babel/plugin-transform-react-pure-annotations': 7.29.7(@babel/core@7.29.7(supports-color@2.0.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -2896,7 +2902,7 @@ snapshots:
       '@babel/parser': 7.29.8
       '@babel/types': 7.29.8
 
-  '@babel/traverse@7.29.8':
+  '@babel/traverse@7.29.8(supports-color@2.0.0)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.8
@@ -2904,7 +2910,7 @@ snapshots:
       '@babel/parser': 7.29.8
       '@babel/template': 7.29.7
       '@babel/types': 7.29.8
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@2.0.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -2974,6 +2980,8 @@ snapshots:
   '@jridgewell/resolve-uri@3.1.2': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
+
+  '@jridgewell/sourcemap-codec@1.6.0': {}
 
   '@jridgewell/trace-mapping@0.3.31':
     dependencies:
@@ -3101,13 +3109,13 @@ snapshots:
 
   '@preact/signals-core@1.14.4': {}
 
-  '@preact/signals-react-transform@0.8.2(@babel/core@7.29.7)(react@19.2.8)':
+  '@preact/signals-react-transform@0.8.2(@babel/core@7.29.7(supports-color@2.0.0))(react@19.2.8)(supports-color@2.0.0)':
     dependencies:
-      '@babel/core': 7.29.7
-      '@babel/helper-module-imports': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
+      '@babel/helper-module-imports': 7.29.7(supports-color@2.0.0)
       '@babel/helper-plugin-utils': 7.29.7
       '@preact/signals-react': 3.12.0(react@19.2.8)
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@2.0.0)
       react: 19.2.8
       use-sync-external-store: 1.6.0(react@19.2.8)
     transitivePeerDependencies:
@@ -3174,9 +3182,9 @@ snapshots:
   '@rolldown/binding-win32-x64-msvc@1.0.3':
     optional: true
 
-  '@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7)(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5))':
+  '@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@2.0.0))(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5))':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@2.0.0)
       picomatch: 4.0.5
       rolldown: 1.0.3
     optionalDependencies:
@@ -4135,12 +4143,12 @@ snapshots:
       '@vaadin/vaadin-themable-mixin': 25.2.7
       lit: 3.3.3
 
-  '@vitejs/plugin-react@6.0.5(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7)(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5)))(vite@8.0.16(@types/node@25.9.5))':
+  '@vitejs/plugin-react@6.0.5(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@2.0.0))(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5)))(vite@8.0.16(@types/node@25.9.5))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.0.16(@types/node@25.9.5)
     optionalDependencies:
-      '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.7)(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5))
+      '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.7(supports-color@2.0.0))(rolldown@1.0.3)(vite@8.0.16(@types/node@25.9.5))
 
   '@vitest/expect@4.1.11':
     dependencies:
@@ -4457,17 +4465,23 @@ snapshots:
 
   dateformat@4.6.3: {}
 
-  debug@2.6.9:
+  debug@2.6.9(supports-color@2.0.0):
     dependencies:
       ms: 2.0.0
+    optionalDependencies:
+      supports-color: 2.0.0
 
-  debug@3.2.7:
+  debug@3.2.7(supports-color@2.0.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 2.0.0
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@2.0.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 2.0.0
 
   decimal.js@10.6.0: {}
 
@@ -4968,6 +4982,10 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  magic-string@1.4.3:
+    dependencies:
+      '@jridgewell/sourcemap-codec': 1.6.0
+
   map-limit@0.0.1:
     dependencies:
       once: 1.3.3
@@ -5063,9 +5081,9 @@ snapshots:
 
   native-promise-only@0.8.1: {}
 
-  needle@2.9.1:
+  needle@2.9.1(supports-color@2.0.0):
     dependencies:
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@2.0.0)
       iconv-lite: 0.4.24
       sax: 1.6.1
     transitivePeerDependencies:
@@ -5186,7 +5204,7 @@ snapshots:
       sonic-boom: 4.2.1
       thread-stream: 3.2.0
 
-  plotly.js@3.7.0(mapbox-gl@1.13.3):
+  plotly.js@3.7.0(mapbox-gl@1.13.3)(supports-color@2.0.0):
     dependencies:
       '@plotly/d3': 3.8.2
       '@plotly/d3-sankey': 0.7.2
@@ -5220,7 +5238,7 @@ snapshots:
       parse-svg-path: 0.1.2
       point-in-polygon: 1.1.0
       polybooljs: 1.2.2
-      probe-image-size: 7.3.0
+      probe-image-size: 7.3.0(supports-color@2.0.0)
       regl-error2d: 2.0.12
       regl-line2d: 3.1.3
       regl-scatter2d: 3.4.0
@@ -5255,11 +5273,11 @@ snapshots:
 
   pretty-hrtime@1.0.3: {}
 
-  probe-image-size@7.3.0:
+  probe-image-size@7.3.0(supports-color@2.0.0):
     dependencies:
       lodash.merge: 4.6.2
-      needle: 2.9.1
-      stream-parser: 0.3.1
+      needle: 2.9.1(supports-color@2.0.0)
+      stream-parser: 0.3.1(supports-color@2.0.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -5299,9 +5317,9 @@ snapshots:
       react: 19.2.8
       scheduler: 0.27.0
 
-  react-plotly.js@4.1.0(plotly.js@3.7.0(mapbox-gl@1.13.3))(react@19.2.8):
+  react-plotly.js@4.1.0(plotly.js@3.7.0(mapbox-gl@1.13.3)(supports-color@2.0.0))(react@19.2.8):
     dependencies:
-      plotly.js: 3.7.0(mapbox-gl@1.13.3)
+      plotly.js: 3.7.0(mapbox-gl@1.13.3)(supports-color@2.0.0)
       react: 19.2.8
 
   react-router@7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
@@ -5501,9 +5519,9 @@ snapshots:
 
   std-env@4.2.0: {}
 
-  stream-parser@0.3.1:
+  stream-parser@0.3.1(supports-color@2.0.0):
     dependencies:
-      debug: 2.6.9
+      debug: 2.6.9(supports-color@2.0.0)
     transitivePeerDependencies:
       - supports-color
 
