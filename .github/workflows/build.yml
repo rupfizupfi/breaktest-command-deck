@@ -18,27 +18,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Holds `<!-- inventory: enum ... -->` doc tables to the enum's constants, so a code-only
       # change can break it. Runs first because it needs no build. The other doc gates run via /deck-doc.
       - name: Doc inventories match the code
         run: python3 doc/_check-inventories.py
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '26'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Before setup-node, whose pnpm cache needs the binary on PATH. No packageManager field in
       # either package.json, so the major that wrote the lockfiles is pinned here.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Matches the bench/dev machine the lockfiles were resolved on.
           node-version: '26'
