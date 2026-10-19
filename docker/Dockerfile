@@ -3,7 +3,7 @@
 #   docker compose -f docker/docker-compose.yaml --profile cms  up -d --build
 #   docker compose -f docker/docker-compose.yaml --profile deck up -d --build
 
-FROM gradle:9.7.1-jdk26-corretto AS build-image
+FROM gradle:9.8.0-jdk26-corretto AS build-image
 ARG MODULE
 COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
