@@ -6,14 +6,20 @@
     The bench equivalent of cms/src/docker/bin/startup.sh. Both driver plugins are Windows-only,
     so this is the only deployment that drives the hardware (doc/dev/backend/driver-jars.md).
 
-    Activates the `bench` profile group, which resolves to `docker`; bench-specific settings are
-    parameters here rather than a bench properties file.
+    Activates the `bench` profile group, which resolves to `docker`. Per-machine settings (database,
+    keystore) come from one env file, .secrets/bench.env (template: script/bench.env.example), which
+    this script exports and the bench profile also reads, so bootRun from the IDE uses the same file.
+    A parameter or an already-set environment variable wins over the file.
 
     PropertiesLauncher loads the drivers from -DriversPath at launch; replacing one needs a
     restart, not a rebuild.
 
 .PARAMETER Jar
-    The boot jar. Build it with: ./gradlew :command-deck:bootJar -Pvaadin.productionMode=true
+    The boot jar. Build it with: ./gradlew :command-deck:bootJar "-Pvaadin.productionMode=true" (quoted: PowerShell splits it at the dot)
+
+.PARAMETER EnvFile
+    KEY=VALUE file with DB_URL, DB_PASSWORD, KEY_STORE_PATH, KEY_STORE_PASSWORD. Optional: without it
+    the values come from parameters and environment variables alone.
 
 .PARAMETER DriversPath
     Directory holding dscusb.jar and usbmodbus.jar. Startup refuses, naming the missing one, if
@@ -28,6 +34,10 @@
     An existing keystore with no password available stops the script.
 
 .EXAMPLE
+    ./script/run-bench.ps1
+    Reads everything from .secrets/bench.env.
+
+.EXAMPLE
     $env:DB_URL = 'jdbc:postgresql://cloud-host:5432/rupfizupfi'
     ./script/run-bench.ps1 -DbPasswordFile C:\deck\.secrets\db-password.txt
 #>
@@ -35,10 +45,11 @@
 param(
     [string]$Jar = 'command-deck/build/libs/command-deck-application.jar',
     [string]$DriversPath = 'drivers',
-    [string]$DbUrl = $env:DB_URL,
-    [string]$DbPasswordFile = $env:DB_PASSWORD_FILE,
-    [string]$KeyStorePath = "$env:USERPROFILE\keystore\rupfizupfi.p12",
-    [string]$KeyStorePassword = $env:KEY_STORE_PASSWORD
+    [string]$EnvFile = '.secrets/bench.env',
+    [string]$DbUrl,
+    [string]$DbPasswordFile,
+    [string]$KeyStorePath,
+    [string]$KeyStorePassword
 )
 
 Set-StrictMode -Version Latest
@@ -55,8 +66,33 @@ function Resolve-Against-Repo {
 $jarPath = Resolve-Against-Repo $Jar
 $driversPath = Resolve-Against-Repo $DriversPath
 
+# The env file fills only what the shell has not set, matching Spring, where a real environment
+# variable beats the imported file.
+$envFilePath = Resolve-Against-Repo $EnvFile
+if (Test-Path $envFilePath) {
+    foreach ($line in Get-Content -Path $envFilePath) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith('#') -or $trimmed.StartsWith('!')) { continue }
+        $eq = $trimmed.IndexOf('=')
+        if ($eq -lt 1) { throw "${envFilePath}: not a KEY=VALUE line: $trimmed" }
+        $key = $trimmed.Substring(0, $eq).Trim()
+        $value = $trimmed.Substring($eq + 1).Trim()
+        # Spring reads the same file as .properties, where \ is an escape: refuse rather than diverge.
+        if ($value.Contains('\')) { throw "${envFilePath}: $key contains a backslash; use / in paths." }
+        if (-not [Environment]::GetEnvironmentVariable($key)) { Set-Item -Path "env:$key" -Value $value }
+    }
+    # Spring's import would otherwise resolve against the working directory.
+    $env:DECK_ENV_FILE = (Resolve-Path $envFilePath).Path.Replace('\', '/')
+}
+if (-not $DbUrl) { $DbUrl = $env:DB_URL }
+if (-not $DbPasswordFile) { $DbPasswordFile = $env:DB_PASSWORD_FILE }
+if (-not $KeyStorePath) {
+    $KeyStorePath = if ($env:KEY_STORE_PATH) { $env:KEY_STORE_PATH } else { "$env:USERPROFILE\keystore\rupfizupfi.p12" }
+}
+if (-not $KeyStorePassword) { $KeyStorePassword = $env:KEY_STORE_PASSWORD }
+
 if (-not (Test-Path $jarPath)) {
-    throw "Boot jar not found at $jarPath. Build it with: ./gradlew :command-deck:bootJar -Pvaadin.productionMode=true"
+    throw "Boot jar not found at $jarPath. Build it with: ./gradlew :command-deck:bootJar '-Pvaadin.productionMode=true'"
 }
 
 # Created empty so loader.path does not skip it; HardwareModeCheck then reports the missing jars.
@@ -117,17 +153,20 @@ elseif (-not $KeyStorePassword) {
         "Alternatively delete the keystore to regenerate it with a random password (browsers will see a new certificate).")
 }
 
-if (-not $DbPasswordFile) {
-    throw 'DB_PASSWORD_FILE is not set. Pass -DbPasswordFile or set the environment variable; it must point at a file containing the database password.'
+# A password file, when given, beats DB_PASSWORD from the env file or the shell.
+if ($DbPasswordFile) {
+    if (-not (Test-Path $DbPasswordFile)) {
+        throw "Database password file not found at $DbPasswordFile"
+    }
+    $env:DB_PASSWORD = (Get-Content -Raw -Path $DbPasswordFile).Trim()
 }
-if (-not (Test-Path $DbPasswordFile)) {
-    throw "Database password file not found at $DbPasswordFile"
+elseif (-not $env:DB_PASSWORD) {
+    throw "No database password. Set DB_PASSWORD in $envFilePath, or pass -DbPasswordFile / set DB_PASSWORD_FILE."
 }
-$env:DB_PASSWORD = (Get-Content -Raw -Path $DbPasswordFile).Trim()
 
 # No local fallback: bench results must land in the authoritative dataset (OQ-61).
 if (-not $DbUrl) {
-    throw 'DB_URL is not set. Point it at the cloud Postgres; there is deliberately no local default on the bench.'
+    throw "DB_URL is not set (in $envFilePath, the environment or -DbUrl). Point it at the cloud Postgres; there is deliberately no local default on the bench."
 }
 
 $env:SPRING_PROFILES_ACTIVE = 'bench'

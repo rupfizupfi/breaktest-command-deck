@@ -41,6 +41,9 @@ tasks.named('bootRun') {
     // Vaadin runs pnpm from this process; without a TTY pnpm aborts with
     // ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY. CI=true makes it non-interactive.
     environment 'CI', 'true'
+    // The bench profile's env file (application-bench.properties), as an absolute path because the
+    // working directory is this module. Forward slashes: Spring reads it as a file: URL.
+    environment 'DECK_ENV_FILE', System.getenv('DECK_ENV_FILE') ?: "${rootProject.projectDir}/.secrets/bench.env".replace('\\', '/')
 }
 
 // The Vaadin plugin reads the runtime classpath without declaring a dependency on it, so a

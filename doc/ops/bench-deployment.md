@@ -36,24 +36,34 @@ simulator when `bench` is active, so a bench must be started as `bench` — whic
 creates the drivers directory and prints the resolved database URL without
 credentials, so a URL pointing at a reachable-but-wrong database is visible.
 
-```powershell
-$env:DB_URL = 'jdbc:postgresql://<cloud-host>:5432/rupfizupfi'
-./script/run-bench.ps1 -DbPasswordFile C:\deck\.secrets\db-password.txt
-```
-
-Build the jar first — the launcher does not:
+The bench's settings live in one gitignored file, `.secrets/bench.env`: copy
+[`script/bench.env.example`](../../script/bench.env.example) and fill it in. Build the jar first (the
+launcher does not; in PowerShell the `-P` argument needs quotes, or it is split at the dot), then
+start:
 
 ```powershell
-./gradlew :command-deck:bootJar -Pvaadin.productionMode=true
+./gradlew :command-deck:bootJar "-Pvaadin.productionMode=true"
+./script/run-bench.ps1
 ```
+
+The same file serves a run from the IDE: `application-bench.properties` imports it
+(`spring.config.import`, located through `DECK_ENV_FILE`, which `bootRun` and the launcher both set
+to the repo's copy), so an IDE run configuration for `:command-deck:bootRun` only needs
+`SPRING_PROFILES_ACTIVE=bench`. That is `bootRun`, Vaadin dev mode, for debugging, not operation.
+The file is read as Java properties: write paths with `/`, since a backslash is an escape; the
+launcher refuses one rather than read the file differently from Spring.
 
 ## Environment
+
+Each value is taken from, first hit wins: the launcher parameter, an environment variable already
+set in the shell, then `.secrets/bench.env` (`-EnvFile` to use another file).
 
 | Variable / parameter | Default | Notes |
 |---|---|---|
 | `DB_URL` | none — **required** | The cloud Postgres. No local fallback on the bench: a deck that quietly wrote results to the wrong database is worse than one that refuses to start (OQ-61). |
-| `DB_PASSWORD_FILE` | none — **required** | File containing the password, matching the container's secret convention. |
-| `KEY_STORE_PATH` | `%USERPROFILE%\keystore\rupfizupfi.p12` | Self-signed if absent — the intended operating mode on a trusted local network. |
+| `DB_PASSWORD` | none — **required** unless `DB_PASSWORD_FILE` | Normally in `bench.env`. |
+| `DB_PASSWORD_FILE` | none | File containing the password, matching the container's secret convention; beats `DB_PASSWORD` when set. |
+| `KEY_STORE_PATH` | `%USERPROFILE%\keystore\rupfizupfi.p12` | Self-signed if absent — the intended operating mode on a trusted local network. A run from the IDE has no such default (it would get the container path): set it in `bench.env`. |
 | `KEY_STORE_PASSWORD` | none — resolved, see below | First hit wins: `-KeyStorePassword` / `KEY_STORE_PASSWORD`, then the file `<keystore>.password` beside the keystore (`rupfizupfi.p12.password`). Only when a **new** keystore is about to be created and neither exists, the launcher generates a random 24-character password and saves it to that file, readable by the current user only (`icacls`, inheritance removed), then self-signs with it. An existing keystore with no password available stops the launcher. There is no built-in default, as in `startup.sh`. |
 | `LOADER_PATH` | set by the launcher from `-DriversPath` | Where the driver plugins are loaded from. |
 
