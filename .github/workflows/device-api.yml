@@ -24,16 +24,16 @@ jobs:
     steps:
       # Full history: the version check diffs against the push's start commit, which a
       # rebase-merge puts several commits back.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '26'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Standalone build, without configuring the deck's Spring Boot / Vaadin build.
       - name: Build the contract
